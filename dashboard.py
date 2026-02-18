@@ -91,12 +91,6 @@ def format_idr_short(x):
 
 st.markdown("""
 <style>
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
     h1 { color: #1f77b4; }
 </style>
 """, unsafe_allow_html=True)
