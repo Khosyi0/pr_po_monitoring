@@ -32,15 +32,16 @@ st.set_page_config(
 @st.cache_resource
 def get_db_engine():
     """Create database connection (cached)"""
-    # GANTI dengan kredensial database Anda
-    DB_HOST = 'localhost'
-    DB_PORT = '5432'
-    DB_NAME = 'pr_po_monitoring'
-    DB_USER = 'postgres'
-    DB_PASSWORD = 'Hx4Khos2'
     
-    connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(connection_string)
+    # Mengambil data dari st.secrets (sesuai nama di file TOML tadi)
+    db_config = st.secrets["postgres"]
+    
+    # Membuat Connection String untuk PostgreSQL
+    # Format: postgresql://user:password@host:port/dbname
+    connection_url = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
+    
+    # Membuat engine
+    engine = create_engine(connection_url)
     return engine
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
@@ -93,11 +94,19 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔍 Filters")
 
 # Load filter options
+# Load filter options
 try:
     departments = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
     
-    # 🎯 PERUBAHAN: Menarik data Bagian (menggantikan Plant)
-    bagian_data = load_data("SELECT DISTINCT UPPER(bagian) as bagian FROM departments WHERE bagian IS NOT NULL ORDER BY 1")
+    # 🎯 PERBAIKAN: Mengambil data Bagian langsung dari View Transaksi (vw_pr_po_complete)
+    # Ini memastikan 'Alpata', 'BB/BD/BP' muncul jika mereka ada di data PR/PO
+    bagian_query = """
+    SELECT DISTINCT bagian_pr as bagian FROM vw_pr_po_complete WHERE bagian_pr IS NOT NULL
+    UNION
+    SELECT DISTINCT bagian_po as bagian FROM vw_pr_po_complete WHERE bagian_po IS NOT NULL
+    ORDER BY 1
+    """
+    bagian_data = load_data(bagian_query)
     
     vendors = load_data("SELECT DISTINCT vendor_name FROM vendors ORDER BY vendor_name")
     
@@ -579,30 +588,32 @@ try:
             
             delivery_query = f"""
             SELECT 
-                on_time_delivery,
+                COALESCE(on_time_delivery, 'PENDING') as status_delivery,
                 COUNT(*) as count
             FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND on_time_delivery IS NOT NULL AND {bagian_po_cond}
-            GROUP BY on_time_delivery
+            WHERE {filter_conditions} AND {bagian_po_cond} 
+            AND nomor_po IS NOT NULL  -- Pastikan ini PO, bukan PR yang belum jadi PO
+            GROUP BY COALESCE(on_time_delivery, 'PENDING')
             """
-            
             delivery_data = load_data(delivery_query)
             
             if not delivery_data.empty:
-                # Urutkan warna agar konsisten (Hijau, Kuning, Merah)
+                # Update map warna untuk status PENDING
                 color_map = {
-                    'TEPAT WAKTU': '#2ca02c',  # Hijau
-                    'IN PROGRESS': '#ff7f0e',  # Oranye/Kuning
-                    'TERLAMBAT': '#d62728'     # Merah
+                    'TEPAT WAKTU': '#2ca02c',   # Hijau
+                    'IN PROGRESS': '#ff7f0e',   # Oranye
+                    'TERLAMBAT': '#d62728',     # Merah
+                    'PENDING': '#7f7f7f'        # Abu-abu (untuk data NULL)
                 }
+                
                 fig = px.pie(
                     delivery_data,
                     values='count',
-                    names='on_time_delivery',
+                    names='status_delivery', # Sesuaikan dengan alias di query
                     title='',
-                    color='on_time_delivery',
+                    color='status_delivery',
                     color_discrete_map=color_map,
-                    hole=0.4 # Membuat Donut Chart agar lebih modern
+                    hole=0.4
                 )
                 fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
                 st.plotly_chart(fig, use_container_width=True)
