@@ -87,6 +87,14 @@ page = st.sidebar.radio(
 )
 st.sidebar.markdown("---")
 
+# Default values (fallback jika try block gagal)
+date_from = datetime.now() - timedelta(days=90)
+date_to = datetime.now()
+selected_department = ['All']
+selected_bagian = ['All']
+exclude_dept = False
+exclude_bagian = False
+
 # =====================================================
 # SIDEBAR FILTERS
 # =====================================================
