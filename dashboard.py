@@ -91,6 +91,12 @@ def format_idr_short(x):
 
 st.markdown("""
 <style>
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
     h1 { color: #1f77b4; }
 </style>
 """, unsafe_allow_html=True)
@@ -213,17 +219,18 @@ if page == "📊 Dashboard Monitoring":
     SELECT
         COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
               THEN no_pr || '-' || line_item_pr::text END)              AS total_pr,
-        COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po,
+        COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END)             AS total_po,
         COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
               THEN no_pr || '-' || line_item_pr::text END)              AS pr_with_po,
         COUNT(DISTINCT CASE WHEN nomor_po IS NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
               THEN no_pr || '-' || line_item_pr::text END)              AS pr_without_po,
-        COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN estimasi_pr END), 0)              AS total_estimasi,
-        COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr END), 0)  AS total_po_amount,
-        COALESCE(AVG(CASE WHEN total_amount_local_curr IS NOT NULL
-                          AND estimasi_pr > 0
-                          AND {bagian_pr_cond} AND {bagian_po_cond}
-                     THEN (estimasi_pr - total_amount_local_curr) / estimasi_pr * 100
+        COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN estimasi_pr ELSE 0 END), 0)             AS total_estimasi,
+        COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS total_po_amount,
+        COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN estimasi_pr ELSE 0 END -
+                     CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END), 0) AS total_savings,
+        COALESCE(AVG(CASE
+                WHEN total_amount_local_curr IS NOT NULL AND {bagian_pr_cond} AND {bagian_po_cond}
+                THEN (estimasi_pr - total_amount_local_curr) / NULLIF(estimasi_pr, 0) * 100
                 END), 0) AS avg_savings_pct
     FROM vw_pr_po_complete
     WHERE {filter_conditions}
@@ -239,8 +246,7 @@ if page == "📊 Dashboard Monitoring":
     pr_with_po   = int(kpi_data['pr_with_po'][0] or 0)
     pr_without   = int(kpi_data['pr_without_po'][0] or 0)
     estimasi     = float(kpi_data['total_estimasi'][0] or 0)
-    po_amount    = float(kpi_data['total_po_amount'][0] or 0)
-    savings      = estimasi - po_amount
+    savings      = float(kpi_data['total_savings'][0] or 0)
     savings_pct  = float(kpi_data['avg_savings_pct'][0] or 0)
 
     with col1:
