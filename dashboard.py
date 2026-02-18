@@ -325,8 +325,7 @@ if page == "📊 Dashboard Monitoring":
             DATE_TRUNC('month', tgl_create_pr) AS month,
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
                   THEN no_pr || '-' || line_item_pr::text END) AS total_pr,
-            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
-                  THEN nomor_po END)                           AS total_po
+            COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
         FROM vw_pr_po_complete
         WHERE {filter_conditions} AND tgl_create_pr IS NOT NULL
         GROUP BY 1
@@ -354,11 +353,11 @@ if page == "📊 Dashboard Monitoring":
         leadtime_query = f"""
         SELECT
             CASE
-                WHEN lead_time_process_po <= 7  THEN '1. 0-7 days'
-                WHEN lead_time_process_po <= 14 THEN '2. 8-14 days'
-                WHEN lead_time_process_po <= 30 THEN '3. 15-30 days'
-                WHEN lead_time_process_po <= 60 THEN '4. 31-60 days'
-                ELSE '5. 60+ days'
+                WHEN lead_time_process_po <= 7  THEN '0-7 days'
+                WHEN lead_time_process_po <= 14 THEN '8-14 days'
+                WHEN lead_time_process_po <= 30 THEN '15-30 days'
+                WHEN lead_time_process_po <= 60 THEN '31-60 days'
+                ELSE '60+ days'
             END AS lead_time_range,
             COUNT(*) AS count
         FROM vw_pr_po_complete
