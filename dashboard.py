@@ -38,7 +38,7 @@ def get_db_engine():
     
     # Membuat Connection String untuk PostgreSQL
     # Format: postgresql://user:password@host:port/dbname
-    connection_url = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['dbname']}?sslmode=require"
+    connection_url = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
     
     # Membuat engine
     engine = create_engine(connection_url)
