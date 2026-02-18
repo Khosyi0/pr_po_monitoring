@@ -129,14 +129,9 @@ try:
     departments = load_data(
         "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
     )
-    bagian_data = load_data("""
-        SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete 
-        WHERE bagian_pr IS NOT NULL
-        UNION
-        SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete 
-        WHERE bagian_po IS NOT NULL
-        ORDER BY 1
-    """)
+    bagian_data = load_data(
+        "SELECT DISTINCT bagian FROM departments WHERE bagian IS NOT NULL ORDER BY bagian"
+    )
 
     selected_department = st.sidebar.multiselect(
         "Department",
@@ -321,15 +316,30 @@ if page == "📊 Dashboard Monitoring":
     with col1:
         st.subheader("📅 PR-PO Creation Trend")
         trend_query = f"""
+        WITH pr_monthly AS (
+            SELECT
+                DATE_TRUNC('month', tgl_create_pr) AS month_date,
+                COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+                      THEN no_pr || '-' || line_item_pr::text END) AS total_pr
+            FROM vw_pr_po_complete
+            WHERE tgl_create_pr IS NOT NULL AND {filter_conditions}
+            GROUP BY 1
+        ),
+        po_monthly AS (
+            SELECT
+                DATE_TRUNC('month', date_ordered) AS month_date,
+                COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
+            FROM vw_pr_po_complete
+            WHERE date_ordered IS NOT NULL AND {filter_conditions}
+            GROUP BY 1
+        )
         SELECT
-            DATE_TRUNC('month', tgl_create_pr) AS month,
-            COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
-                  THEN no_pr || '-' || line_item_pr::text END) AS total_pr,
-            COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND tgl_create_pr IS NOT NULL
-        GROUP BY 1
-        ORDER BY 1
+            COALESCE(pr.month_date, po.month_date) AS month,
+            COALESCE(pr.total_pr, 0) AS total_pr,
+            COALESCE(po.total_po, 0) AS total_po
+        FROM pr_monthly pr
+        FULL OUTER JOIN po_monthly po ON pr.month_date = po.month_date
+        ORDER BY month
         """
         with st.spinner("Memuat trend..."):
             trend_data = load_data(trend_query)
@@ -359,17 +369,25 @@ if page == "📊 Dashboard Monitoring":
                 WHEN lead_time_process_po <= 60 THEN '31-60 days'
                 ELSE '60+ days'
             END AS lead_time_range,
-            COUNT(*) AS count
+            COUNT(*) AS count,
+            MIN(lead_time_process_po) AS sort_order
         FROM vw_pr_po_complete
         WHERE {filter_conditions} AND lead_time_process_po IS NOT NULL AND {bagian_po_cond}
         GROUP BY 1
-        ORDER BY 1
+        ORDER BY sort_order ASC
         """
         with st.spinner("Memuat lead time..."):
             leadtime_data = load_data(leadtime_query)
 
         if not leadtime_data.empty:
-            fig = px.pie(leadtime_data, values='count', names='lead_time_range', hole=0.4)
+            # Pastikan urutan kategori benar
+            category_order = ['0-7 days', '8-14 days', '15-30 days', '31-60 days', '60+ days']
+            leadtime_data['lead_time_range'] = pd.Categorical(
+                leadtime_data['lead_time_range'], categories=category_order, ordered=True
+            )
+            leadtime_data = leadtime_data.sort_values('lead_time_range')
+            fig = px.pie(leadtime_data, values='count', names='lead_time_range', hole=0.4,
+                        category_orders={'lead_time_range': category_order})
             fig.update_traces(sort=False)
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
