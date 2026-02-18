@@ -213,7 +213,7 @@ if page == "📊 Dashboard Monitoring":
     SELECT
         COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
               THEN no_pr || '-' || line_item_pr::text END)              AS total_pr,
-        COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN nomor_po END) AS total_po,
+        COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po,
         COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
               THEN no_pr || '-' || line_item_pr::text END)              AS pr_with_po,
         COUNT(DISTINCT CASE WHEN nomor_po IS NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
