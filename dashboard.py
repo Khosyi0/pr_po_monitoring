@@ -91,12 +91,6 @@ def format_idr_short(x):
 
 st.markdown("""
 <style>
-    .stMetric {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
     h1 { color: #1f77b4; }
 </style>
 """, unsafe_allow_html=True)
@@ -135,9 +129,14 @@ try:
     departments = load_data(
         "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
     )
-    bagian_data = load_data(
-        "SELECT DISTINCT bagian FROM departments WHERE bagian IS NOT NULL ORDER BY bagian"
-    )
+    bagian_data = load_data("""
+        SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete 
+        WHERE bagian_pr IS NOT NULL
+        UNION
+        SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete 
+        WHERE bagian_po IS NOT NULL
+        ORDER BY 1
+    """)
 
     selected_department = st.sidebar.multiselect(
         "Department",
