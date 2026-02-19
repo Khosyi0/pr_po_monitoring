@@ -1,5 +1,5 @@
 """
-PR-PO Monitoring Dashboard (Optimized & UI Updated v1)
+PR-PO Monitoring Dashboard (Optimized & UI Updated v1.5)
 File: dashboard.py
 
 Run with: streamlit run dashboard.py
@@ -125,8 +125,8 @@ with st.sidebar:
     # Menggunakan streamlit-option-menu
     page = option_menu(
         menu_title="Main Menu",  # Judul Menu
-        options=["Dashboard Monitoring", "Halaman Alert"],  # Pilihan Halaman
-        icons=["bar-chart-fill", "exclamation-triangle-fill"],  # Icon Bootstrap
+        options=["Dashboard Monitoring", "Detailed PR-PO Data","Halaman Alert"],  # Pilihan Halaman
+        icons=["bar-chart-fill", "file-earmark-text-fill", "exclamation-triangle-fill"],  # Icon Bootstrap
         menu_icon="cast", 
         default_index=0,
         styles={
@@ -154,6 +154,7 @@ with st.sidebar:
             "menu-title": {"color": "var(--text-color)", "font-size": "18px", "font-weight": "bold"}
         }
     )
+    st.markdown("---")
 
 # =====================================================
 # DEFAULT VALUES (wajib ada sebelum try block)
@@ -170,7 +171,14 @@ exclude_bagian = False
 # SIDEBAR FILTERS
 # =====================================================
 
-st.sidebar.header("🔍 Filters")
+st.sidebar.markdown(f"""
+    <h2 style='display: flex; align-items: center; font-size: 20px; color: var(--text-color); margin-top: -20px;'>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-funnel-fill" viewBox="0 0 16 16" style="margin-right: 10px;">
+            <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0 0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5z"/>
+        </svg>
+        Filters
+    </h2>
+    """, unsafe_allow_html=True)
 
 try:
     # 1. Load Data
@@ -225,22 +233,37 @@ try:
     # -------------------------------------------------------------------------
 
     # Filter Department
+    st.sidebar.markdown(f"""
+    <h2 style='display: flex; align-items: center; font-size: 16px; color: var(--text-color); margin-bottom: -30px;'>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-calendar-event" viewBox="0 0 16 16" style="margin-right: 8px; margin-bottom: 3px;">
+            <path d="M3 0a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3v-3.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V16h3a1 1 0 0 0 1-1V1a1 1 0 0 0-1-1zm1 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5M4 5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM7.5 5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5m2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM4.5 8h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5m2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5"/>
+        </svg>
+        Department
+    </h2>
+    """, unsafe_allow_html=True)
     selected_department = st.sidebar.multiselect(
-        "Department",
+        "",
         options=['All'] + departments['department_code'].tolist(),
         default=['All']
     )
 
     exclude_dept = False
     if 'All' not in selected_department and len(selected_department) > 0:
-        exclude_dept = st.sidebar.checkbox("🚫 Exclude selected Department")
+        exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
 
-    st.sidebar.markdown("---")
 
     # Filter Bagian (Dengan Logic Baru)
     # Perhatikan: kita pakai 'key' dan 'on_change', tidak pakai 'default' lagi
+    st.sidebar.markdown(f"""
+    <h2 style='display: flex; align-items: center; font-size: 16px; color: var(--text-color); margin-bottom: -30px;'>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-calendar-event" viewBox="0 0 16 16" style="margin-right: 8px; margin-bottom: 3px;">
+            <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
+        </svg>
+        Bagian
+    </h2>
+    """, unsafe_allow_html=True)
     st.sidebar.pills(
-        "Pilih Bagian",
+        "",
         options=options_bagian,
         selection_mode="multi",
         key="filter_bagian",           # Terhubung ke st.session_state
@@ -250,14 +273,20 @@ try:
     # Ambil nilai final dari session state untuk dipakai di query
     selected_bagian = st.session_state.filter_bagian
 
-    st.sidebar.markdown("---")
-
     # Filter Tanggal
-    st.sidebar.subheader("📅 Date Range")
+    st.sidebar.markdown(f"""
+    <h2 style='display: flex; align-items: center; font-size: 16px; color: var(--text-color); margin-bottom: -10px;'>
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-calendar-event" viewBox="0 0 16 16" style="margin-right: 8px; margin-bottom: 3px;">
+            <path d="M11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+            <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+        </svg>
+        Date Range
+    </h2>
+    """, unsafe_allow_html=True)
     date_from = st.sidebar.date_input("From", value=datetime.now().date() - timedelta(days=90))
     date_to = st.sidebar.date_input("To", value=datetime.now().date())
 
-    if st.sidebar.button("🔄 Refresh Data"):
+    if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
         st.cache_data.clear()
         st.rerun()
 
@@ -302,11 +331,26 @@ if 'All' not in selected_bagian and selected_bagian:
 
 if page == "Dashboard Monitoring":
 
-    st.title("📊 PR-PO Monitoring Dashboard")
+    st.markdown("""
+        <h1 style='display: flex; align-items: center; font-size:60px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
+                <path d="M10 .5a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5.5.5 0 0 1-.5.5.5.5 0 0 0-.5.5V2a.5.5 0 0 0 .5.5h5A.5.5 0 0 0 11 2v-.5a.5.5 0 0 0-.5-.5.5.5 0 0 1-.5-.5"/>
+                <path d="M4.085 1H3.5A1.5 1.5 0 0 0 2 2.5v12A1.5 1.5 0 0 0 3.5 16h9a1.5 1.5 0 0 0 1.5-1.5v-12A1.5 1.5 0 0 0 12.5 1h-.585q.084.236.085.5V2a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 2v-.5q.001-.264.085-.5M10 7a1 1 0 1 1 2 0v5a1 1 0 1 1-2 0zm-6 4a1 1 0 1 1 2 0v1a1 1 0 1 1-2 0zm4-3a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V9a1 1 0 0 1 1-1"/>
+            </svg>
+            PR-PO Monitoring Dashboard
+        </h1>
+    """, unsafe_allow_html=True)
     st.markdown("---")
 
     # ── KPI ──────────────────────────────────────────
-    st.header("📈 Key Performance Indicators")
+    st.markdown("""
+        <h1 style='display: flex; align-items: center;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
+                <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
+            </svg>
+            Key Performance Indicators
+        </h1>
+    """, unsafe_allow_html=True)
 
     # 1 query besar untuk semua KPI sekaligus
     kpi_query = f"""
@@ -358,7 +402,15 @@ if page == "Dashboard Monitoring":
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📊 PR Status by Department")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
+                </svg>
+                PR Status by Department
+            </h1>
+        """, unsafe_allow_html=True)
+
         dept_query = f"""
         SELECT
             COALESCE(department_code, 'Unknown') AS department,
@@ -382,10 +434,19 @@ if page == "Dashboard Monitoring":
             fig.update_layout(barmode='stack', height=400)
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data available")
+            st.info("Tidak ada data yang tersedia.")
 
     with col2:
-        st.subheader("💰 Top 10 Vendors by PO Value")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-cash-stack" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
+                    <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
+                </svg>
+                Top 10 Vendors by PO Value
+            </h1>
+        """, unsafe_allow_html=True)
+
         vendor_query = f"""
         SELECT
             COALESCE(vendor_name, 'Unknown') AS vendor,
@@ -408,13 +469,21 @@ if page == "Dashboard Monitoring":
             fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data available")
+            st.info("Tidak ada data yang tersedia.")
 
     # ── CHARTS ROW 2 ─────────────────────────────────
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📅 PR-PO Creation Trend")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+                    <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+                </svg>
+                PR-PO Creation Trend
+            </h1>
+        """, unsafe_allow_html=True)
         trend_query = f"""
         WITH pr_monthly AS (
             SELECT
@@ -456,10 +525,17 @@ if page == "Dashboard Monitoring":
             fig.update_layout(height=400, xaxis_title='Month', yaxis_title='Count')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data available")
+            st.info("Tidak ada data yang tersedia.")
 
     with col2:
-        st.subheader("⏱️ Lead Time Distribution")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
+                </svg>
+                Lead Time Distribution
+            </h1>
+        """, unsafe_allow_html=True)
         leadtime_query = f"""
         SELECT
             CASE
@@ -492,13 +568,155 @@ if page == "Dashboard Monitoring":
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No data available")
+            st.info("Tidak ada data yang tersedia.")
 
-    # ── DATA TABLE ───────────────────────────────────
+    # ── ADDITIONAL INSIGHTS ──────────────────────────
     st.markdown("---")
-    st.header("📋 Detailed PR-PO Data")
+    st.markdown("""
+        <h1 style='display: flex; align-items: center;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
+                <path d="M2 6a6 6 0 1 1 10.174 4.31c-.203.196-.359.4-.453.619l-.762 1.769A.5.5 0 0 1 10.5 13h-5a.5.5 0 0 1-.46-.302l-.761-1.77a2 2 0 0 0-.453-.618A5.98 5.98 0 0 1 2 6m3 8.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1l-.224.447a1 1 0 0 1-.894.553H6.618a1 1 0 0 1-.894-.553L5.5 15a.5.5 0 0 1-.5-.5"/>
+            </svg>
+            Additional Insights
+        </h1>
+    """, unsafe_allow_html=True)
 
-    search_term = st.text_input("🔍 Search (PR No, PO No, Material, Vendor)", "")
+    st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
+                </svg>
+                Top 10 PR Without PO (Pending)
+            </h1>
+        """, unsafe_allow_html=True)
+    pr_without_po_query = f"""
+    SELECT
+        no_pr, tgl_create_pr,
+        department_code AS department,
+        bagian_pr AS bagian,
+        SUM(estimasi_pr) AS total_estimasi
+    FROM vw_pr_po_complete
+    WHERE {filter_conditions} AND nomor_po IS NULL
+      AND no_pr != 'No PR' AND {bagian_pr_cond}
+    GROUP BY no_pr, tgl_create_pr, department_code, bagian_pr
+    ORDER BY tgl_create_pr ASC
+    LIMIT 10
+    """
+    with st.spinner("Memuat PR pending..."):
+        pr_without_po = load_data(pr_without_po_query)
+
+    if not pr_without_po.empty:
+        pr_without_po['tgl_create_pr'] = pd.to_datetime(pr_without_po['tgl_create_pr']).dt.strftime('%Y-%m-%d')
+        pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
+            lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+        )
+        st.dataframe(pr_without_po, use_container_width=True, height=300)
+    else:
+        st.success("Kerja bagus! Semua PR telah diproses menjadi PO.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_chart1, col_chart2 = st.columns(2)
+
+    with col_chart1:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5V5h1.02a1.5 1.5 0 0 1 1.17.563l1.481 1.85a1.5 1.5 0 0 1 .329.938V10.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 1-4 0H5a2 2 0 1 1-3.998-.085A1.5 1.5 0 0 1 0 10.5zm1.294 7.456A2 2 0 0 1 4.732 11h5.536a2 2 0 0 1 .732-.732V3.5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .294.456M12 10a2 2 0 0 1 1.732 1h.768a.5.5 0 0 0 .5-.5V8.35a.5.5 0 0 0-.11-.312l-1.48-1.85A.5.5 0 0 0 13.02 6H12zm-9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2m9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2"/>
+                </svg>
+                Delivery Performance
+            </h1>
+        """, unsafe_allow_html=True)
+        delivery_query = f"""
+        SELECT
+            COALESCE(on_time_delivery, 'PENDING') AS status_delivery,
+            COUNT(*) AS count
+        FROM vw_pr_po_complete
+        WHERE {filter_conditions} AND {bagian_po_cond} AND nomor_po IS NOT NULL
+        GROUP BY 1
+        """
+        with st.spinner("Memuat delivery performance..."):
+            delivery_data = load_data(delivery_query)
+
+        if not delivery_data.empty:
+            color_map = {
+                'TEPAT WAKTU': '#2ca02c',
+                'IN PROGRESS': '#ff7f0e',
+                'TERLAMBAT':   '#d62728',
+                'PENDING':     '#7f7f7f'
+            }
+            fig = px.pie(
+                delivery_data, values='count', names='status_delivery',
+                color='status_delivery', color_discrete_map=color_map, hole=0.4
+            )
+            fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No delivery data available.")
+
+    with col_chart2:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M11 2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12h.5a.5.5 0 0 1 0 1H.5a.5.5 0 0 1 0-1H1v-3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3h1V7a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7h1z"/>
+                </svg>
+                Material Category Value
+            </h1>
+        """, unsafe_allow_html=True)
+        material_query = f"""
+        SELECT
+            abc_indicator,
+            SUM(total_amount_local_curr) AS total_value
+        FROM vw_pr_po_complete
+        WHERE {filter_conditions} AND abc_indicator IS NOT NULL AND {bagian_po_cond}
+        GROUP BY abc_indicator
+        ORDER BY abc_indicator
+        """
+        with st.spinner("Memuat material category..."):
+            material_data = load_data(material_query)
+
+        if not material_data.empty:
+            material_data['total_value'] = material_data['total_value'].fillna(0)
+            material_data['label_text'] = material_data['total_value'].apply(format_idr_short)
+            fig = px.bar(
+                material_data, x='abc_indicator', y='total_value',
+                labels={'abc_indicator': 'ABC Category', 'total_value': 'Total PO Value (IDR)'},
+                text='label_text'
+            )
+            fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0))
+            fig.update_traces(
+                textfont_size=12, textangle=0, textposition="outside", cliponaxis=False,
+                hovertemplate="<b>ABC: %{x}</b><br>Total: Rp %{text}<extra></extra>"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No material data available.")
+
+# =====================================================
+# HALAMAN 2: Detailed PR-PO Data
+# =====================================================
+
+elif page == "Detailed PR-PO Data":
+    # ── DATA TABLE ───────────────────────────────────
+    st.markdown("""
+        <h1 style='display: flex; align-items: center; font-size:60px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
+                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
+            </svg>
+            Detailed PR-PO Data
+        </h1>
+    """, unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.markdown("""
+        <h1 style='display: flex; align-items: center; font-size:20px; font-weight: normal; margin-bottom: -30px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 2px; margin-right: 4px;">
+                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+            </svg>
+            Search (PR No, PO No, Material, Vendor)
+        </h1>
+    """, unsafe_allow_html=True)
+    search_term = st.text_input("", "")
     search_condition = ""
     if search_term:
         search_condition = f"""
@@ -540,7 +758,8 @@ if page == "Dashboard Monitoring":
         st.dataframe(table_data, use_container_width=True, height=400)
         csv = table_data.to_csv(index=False)
         st.download_button(
-            label="📥 Download as CSV",
+            label="Download as CSV",
+            icon=":material/download:",
             data=csv,
             file_name=f"pr_po_data_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv"
@@ -548,112 +767,32 @@ if page == "Dashboard Monitoring":
     else:
         st.info("No data found matching your filters")
 
-    # ── ADDITIONAL INSIGHTS ──────────────────────────
-    st.markdown("---")
-    st.header("💡 Additional Insights")
-
-    st.subheader("⚠️ Top 10 PR Without PO (Pending)")
-    pr_without_po_query = f"""
-    SELECT
-        no_pr, tgl_create_pr,
-        department_code AS department,
-        bagian_pr AS bagian,
-        SUM(estimasi_pr) AS total_estimasi
-    FROM vw_pr_po_complete
-    WHERE {filter_conditions} AND nomor_po IS NULL
-      AND no_pr != 'No PR' AND {bagian_pr_cond}
-    GROUP BY no_pr, tgl_create_pr, department_code, bagian_pr
-    ORDER BY tgl_create_pr ASC
-    LIMIT 10
-    """
-    with st.spinner("Memuat PR pending..."):
-        pr_without_po = load_data(pr_without_po_query)
-
-    if not pr_without_po.empty:
-        pr_without_po['tgl_create_pr'] = pd.to_datetime(pr_without_po['tgl_create_pr']).dt.strftime('%Y-%m-%d')
-        pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
-            lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
-        )
-        st.dataframe(pr_without_po, use_container_width=True, height=300)
-    else:
-        st.success("Great job! All PRs have been processed into POs. 🎉")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col_chart1, col_chart2 = st.columns(2)
-
-    with col_chart1:
-        st.subheader("🚚 Delivery Performance")
-        delivery_query = f"""
-        SELECT
-            COALESCE(on_time_delivery, 'PENDING') AS status_delivery,
-            COUNT(*) AS count
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND {bagian_po_cond} AND nomor_po IS NOT NULL
-        GROUP BY 1
-        """
-        with st.spinner("Memuat delivery performance..."):
-            delivery_data = load_data(delivery_query)
-
-        if not delivery_data.empty:
-            color_map = {
-                'TEPAT WAKTU': '#2ca02c',
-                'IN PROGRESS': '#ff7f0e',
-                'TERLAMBAT':   '#d62728',
-                'PENDING':     '#7f7f7f'
-            }
-            fig = px.pie(
-                delivery_data, values='count', names='status_delivery',
-                color='status_delivery', color_discrete_map=color_map, hole=0.4
-            )
-            fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No delivery data available.")
-
-    with col_chart2:
-        st.subheader("📊 Material Category Value")
-        material_query = f"""
-        SELECT
-            abc_indicator,
-            SUM(total_amount_local_curr) AS total_value
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND abc_indicator IS NOT NULL AND {bagian_po_cond}
-        GROUP BY abc_indicator
-        ORDER BY abc_indicator
-        """
-        with st.spinner("Memuat material category..."):
-            material_data = load_data(material_query)
-
-        if not material_data.empty:
-            material_data['total_value'] = material_data['total_value'].fillna(0)
-            material_data['label_text'] = material_data['total_value'].apply(format_idr_short)
-            fig = px.bar(
-                material_data, x='abc_indicator', y='total_value',
-                labels={'abc_indicator': 'ABC Category', 'total_value': 'Total PO Value (IDR)'},
-                text='label_text'
-            )
-            fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0))
-            fig.update_traces(
-                textfont_size=12, textangle=0, textposition="outside", cliponaxis=False,
-                hovertemplate="<b>ABC: %{x}</b><br>Total: Rp %{text}<extra></extra>"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No material data available.")
-
 # =====================================================
-# HALAMAN 2: HALAMAN ALERT
+# HALAMAN 3: HALAMAN ALERT
 # =====================================================
 
 elif page == "Halaman Alert":
 
-    st.title("🚨 Warning & Action Required")
-    st.markdown("Halaman ini menampilkan anomali data dan dokumen yang membutuhkan tindakan segera.")
+    st.markdown("""
+        <h1 style='display: flex; align-items: center; font-size:60px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
+                <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
+            </svg>
+            Warning & Action Required
+        </h1>
+    """, unsafe_allow_html=True)
+    st.markdown("Halaman ini menampilkan anomali data dan dokumen yang membutuhkan tindakan segera!")
     st.markdown("---")
 
     # ALERT 1: PR > 30 hari belum ada PO
-    st.subheader("1️⃣ PR Pending Mendekati Kadaluarsa (> 30 Hari)")
+    st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M9.283 4.002H7.971L6.072 5.385v1.271l1.834-1.318h.065V12h1.312z"/>
+                </svg>
+                PR Pending Mendekati Kadaluarsa (> 30 Hari)
+            </h1>
+        """, unsafe_allow_html=True)
     st.info("Menampilkan PR yang belum diproses menjadi PO selama lebih dari 30 hari sejak dibuat.")
 
     alert_pr_query = f"""
@@ -678,15 +817,22 @@ elif page == "Halaman Alert":
         )
         st.dataframe(alert_pr_data, use_container_width=True)
     else:
-        st.success("✅ Aman! Tidak ada PR Pending yang umurnya lebih dari 30 hari.")
+        st.success("Aman! Tidak ada PR Pending yang umurnya lebih dari 30 hari.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_alert1, col_alert2 = st.columns([2, 1])
 
     with col_alert1:
-        st.subheader("2️⃣ PO Overdue (Melewati Delivery Date)")
-        st.error("Menampilkan PO yang tanggal kirimnya sudah lewat namun barang belum diterima.")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M6.646 6.24c0-.691.493-1.306 1.336-1.306.756 0 1.313.492 1.313 1.236 0 .697-.469 1.23-.902 1.705l-2.971 3.293V12h5.344v-1.107H7.268v-.077l1.974-2.22.096-.107c.688-.763 1.287-1.428 1.287-2.43 0-1.266-1.031-2.215-2.613-2.215-1.758 0-2.637 1.19-2.637 2.402v.065h1.271v-.07Z"/>
+                </svg>
+                PO Overdue (Melewati Delivery Date)
+            </h1>
+        """, unsafe_allow_html=True)
+        st.info("Menampilkan PO yang tanggal kirimnya sudah lewat namun barang belum diterima.")
 
         # FIX: hapus 'v.' prefix yang salah pada filter_conditions
         alert_po_query = f"""
@@ -714,10 +860,17 @@ elif page == "Halaman Alert":
             alert_po_data['target_delivery'] = pd.to_datetime(alert_po_data['target_delivery']).dt.strftime('%Y-%m-%d')
             st.dataframe(alert_po_data, use_container_width=True)
         else:
-            st.success("✅ Aman! Tidak ada PO yang terlambat dari jadwal.")
+            st.success("Aman! Tidak ada PO yang terlambat dari jadwal.")
 
     with col_alert2:
-        st.subheader("3️⃣ Rekap Aging PO (Belum Dikirim)")
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-8.082.414c.92 0 1.535.54 1.541 1.318.012.791-.615 1.36-1.588 1.354-.861-.006-1.482-.469-1.54-1.066H5.104c.047 1.177 1.05 2.144 2.754 2.144 1.653 0 2.954-.937 2.93-2.396-.023-1.278-1.031-1.846-1.734-1.916v-.07c.597-.1 1.505-.739 1.482-1.876-.03-1.177-1.043-2.074-2.637-2.062-1.675.006-2.59.984-2.625 2.12h1.248c.036-.556.557-1.054 1.348-1.054.785 0 1.348.486 1.348 1.195.006.715-.563 1.237-1.342 1.237h-.838v1.072h.879Z"/>
+                </svg>
+                Rekap Aging PO (Belum Dikirim)
+            </h1>
+        """, unsafe_allow_html=True)
 
         aging_query = f"""
         SELECT
@@ -756,7 +909,7 @@ elif page == "Halaman Alert":
 st.markdown("---")
 st.markdown(
     f"<div style='text-align:center;color:#666;'>"
-    f"PR-PO Monitoring System | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    f"PR-PO Monitoring System - Pengadaan Barang | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     f"</div>",
     unsafe_allow_html=True
 )
