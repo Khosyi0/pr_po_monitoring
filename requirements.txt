@@ -4,3 +4,4 @@ matplotlib
 plotly
 sqlalchemy
 psycopg2-binary
+streamlit-option-menu

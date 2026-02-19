@@ -1,5 +1,5 @@
 """
-PR-PO Monitoring Dashboard (Optimized)
+PR-PO Monitoring Dashboard (Optimized & UI Updated v1)
 File: dashboard.py
 
 Run with: streamlit run dashboard.py
@@ -19,6 +19,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sqlalchemy import create_engine, text
 from datetime import datetime, timedelta
+from streamlit_option_menu import option_menu
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -86,26 +87,73 @@ def format_idr_short(x):
     return f"{x:,.0f}"
 
 # =====================================================
-# CUSTOM CSS
+# CUSTOM CSS (ADAPTIVE)
 # =====================================================
 
 st.markdown("""
 <style>
-    h1 { color: #1f77b4; }
+    /* Sidebar Text */
+    /* Gunakan var(--text-color) agar otomatis:
+       - Hitam saat Light Mode
+       - Putih saat Dark Mode */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] span, 
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] div {
+        color: var(--text-color);
+    }
+    
+    /* Heading Utama */
+    /* Warna biru #1f77b4 cukup aman di kedua mode (kontras cukup).
+       Jika ingin otomatis ikut tema warna primer, ganti dengan var(--primary-color) */
+    h1 { 
+        color: #1f77b4; 
+    }
+    
+    /* Opsional: Memperbaiki tampilan widget di sidebar agar konsisten */
+    .stMultiSelect, .stDateInput {
+        background-color: transparent;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # =====================================================
-# NAVIGATION
+# NAVIGATION (MODIFIED STYLE - ADAPTIVE COLOR)
 # =====================================================
 
-st.sidebar.title("🧭 Navigation")
-page = st.sidebar.radio(
-    "Pilih Halaman:",
-    ["📊 Dashboard Monitoring", "🚨 Halaman Alert"],
-    index=0
-)
-st.sidebar.markdown("---")
+with st.sidebar:
+    # Menggunakan streamlit-option-menu
+    page = option_menu(
+        menu_title="Main Menu",  # Judul Menu
+        options=["Dashboard Monitoring", "Halaman Alert"],  # Pilihan Halaman
+        icons=["bar-chart-fill", "exclamation-triangle-fill"],  # Icon Bootstrap
+        menu_icon="cast", 
+        default_index=0,
+        styles={
+            "container": {"padding": "0!important", "background-color": "transparent"},
+            
+            # Ganti "white" menjadi "var(--text-color)"
+            # Ini agar icon otomatis hitam di Light Mode dan putih di Dark Mode
+            "icon": {"color": "var(--text-color)", "font-size": "18px"}, 
+            
+            "nav-link": {
+                "font-size": "16px", 
+                "text-align": "left", 
+                "margin": "5px", 
+                
+                # Ganti "white" menjadi "var(--text-color)"
+                "color": "var(--text-color)",
+                
+                # Warna saat mouse hover (opsional: #eee cocok untuk light mode)
+                "--hover-color": "var(--secondary-background-color)"
+            },
+            
+            "nav-link-selected": {"background-color": "#ff4b4b", "color": "white"}, # Tetap merah & putih saat dipilih
+            
+            # Judul menu juga ikut variabel
+            "menu-title": {"color": "var(--text-color)", "font-size": "18px", "font-weight": "bold"}
+        }
+    )
 
 # =====================================================
 # DEFAULT VALUES (wajib ada sebelum try block)
@@ -125,10 +173,11 @@ exclude_bagian = False
 st.sidebar.header("🔍 Filters")
 
 try:
-    # Pakai tabel kecil untuk filter, bukan scan view besar
+    # 1. Load Data
     departments = load_data(
         "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
     )
+    
     bagian_data = load_data("""
         SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete 
         WHERE bagian_pr IS NOT NULL
@@ -137,7 +186,45 @@ try:
         WHERE bagian_po IS NOT NULL
         ORDER BY 1
     """)
+    
+    options_bagian = ['All'] + bagian_data['bagian'].tolist()
 
+    # -------------------------------------------------------------------------
+    # LOGIC HANDLING 'ALL' vs 'LAINNYA'
+    # -------------------------------------------------------------------------
+    
+    # Inisialisasi state jika belum ada
+    if 'filter_bagian' not in st.session_state:
+        st.session_state.filter_bagian = ['All']
+    if 'prev_filter_bagian' not in st.session_state:
+        st.session_state.prev_filter_bagian = ['All']
+
+    def update_bagian_logic():
+        """Callback untuk mengatur logika eksklusif 'All'"""
+        current = st.session_state.filter_bagian
+        prev = st.session_state.prev_filter_bagian
+        
+        # Skenario 1: User baru saja klik 'All' (sebelumnya tidak ada 'All')
+        if 'All' in current and 'All' not in prev:
+            st.session_state.filter_bagian = ['All']
+            
+        # Skenario 2: User klik opsi lain saat 'All' masih aktif
+        elif 'All' in current and len(current) > 1:
+            # Hapus 'All' dari list, sisakan yang baru dipilih
+            st.session_state.filter_bagian = [x for x in current if x != 'All']
+            
+        # Skenario 3: User uncheck semua (kosong) -> paksa kembali ke 'All'
+        elif not current:
+            st.session_state.filter_bagian = ['All']
+            
+        # Update state 'sebelumnya' untuk perbandingan berikutnya
+        st.session_state.prev_filter_bagian = st.session_state.filter_bagian
+
+    # -------------------------------------------------------------------------
+    # WIDGETS
+    # -------------------------------------------------------------------------
+
+    # Filter Department
     selected_department = st.sidebar.multiselect(
         "Department",
         options=['All'] + departments['department_code'].tolist(),
@@ -148,16 +235,24 @@ try:
     if 'All' not in selected_department and len(selected_department) > 0:
         exclude_dept = st.sidebar.checkbox("🚫 Exclude selected Department")
 
-    selected_bagian = st.sidebar.multiselect(
-        "Bagian",
-        options=['All'] + bagian_data['bagian'].tolist(),
-        default=['All']
+    st.sidebar.markdown("---")
+
+    # Filter Bagian (Dengan Logic Baru)
+    # Perhatikan: kita pakai 'key' dan 'on_change', tidak pakai 'default' lagi
+    st.sidebar.pills(
+        "Pilih Bagian",
+        options=options_bagian,
+        selection_mode="multi",
+        key="filter_bagian",           # Terhubung ke st.session_state
+        on_change=update_bagian_logic  # Jalankan fungsi logic tiap kali diklik
     )
+    
+    # Ambil nilai final dari session state untuk dipakai di query
+    selected_bagian = st.session_state.filter_bagian
 
-    exclude_bagian = False
-    if 'All' not in selected_bagian and len(selected_bagian) > 0:
-        exclude_bagian = st.sidebar.checkbox("🚫 Exclude selected Bagian")
+    st.sidebar.markdown("---")
 
+    # Filter Tanggal
     st.sidebar.subheader("📅 Date Range")
     date_from = st.sidebar.date_input("From", value=datetime.now().date() - timedelta(days=90))
     date_to = st.sidebar.date_input("To", value=datetime.now().date())
@@ -205,7 +300,7 @@ if 'All' not in selected_bagian and selected_bagian:
 # HALAMAN 1: DASHBOARD MONITORING
 # =====================================================
 
-if page == "📊 Dashboard Monitoring":
+if page == "Dashboard Monitoring":
 
     st.title("📊 PR-PO Monitoring Dashboard")
     st.markdown("---")
@@ -551,7 +646,7 @@ if page == "📊 Dashboard Monitoring":
 # HALAMAN 2: HALAMAN ALERT
 # =====================================================
 
-elif page == "🚨 Halaman Alert":
+elif page == "Halaman Alert":
 
     st.title("🚨 Warning & Action Required")
     st.markdown("Halaman ini menampilkan anomali data dan dokumen yang membutuhkan tindakan segera.")
