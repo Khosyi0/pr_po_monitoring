@@ -1425,10 +1425,11 @@ else:
 
         st.markdown("---")
 
-        # ── TAB: OVERVIEW | TENDER TYPE ────────────────────────────────────────
-        tab1, tab2 = st.tabs([
-            ":material/overview: Overview per Purchasing Group", 
-            ":material/sell: Breakdown per Metode Tender"
+        # ── TAB: OVERVIEW | TENDER TYPE | KECEPATAN PROSES ───────────────────
+        tab1, tab2, tab3 = st.tabs([
+            ":material/overview: Overview per Purchasing Group",
+            ":material/sell: Breakdown per Metode Tender",
+            ":material/speed: Kecepatan Proses"
         ])
 
         # ══════════════════════════════════════════════════════════════════════
@@ -1891,6 +1892,259 @@ else:
                     file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv"
                 )
+
+        # ══════════════════════════════════════════════════════════════════════
+        # TAB 3: KECEPATAN PROSES OVERALL, TENDER NORMAL VS KONTRAK
+        # ══════════════════════════════════════════════════════════════════════
+        with tab3:
+            st.markdown("Analisis kecepatan waktu proses pengadaan secara keseluruhan, perbandingan antara **Tender Normal** dan **PR-PO Kontrak**, serta distribusi lead time per Purchasing Group.")
+
+            # KPI Kecepatan
+            speed_kpi_query = f"""
+            SELECT
+                ROUND(AVG(lead_time_process_po)::numeric, 1)                          AS avg_lt_overall,
+                ROUND(MIN(lead_time_process_po)::numeric, 0)                          AS min_lt,
+                ROUND(MAX(lead_time_process_po)::numeric, 0)                          AS max_lt,
+                ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
+                    (ORDER BY lead_time_process_po)::numeric, 1)                      AS median_lt,
+                COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END)                AS jml_ontime,
+                COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)                 AS jml_late,
+                COUNT(lead_time_process_po)                                            AS total_lt
+            FROM vw_pr_po_complete
+            WHERE {filter_conditions}
+              AND nomor_po IS NOT NULL
+              AND lead_time_process_po IS NOT NULL
+              AND {bagian_po_cond}
+            """
+
+            with st.spinner("Memuat KPI kecepatan..."):
+                speed_kpi = load_data(speed_kpi_query)
+
+            if not speed_kpi.empty and speed_kpi['total_lt'][0]:
+                avg_lt     = float(speed_kpi['avg_lt_overall'][0] or 0)
+                med_lt     = float(speed_kpi['median_lt'][0] or 0)
+                min_lt     = int(speed_kpi['min_lt'][0] or 0)
+                max_lt     = int(speed_kpi['max_lt'][0] or 0)
+                ontime     = int(speed_kpi['jml_ontime'][0] or 0)
+                late       = int(speed_kpi['jml_late'][0] or 0)
+                total      = int(speed_kpi['total_lt'][0] or 1)
+                ontime_pct = ontime / total * 100
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Rata-rata Lead Time", f"{avg_lt} Hari",
+                              delta="On Target" if avg_lt <= 55 else "Over Target")
+                with col2:
+                    st.metric("Median Lead Time", f"{med_lt} Hari")
+                with col3:
+                    st.metric("Rentang Lead Time", f"{min_lt} - {max_lt} Hari")
+                with col4:
+                    st.metric("On-Time (<=55 Hari)", f"{ontime:,}",
+                              delta=f"{ontime_pct:.1f}% dari total")
+                with col5:
+                    st.metric("Terlambat (>55 Hari)", f"{late:,}",
+                              delta=f"{100-ontime_pct:.1f}% dari total")
+
+            st.markdown("---")
+
+            # Row 1: Distribusi + Perbandingan Tender Normal vs Kontrak
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("##### Distribusi Lead Time Overall")
+                st.caption("Berapa banyak PO yang selesai dalam rentang waktu tertentu.")
+
+                dist_query = f"""
+                SELECT
+                    CASE
+                        WHEN lead_time_process_po <= 14  THEN '1. <=14 Hari'
+                        WHEN lead_time_process_po <= 30  THEN '2. 15-30 Hari'
+                        WHEN lead_time_process_po <= 55  THEN '3. 31-55 Hari'
+                        WHEN lead_time_process_po <= 90  THEN '4. 56-90 Hari'
+                        ELSE                                  '5. >90 Hari'
+                    END                    AS bucket,
+                    COUNT(*)               AS jumlah,
+                    MIN(lead_time_process_po) AS sort_key
+                FROM vw_pr_po_complete
+                WHERE {filter_conditions}
+                  AND nomor_po IS NOT NULL
+                  AND lead_time_process_po IS NOT NULL
+                  AND {bagian_po_cond}
+                GROUP BY 1
+                ORDER BY sort_key
+                """
+                with st.spinner("Memuat distribusi..."):
+                    dist_data = load_data(dist_query)
+
+                if not dist_data.empty:
+                    color_map_dist = {
+                        '1. <=14 Hari' : '#2ca02c',
+                        '2. 15-30 Hari': '#98df8a',
+                        '3. 31-55 Hari': '#ffdd57',
+                        '4. 56-90 Hari': '#ff7f0e',
+                        '5. >90 Hari'  : '#d62728',
+                    }
+                    fig_dist = px.bar(
+                        dist_data, x='bucket', y='jumlah',
+                        color='bucket', color_discrete_map=color_map_dist,
+                        text='jumlah',
+                        labels={'bucket': 'Rentang Waktu', 'jumlah': 'Jumlah PO'}
+                    )
+                    fig_dist.update_traces(textposition='outside', showlegend=False)
+                    fig_dist.update_layout(height=400, showlegend=False)
+                    st.plotly_chart(fig_dist, use_container_width=True)
+                else:
+                    st.info("Tidak ada data distribusi lead time.")
+
+            with col2:
+                st.markdown("##### Lead Time: Tender Normal vs PR-PO Kontrak")
+                st.caption("Perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group.")
+
+                lt_tender_query = f"""
+                SELECT
+                    COALESCE(purchasing_group, 'Unassigned')                     AS purchasing_group,
+                    jenis_tender,
+                    COUNT(*)                                                      AS jml_po,
+                    ROUND(AVG(lead_time_process_po)::numeric, 1)                 AS avg_lt,
+                    ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
+                        (ORDER BY lead_time_process_po)::numeric, 1)             AS median_lt,
+                    COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END)       AS jml_ontime,
+                    COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)        AS jml_late
+                FROM vw_pr_po_complete
+                WHERE {filter_conditions}
+                  AND nomor_po IS NOT NULL
+                  AND lead_time_process_po IS NOT NULL
+                  AND {bagian_po_cond}
+                GROUP BY COALESCE(purchasing_group, 'Unassigned'), jenis_tender
+                ORDER BY purchasing_group, jenis_tender
+                """
+                with st.spinner("Memuat perbandingan tender..."):
+                    lt_tender_data = load_data(lt_tender_query)
+
+                if not lt_tender_data.empty:
+                    fig_lt_tender = px.bar(
+                        lt_tender_data,
+                        x='purchasing_group', y='avg_lt',
+                        color='jenis_tender', barmode='group',
+                        text=lt_tender_data['avg_lt'].apply(lambda x: f"{x} Hr"),
+                        color_discrete_map={
+                            'PR - PO Kontrak': '#1f77b4',
+                            'Tender Normal'  : '#ff7f0e'
+                        },
+                        labels={
+                            'purchasing_group': 'Purchasing Group',
+                            'avg_lt'          : 'Lead Time Avg (Hari)',
+                            'jenis_tender'    : 'Jenis Tender'
+                        }
+                    )
+                    fig_lt_tender.add_hline(y=55, line_dash="dash", line_color="red",
+                                            annotation_text="Target 55 Hari",
+                                            annotation_position="bottom right")
+                    fig_lt_tender.update_traces(textposition='outside', textfont_size=9)
+                    fig_lt_tender.update_layout(
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    )
+                    st.plotly_chart(fig_lt_tender, use_container_width=True)
+                else:
+                    st.info("Tidak ada data perbandingan tender.")
+                    lt_tender_data = pd.DataFrame()
+
+            st.markdown("---")
+
+            # Row 2: Tren per Bulan + Tabel Detail
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("##### Tren Lead Time per Bulan")
+                st.caption("Rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.")
+
+                trend_lt_query = f"""
+                SELECT
+                    DATE_TRUNC('month', date_ordered)::DATE                          AS bulan,
+                    jenis_tender,
+                    ROUND(AVG(lead_time_process_po)::numeric, 1)                     AS avg_lt,
+                    COUNT(*)                                                          AS jml_po
+                FROM vw_pr_po_complete
+                WHERE {filter_conditions}
+                  AND nomor_po IS NOT NULL
+                  AND date_ordered IS NOT NULL
+                  AND lead_time_process_po IS NOT NULL
+                  AND {bagian_po_cond}
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+                """
+                with st.spinner("Memuat tren lead time..."):
+                    trend_lt_data = load_data(trend_lt_query)
+
+                if not trend_lt_data.empty:
+                    trend_lt_data['bulan'] = pd.to_datetime(trend_lt_data['bulan'])
+                    fig_trend_lt = px.line(
+                        trend_lt_data,
+                        x='bulan', y='avg_lt',
+                        color='jenis_tender', markers=True,
+                        color_discrete_map={
+                            'PR - PO Kontrak': '#1f77b4',
+                            'Tender Normal'  : '#ff7f0e'
+                        },
+                        labels={
+                            'bulan'       : 'Bulan',
+                            'avg_lt'      : 'Lead Time Avg (Hari)',
+                            'jenis_tender': 'Jenis Tender'
+                        }
+                    )
+                    fig_trend_lt.add_hline(y=55, line_dash="dash", line_color="red",
+                                           annotation_text="Target 55 Hari",
+                                           annotation_position="bottom right")
+                    fig_trend_lt.update_layout(
+                        height=400,
+                        hovermode='x unified',
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    )
+                    st.plotly_chart(fig_trend_lt, use_container_width=True)
+                else:
+                    st.info("Tidak ada data tren lead time.")
+
+            with col2:
+                st.markdown("##### Ringkasan Kecepatan per PG x Jenis Tender")
+
+                if not lt_tender_data.empty:
+                    lt_tender_data['ontime_pct'] = (
+                        lt_tender_data['jml_ontime'] /
+                        (lt_tender_data['jml_ontime'] + lt_tender_data['jml_late'])
+                        .replace(0, float('nan')) * 100
+                    ).round(1).fillna(0)
+
+                    df_speed_disp = lt_tender_data.copy()
+                    df_speed_disp['avg_lt']     = df_speed_disp['avg_lt'].apply(
+                        lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                    df_speed_disp['median_lt']  = df_speed_disp['median_lt'].apply(
+                        lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                    df_speed_disp['ontime_pct'] = df_speed_disp['ontime_pct'].apply(
+                        lambda x: f"{x:.1f}%")
+                    st.dataframe(
+                        df_speed_disp.rename(columns={
+                            'purchasing_group': 'Purchasing Group',
+                            'jenis_tender'    : 'Jenis Tender',
+                            'jml_po'          : 'Jml PO',
+                            'avg_lt'          : 'Lead Time Avg',
+                            'median_lt'       : 'Lead Time Median',
+                            'jml_ontime'      : 'On-Time (<=55 Hr)',
+                            'jml_late'        : 'Terlambat (>55 Hr)',
+                            'ontime_pct'      : '% On-Time',
+                        }),
+                        use_container_width=True, height=420
+                    )
+                    csv_speed = lt_tender_data.to_csv(index=False)
+                    st.download_button(
+                        label="Download sebagai CSV",
+                        icon=":material/download:",
+                        data=csv_speed,
+                        file_name=f"kecepatan_proses_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.info("Tidak ada data kecepatan proses.")
 
     # =====================================================
     # HALAMAN 5: HALAMAN ALERT
