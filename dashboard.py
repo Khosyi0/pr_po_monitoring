@@ -893,7 +893,7 @@ else:
 
             table_data['no_pr'] = table_data['no_pr'].replace('No PR', '-')
             table_data['department_code'] = table_data['department_code'].replace('Unknown', '-')
-            
+
             for col in ['estimasi_pr', 'total_amount_local_curr', 'efisiensi']:
                 if col in table_data.columns:
                     table_data[col] = table_data[col].apply(
@@ -1380,6 +1380,8 @@ else:
                 THEN no_pr || '-' || line_item_pr::text END)                         AS total_item_pr,
             COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
                 THEN nomor_po || '-' || item_po::text END)                           AS total_item_po,
+            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
+                THEN no_pr || '-' || line_item_pr::text END)                         AS pr_with_po,
             COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)         AS total_oe,
             COALESCE(SUM(CASE WHEN {bagian_po_cond}
                 THEN total_amount_local_curr ELSE 0 END), 0)                         AS total_realisasi,
@@ -1395,12 +1397,15 @@ else:
         if not pg_kpi.empty:
             t_item_pr    = int(pg_kpi['total_item_pr'][0] or 0)
             t_item_po    = int(pg_kpi['total_item_po'][0] or 0)
+            pr_with_po   = int(pg_kpi['pr_with_po'][0] or 0)
             t_oe         = float(pg_kpi['total_oe'][0] or 0)
             t_real       = float(pg_kpi['total_realisasi'][0] or 0)
             t_efis       = t_oe - t_real
             t_efis_pct   = (t_efis / t_oe * 100) if t_oe > 0 else 0
             avg_lt        = pg_kpi['avg_lead_time_overall'][0]
-            konversi_pct = (t_item_po / t_item_pr * 100) if t_item_pr > 0 else 0
+            
+            # MENGGUNAKAN PR_WITH_PO AGAR SINKRON DENGAN DASHBOARD
+            konversi_pct = (pr_with_po / t_item_pr * 100) if t_item_pr > 0 else 0
 
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
@@ -1438,6 +1443,8 @@ else:
                     THEN no_pr || '-' || line_item_pr::text END)                     AS jml_item_pr,
                 COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
                     THEN nomor_po || '-' || item_po::text END)                       AS jml_item_po,
+                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
+                    THEN no_pr || '-' || line_item_pr::text END)                     AS pr_with_po,
                 COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)     AS nilai_oe,
                 COALESCE(SUM(CASE WHEN {bagian_po_cond}
                     THEN total_amount_local_curr ELSE 0 END), 0)                     AS nilai_po,
@@ -1482,7 +1489,7 @@ else:
 
                 df_table = pg_data.copy()
                 df_table['konversi_pct'] = (
-                    df_table['jml_item_po'] / df_table['jml_item_pr'].replace(0, float('nan')) * 100
+                    df_table['pr_with_po'] / df_table['jml_item_pr'].replace(0, float('nan')) * 100
                 ).round(1).fillna(0)
                 df_table['efisiensi_pct'] = df_table['efisiensi_pct'].fillna(0)
 
@@ -1626,12 +1633,12 @@ else:
                                 <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
                                 <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
                             </svg>
-                            Rata-rata Lead Time per Purchasing Group
+                            % Konversi PR → PO per Purchasing Group
                         </h1>
                     """, unsafe_allow_html=True)
 
                     pg_data['konversi_pct'] = (
-                        pg_data['jml_item_po'] /
+                        pg_data['pr_with_po'] /
                         pg_data['jml_item_pr'].replace(0, float('nan')) * 100
                     ).round(1).fillna(0)
                     pg_konv = pg_data.sort_values('konversi_pct', ascending=True)
