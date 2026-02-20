@@ -55,15 +55,17 @@ if 'show_changelog' not in st.session_state:
 @st.cache_resource
 def get_db_engine():
     """Create database connection (cached)"""
-    # GANTI dengan kredensial database Anda
-    DB_HOST = 'localhost'
-    DB_PORT = '5432'
-    DB_NAME = 'pr_po_monitoring'
-    DB_USER = 'postgres'
-    DB_PASSWORD = 'Hx4Khos2'
-    
-    connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    engine = create_engine(connection_string)
+    db_config = st.secrets["postgres"]
+    connection_url = (
+        f"postgresql://{db_config['user']}:{db_config['password']}"
+        f"@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
+    )
+    engine = create_engine(
+        connection_url,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        connect_args={"connect_timeout": 30}
+    )
     return engine
 
 @st.cache_data(ttl=300)
