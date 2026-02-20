@@ -1,24 +1,20 @@
 """
-PR-PO Monitoring Dashboard (Optimized & UI Updated v1.6)
+PR-PO Monitoring Dashboard (Update v1.7 - Halaman Kinerja Purchasing Group)
 File: dashboard.py
 
 Run with: streamlit run dashboard.py
 
-Optimasi:
-- Semua query di-load HANYA saat halaman yang relevan dibuka (lazy loading)
-- KPI digabung menjadi 1 query besar (bukan banyak query kecil)
-- Sidebar filter pakai tabel kecil (departments), bukan scan view besar
-- Default variable values sebelum try block (fix NameError)
-- Connection pool settings untuk Neon
-- Typo fix pada alert_po_query (v.{filter_conditions} → {filter_conditions})
+Update:
+- Sebelumnya langsung tabel, sekarang ada ringkasan angka besar dulu
+- Tab 1 — Overview per Purchasing Group
+- Menambah kolom % PR→PO, % Efisiensi, Lead Time Min/Max
+- Chart bar horizontal % Efisiensi, Chart bar horizontal Lead Time, Chart bar horizontal % Konversi PR→PO
+- Tab 2 — Breakdown per Metode Tender
+- Metric cards per metode tender (Tender Normal / Kontrak / dll)
+- Stacked bar: komposisi nilai realisasi per PG berdasarkan metode
+- Grouped bar: lead time per metode per PG
+- Tabel detail PG × Metode Tender + tombol download CSV
 
-v1.6 — FIX OE:
-- Semua kalkulasi OE di halaman Evaluasi Harga Barang & Dashboard Monitoring
-  kini menggunakan kolom `oe` dari vw_pr_po_complete
-  (= estimasi_pr × quantity_pr, sesuai rumus Excel atasan)
-- Sebelumnya: menggunakan estimasi_pr saja (harga satuan, bukan total OE)
-- PRASYARAT: jalankan fix_oe_opsi_a.sql di database sebelum menjalankan
-  dashboard ini
 """
 
 import streamlit as st
@@ -55,17 +51,15 @@ if 'show_changelog' not in st.session_state:
 @st.cache_resource
 def get_db_engine():
     """Create database connection (cached)"""
-    db_config = st.secrets["postgres"]
-    connection_url = (
-        f"postgresql://{db_config['user']}:{db_config['password']}"
-        f"@{db_config['host']}:{db_config['port']}/{db_config['dbname']}"
-    )
-    engine = create_engine(
-        connection_url,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        connect_args={"connect_timeout": 30}
-    )
+    # GANTI dengan kredensial database Anda
+    DB_HOST = 'localhost'
+    DB_PORT = '5432'
+    DB_NAME = 'pr_po_monitoring'
+    DB_USER = 'postgres'
+    DB_PASSWORD = 'Hx4Khos2'
+    
+    connection_string = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    engine = create_engine(connection_string)
     return engine
 
 @st.cache_data(ttl=300)
@@ -442,6 +436,7 @@ if st.session_state.show_changelog:
 
     # Data tabel diisi manual di sini
     changelog_data = [
+        {"Tanggal": "20 Feb 2026", "Versi": "v1.7", "Perubahan": "Memperkaya info di Halaman Kinerja Purchasing Group"},
         {"Tanggal": "19 Feb 2026", "Versi": "v1.6", "Perubahan": "Memperbarui tampilan UI, menambahkan halaman Kinerja Purchasing Group, dan menambahkan Changelog."},
         {"Tanggal": "18 Feb 2026", "Versi": "v1.5", "Perubahan": "Optimisasi Query, Deployment Website, dan menambahkan halaman Evaluasi Harga Barang."},
         {"Tanggal": "17 Feb 2026", "Versi": "v1.4", "Perubahan": "Update Struktur Database dan Persiapan Deployment Website."},
@@ -1339,117 +1334,421 @@ else:
                 Kinerja per Purchasing Group
             </h1>
         """, unsafe_allow_html=True)
-        st.markdown("Analisis komprehensif jumlah item, nilai pengadaan (OE vs PO), dan kecepatan waktu proses (Lead Time) per kategori barang / Purchasing Group.")
+        st.markdown("Analisis komprehensif jumlah item, nilai pengadaan (OE vs Realisasi), efisiensi, dan kecepatan proses per Purchasing Group — termasuk breakdown per metode tender.")
         st.markdown("---")
 
-        # 1. Query Utama untuk Agregasi per Purchasing Group
-        pg_query = f"""
+        # ── KPI RINGKASAN ─────────────────────────────────────────────────────
+        pg_kpi_query = f"""
         SELECT
-            COALESCE(purchasing_group, 'Unassigned') AS purchasing_group,
-            COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond} 
-                THEN no_pr || '-' || line_item_pr::text END) AS jml_item_pr,
-            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond} 
-                THEN nomor_po || '-' || item_po::text END) AS jml_item_po,
-            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS nilai_pr_oe,
-            COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS nilai_po,
-            ROUND(AVG(CASE WHEN {bagian_po_cond} THEN lead_time_process_po END)::numeric, 1) AS avg_lead_time
+            COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+                THEN no_pr || '-' || line_item_pr::text END)                        AS total_item_pr,
+            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
+                THEN nomor_po || '-' || item_po::text END)                          AS total_item_po,
+            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)        AS total_oe,
+            COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS total_realisasi,
+            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                THEN lead_time_process_po END)::numeric, 1)                         AS avg_lead_time_overall,
+            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
+                THEN po_items_metode END) FILTER (WHERE po_items_metode IS NOT NULL) AS jml_metode
+        FROM (
+            SELECT *, po.metode_pelelangan AS po_items_metode
+            FROM vw_pr_po_complete v
+            LEFT JOIN po_items po ON v.nomor_po = po.nomor_po AND v.item_po = po.item_po
+        ) sub
+        WHERE {filter_conditions}
+        """
+
+        # Query lebih sederhana untuk KPI — langsung dari view
+        pg_kpi_query = f"""
+        SELECT
+            COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+                THEN no_pr || '-' || line_item_pr::text END)                         AS total_item_pr,
+            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
+                THEN nomor_po || '-' || item_po::text END)                           AS total_item_po,
+            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)         AS total_oe,
+            COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                THEN total_amount_local_curr ELSE 0 END), 0)                         AS total_realisasi,
+            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                THEN lead_time_process_po END)::numeric, 1)                          AS avg_lead_time_overall
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
-        GROUP BY COALESCE(purchasing_group, 'Unassigned')
-        ORDER BY purchasing_group ASC
         """
-        
-        with st.spinner("Memuat kinerja Purchasing Group..."):
-            pg_data = load_data(pg_query)
 
-        if not pg_data.empty:
-            # Menyiapkan data untuk ditampilkan di Tabel (Format Rupiah & Teks)
-            df_table = pg_data.copy()
-            df_table['nilai_pr_oe'] = df_table['nilai_pr_oe'].apply(format_idr)
-            df_table['nilai_po'] = df_table['nilai_po'].apply(format_idr)
-            df_table['avg_lead_time'] = df_table['avg_lead_time'].apply(lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+        with st.spinner("Memuat KPI..."):
+            pg_kpi = load_data(pg_kpi_query)
 
-            st.markdown("""
-                <h1 style='display: flex; align-items: center; font-size:30px;'>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                        <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
-                    </svg>
-                    Ringkasan Data (Tabel)
-                </h1>
-            """, unsafe_allow_html=True)
-            st.dataframe(
-                df_table.rename(columns={
-                    'purchasing_group': 'Purchasing Group',
-                    'jml_item_pr': 'Jml Item PR',
-                    'jml_item_po': 'Jml Item PO',
-                    'nilai_pr_oe': 'Total Nilai PR (OE)',
-                    'nilai_po': 'Total Nilai PO (Realisasi)',
-                    'avg_lead_time': 'Rata-rata Waktu Proses'
-                }),
-                width="stretch", height=300
-            )
+        if not pg_kpi.empty:
+            t_item_pr    = int(pg_kpi['total_item_pr'][0] or 0)
+            t_item_po    = int(pg_kpi['total_item_po'][0] or 0)
+            t_oe         = float(pg_kpi['total_oe'][0] or 0)
+            t_real       = float(pg_kpi['total_realisasi'][0] or 0)
+            t_efis       = t_oe - t_real
+            t_efis_pct   = (t_efis / t_oe * 100) if t_oe > 0 else 0
+            avg_lt        = pg_kpi['avg_lead_time_overall'][0]
+            konversi_pct = (t_item_po / t_item_pr * 100) if t_item_pr > 0 else 0
 
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # 2. Visualisasi Grafik
-            col1, col2 = st.columns(2)
-
+            col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:30px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                            <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                            <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
-                        </svg>
-                        Perbandingan Nilai PR vs PO
-                    </h1>
-                """, unsafe_allow_html=True)
-                # Melt data agar bisa dibuat grouped bar chart di Plotly
-                df_melted = pg_data.melt(
-                    id_vars=['purchasing_group'], 
-                    value_vars=['nilai_pr_oe', 'nilai_po'],
-                    var_name='Jenis', value_name='Nilai'
-                )
-                df_melted['Jenis'] = df_melted['Jenis'].replace({'nilai_pr_oe': 'Nilai PR (OE)', 'nilai_po': 'Nilai PO'})
-                df_melted['text_label'] = df_melted['Nilai'].apply(format_idr_short)
-
-                fig_val = px.bar(
-                    df_melted, x='purchasing_group', y='Nilai', color='Jenis', barmode='group',
-                    text='text_label',
-                    color_discrete_map={'Nilai PR (OE)': '#ff7f0e', 'Nilai PO': '#1f77b4'},
-                    labels={'purchasing_group': 'Purchasing Group', 'Nilai': 'Total Nilai (IDR)'}
-                )
-                fig_val.update_traces(textposition='outside', textfont_size=11)
-                fig_val.update_layout(height=400, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                st.plotly_chart(fig_val, width="stretch")
-
+                st.metric("Total Item PR", f"{t_item_pr:,}",
+                          delta=f"{konversi_pct:.1f}% sudah PO")
             with col2:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:30px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                            <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
-                        </svg>
-                        Rata-rata Kecepatan Proses (Lead Time)
-                    </h1>
-                """, unsafe_allow_html=True)
-                fig_time = px.line(
-                    pg_data, x='purchasing_group', y='avg_lead_time', markers=True,
-                    text='avg_lead_time',
-                    labels={'purchasing_group': 'Purchasing Group', 'avg_lead_time': 'Lead Time Rata-rata (Hari)'}
-                )
-                fig_time.update_traces(
-                    line_color='#2ca02c', marker=dict(size=10),
-                    textposition='top center', texttemplate='%{text} Hari'
-                )
-                fig_time.update_layout(height=400, yaxis_title="Hari")
-                
-                # Tambahkan garis batas toleransi 30 hari (opsional, sebagai benchmark)
-                fig_time.add_hline(y=30, line_dash="dash", line_color="red", annotation_text="Target 30 Hari", annotation_position="bottom right")
-                
-                st.plotly_chart(fig_time, width="stretch")
+                st.metric("Total Item PO", f"{t_item_po:,}")
+            with col3:
+                st.metric("Total OE", format_idr(t_oe))
+            with col4:
+                delta_efis = "efisien" if t_efis >= 0 else "over budget"
+                st.metric("Efisiensi", format_idr(t_efis), delta=f"{t_efis_pct:.1f}% {delta_efis}")
+            with col5:
+                lt_label = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
+                lt_delta = "✅ On Target" if (avg_lt and avg_lt <= 30) else "⚠️ Over Target"
+                st.metric("Avg Lead Time", lt_label, delta=lt_delta)
 
-        else:
-            st.info("Tidak ada data kinerja Purchasing Group pada rentang waktu ini.")
+        st.markdown("---")
+
+        # ── TAB: OVERVIEW | TENDER TYPE ────────────────────────────────────────
+        tab1, tab2 = st.tabs(["📊 Overview per Purchasing Group", "🏷️ Breakdown per Metode Tender"])
+
+        # ══════════════════════════════════════════════════════════════════════
+        # TAB 1: OVERVIEW PER PURCHASING GROUP
+        # ══════════════════════════════════════════════════════════════════════
+        with tab1:
+
+            pg_query = f"""
+            SELECT
+                COALESCE(purchasing_group, 'Unassigned')                             AS purchasing_group,
+                COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+                    THEN no_pr || '-' || line_item_pr::text END)                     AS jml_item_pr,
+                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
+                    THEN nomor_po || '-' || item_po::text END)                       AS jml_item_po,
+                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)     AS nilai_oe,
+                COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                    THEN total_amount_local_curr ELSE 0 END), 0)                     AS nilai_po,
+                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)
+                    - COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                    THEN total_amount_local_curr ELSE 0 END), 0)                     AS efisiensi,
+                CASE
+                    WHEN COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) > 0
+                    THEN ROUND(
+                        (COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)
+                         - COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                           THEN total_amount_local_curr ELSE 0 END), 0))
+                        / COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) * 100,
+                        1)
+                    ELSE NULL
+                END                                                                  AS efisiensi_pct,
+                ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                    THEN lead_time_process_po END)::numeric, 1)                      AS avg_lead_time,
+                MIN(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                    THEN lead_time_process_po END)                                   AS min_lead_time,
+                MAX(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                    THEN lead_time_process_po END)                                   AS max_lead_time
+            FROM vw_pr_po_complete
+            WHERE {filter_conditions}
+            GROUP BY COALESCE(purchasing_group, 'Unassigned')
+            ORDER BY nilai_oe DESC
+            """
+
+            with st.spinner("Memuat data per Purchasing Group..."):
+                pg_data = load_data(pg_query)
+
+            if not pg_data.empty:
+                # ── Tabel Ringkasan ───────────────────────────────────────────
+                st.markdown("##### 📋 Tabel Ringkasan per Purchasing Group")
+
+                df_table = pg_data.copy()
+                df_table['konversi_pct'] = (
+                    df_table['jml_item_po'] / df_table['jml_item_pr'].replace(0, float('nan')) * 100
+                ).round(1).fillna(0)
+                df_table['efisiensi_pct'] = df_table['efisiensi_pct'].fillna(0)
+
+                df_display = df_table.copy()
+                df_display['nilai_oe']     = df_display['nilai_oe'].apply(format_idr)
+                df_display['nilai_po']     = df_display['nilai_po'].apply(format_idr)
+                df_display['efisiensi']    = df_display['efisiensi'].apply(format_idr)
+                df_display['efisiensi_pct']= df_display['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
+                df_display['avg_lead_time']= df_display['avg_lead_time'].apply(
+                    lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                df_display['min_lead_time']= df_display['min_lead_time'].apply(
+                    lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
+                df_display['max_lead_time']= df_display['max_lead_time'].apply(
+                    lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
+                df_display['konversi_pct'] = df_display['konversi_pct'].apply(lambda x: f"{x:.1f}%")
+
+                st.dataframe(
+                    df_display.rename(columns={
+                        'purchasing_group': 'Purchasing Group',
+                        'jml_item_pr'     : 'Item PR',
+                        'jml_item_po'     : 'Item PO',
+                        'konversi_pct'    : '% PR→PO',
+                        'nilai_oe'        : 'Total OE',
+                        'nilai_po'        : 'Realisasi PO',
+                        'efisiensi'       : 'Efisiensi',
+                        'efisiensi_pct'   : '% Efisiensi',
+                        'avg_lead_time'   : 'Lead Time Avg',
+                        'min_lead_time'   : 'Lead Time Min',
+                        'max_lead_time'   : 'Lead Time Max',
+                    }),
+                    use_container_width=True, height=320
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Row 1: Nilai OE vs PO + Efisiensi % ──────────────────────
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("##### 💰 Perbandingan Nilai OE vs Realisasi PO")
+                    df_melted = pg_data.melt(
+                        id_vars=['purchasing_group'],
+                        value_vars=['nilai_oe', 'nilai_po'],
+                        var_name='Jenis', value_name='Nilai'
+                    )
+                    df_melted['Jenis'] = df_melted['Jenis'].replace(
+                        {'nilai_oe': 'OE (Estimasi)', 'nilai_po': 'Realisasi PO'})
+                    df_melted['label'] = df_melted['Nilai'].apply(format_idr_short)
+                    fig_val = px.bar(
+                        df_melted, x='purchasing_group', y='Nilai',
+                        color='Jenis', barmode='group', text='label',
+                        color_discrete_map={'OE (Estimasi)': '#ff7f0e', 'Realisasi PO': '#1f77b4'},
+                        labels={'purchasing_group': 'Purchasing Group', 'Nilai': 'Total Nilai (IDR)'}
+                    )
+                    fig_val.update_traces(textposition='outside', textfont_size=10)
+                    fig_val.update_layout(
+                        height=400,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    )
+                    st.plotly_chart(fig_val, use_container_width=True)
+
+                with col2:
+                    st.markdown("##### 📈 % Efisiensi per Purchasing Group")
+                    pg_efis = pg_data[pg_data['efisiensi_pct'].notna()].copy()
+                    pg_efis['warna'] = pg_efis['efisiensi_pct'].apply(
+                        lambda x: '#2ca02c' if x >= 0 else '#d62728')
+                    pg_efis['label'] = pg_efis['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
+                    pg_efis = pg_efis.sort_values('efisiensi_pct', ascending=True)
+                    fig_efis = px.bar(
+                        pg_efis, x='efisiensi_pct', y='purchasing_group',
+                        orientation='h', text='label',
+                        color='efisiensi_pct',
+                        color_continuous_scale=['#d62728', '#ffdd57', '#2ca02c'],
+                        labels={'efisiensi_pct': '% Efisiensi', 'purchasing_group': 'Purchasing Group'}
+                    )
+                    fig_efis.add_vline(x=0, line_dash="dash", line_color="gray")
+                    fig_efis.update_traces(textposition='outside')
+                    fig_efis.update_layout(
+                        height=400,
+                        coloraxis_showscale=False,
+                        xaxis_title="% Efisiensi (positif = hemat, negatif = over budget)"
+                    )
+                    st.plotly_chart(fig_efis, use_container_width=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Row 2: Lead Time ──────────────────────────────────────────
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("##### ⏱️ Rata-rata Lead Time per Purchasing Group")
+                    pg_lt = pg_data[pg_data['avg_lead_time'].notna()].copy()
+                    pg_lt['warna'] = pg_lt['avg_lead_time'].apply(
+                        lambda x: '#2ca02c' if x <= 55 else '#d62728')
+                    pg_lt['label'] = pg_lt['avg_lead_time'].apply(lambda x: f"{x} Hr")
+                    pg_lt = pg_lt.sort_values('avg_lead_time', ascending=True)
+                    fig_lt = px.bar(
+                        pg_lt, x='avg_lead_time', y='purchasing_group',
+                        orientation='h', text='label',
+                        color='avg_lead_time',
+                        color_continuous_scale=['#2ca02c', '#ffdd57', '#d62728'],
+                        labels={'avg_lead_time': 'Hari', 'purchasing_group': 'Purchasing Group'}
+                    )
+                    fig_lt.add_vline(x=55, line_dash="dash", line_color="red",
+                                     annotation_text="Target 55 Hari",
+                                     annotation_position="top right")
+                    fig_lt.update_traces(textposition='outside')
+                    fig_lt.update_layout(height=400, coloraxis_showscale=False)
+                    st.plotly_chart(fig_lt, use_container_width=True)
+
+                with col2:
+                    st.markdown("##### 🔄 % Konversi PR → PO per Purchasing Group")
+                    pg_data['konversi_pct'] = (
+                        pg_data['jml_item_po'] /
+                        pg_data['jml_item_pr'].replace(0, float('nan')) * 100
+                    ).round(1).fillna(0)
+                    pg_konv = pg_data.sort_values('konversi_pct', ascending=True)
+                    pg_konv['label'] = pg_konv['konversi_pct'].apply(lambda x: f"{x:.1f}%")
+                    fig_konv = px.bar(
+                        pg_konv, x='konversi_pct', y='purchasing_group',
+                        orientation='h', text='label',
+                        color='konversi_pct',
+                        color_continuous_scale=['#d62728', '#ffdd57', '#2ca02c'],
+                        range_x=[0, 110],
+                        labels={'konversi_pct': '% Konversi', 'purchasing_group': 'Purchasing Group'}
+                    )
+                    fig_konv.add_vline(x=100, line_dash="dash", line_color="gray",
+                                       annotation_text="100%", annotation_position="top left")
+                    fig_konv.update_traces(textposition='outside')
+                    fig_konv.update_layout(height=400, coloraxis_showscale=False)
+                    st.plotly_chart(fig_konv, use_container_width=True)
+
+            else:
+                st.info("Tidak ada data kinerja Purchasing Group pada rentang waktu ini.")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # TAB 2: BREAKDOWN PER METODE TENDER
+        # ══════════════════════════════════════════════════════════════════════
+        with tab2:
+            st.markdown("Perbandingan kinerja pengadaan berdasarkan metode tender: Tender Normal vs Tender Kontrak.")
+
+            tender_query = f"""
+            SELECT
+                COALESCE(purchasing_group, 'Unassigned')                             AS purchasing_group,
+                COALESCE(po.metode_pelelangan, 'Tidak Diketahui')                   AS metode_tender,
+                COUNT(DISTINCT CASE WHEN {bagian_po_cond}
+                    THEN v.nomor_po || '-' || v.item_po::text END)                   AS jml_item_po,
+                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN v.oe ELSE 0 END), 0)   AS total_oe,
+                COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                    THEN v.total_amount_local_curr ELSE 0 END), 0)                   AS total_realisasi,
+                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN v.oe ELSE 0 END), 0)
+                    - COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                    THEN v.total_amount_local_curr ELSE 0 END), 0)                   AS efisiensi,
+                ROUND(AVG(CASE WHEN {bagian_po_cond} AND v.lead_time_process_po IS NOT NULL
+                    THEN v.lead_time_process_po END)::numeric, 1)                    AS avg_lead_time
+            FROM vw_pr_po_complete v
+            LEFT JOIN po_items po
+                ON v.nomor_po = po.nomor_po AND v.item_po = po.item_po
+            WHERE {filter_conditions}
+              AND v.nomor_po IS NOT NULL
+            GROUP BY COALESCE(purchasing_group, 'Unassigned'),
+                     COALESCE(po.metode_pelelangan, 'Tidak Diketahui')
+            ORDER BY purchasing_group, total_realisasi DESC
+            """
+
+            with st.spinner("Memuat data per metode tender..."):
+                tender_data = load_data(tender_query)
+
+            if not tender_data.empty:
+
+                # ── KPI Tender Summary ────────────────────────────────────────
+                st.markdown("##### 📊 Ringkasan per Metode Tender (Semua PG)")
+                tender_summary = tender_data.groupby('metode_tender').agg(
+                    jml_item_po   = ('jml_item_po',   'sum'),
+                    total_oe      = ('total_oe',       'sum'),
+                    total_realisasi=('total_realisasi','sum'),
+                    efisiensi     = ('efisiensi',      'sum'),
+                    avg_lead_time = ('avg_lead_time',  'mean')
+                ).reset_index()
+                tender_summary['efisiensi_pct'] = (
+                    tender_summary['efisiensi'] /
+                    tender_summary['total_oe'].replace(0, float('nan')) * 100
+                ).round(1).fillna(0)
+                tender_summary['avg_lead_time'] = tender_summary['avg_lead_time'].round(1)
+
+                # Tampilkan sebagai metric cards per metode
+                cols = st.columns(len(tender_summary))
+                for i, (_, row) in enumerate(tender_summary.iterrows()):
+                    with cols[i]:
+                        pct_label = f"{row['efisiensi_pct']:+.1f}% efisiensi"
+                        st.metric(
+                            label=f"🏷️ {row['metode_tender']}",
+                            value=format_idr(row['total_realisasi']),
+                            delta=pct_label
+                        )
+                        st.caption(
+                            f"OE: {format_idr(row['total_oe'])} | "
+                            f"{int(row['jml_item_po']):,} item | "
+                            f"Lead Time: {row['avg_lead_time']} Hari"
+                        )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Chart: Realisasi per Metode Tender per PG ─────────────────
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("##### 💰 Nilai Realisasi PO per Metode Tender")
+                    tender_data['label'] = tender_data['total_realisasi'].apply(format_idr_short)
+                    fig_t1 = px.bar(
+                        tender_data,
+                        x='purchasing_group', y='total_realisasi',
+                        color='metode_tender', barmode='stack',
+                        text='label',
+                        labels={
+                            'purchasing_group': 'Purchasing Group',
+                            'total_realisasi' : 'Total Realisasi (IDR)',
+                            'metode_tender'   : 'Metode Tender'
+                        }
+                    )
+                    fig_t1.update_traces(textposition='inside', textfont_size=10)
+                    fig_t1.update_layout(
+                        height=420,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    )
+                    st.plotly_chart(fig_t1, use_container_width=True)
+
+                with col2:
+                    st.markdown("##### ⏱️ Lead Time per Metode Tender")
+                    tender_lt = tender_data[tender_data['avg_lead_time'].notna()]
+                    fig_t2 = px.bar(
+                        tender_lt,
+                        x='purchasing_group', y='avg_lead_time',
+                        color='metode_tender', barmode='group',
+                        text=tender_lt['avg_lead_time'].apply(lambda x: f"{x} Hr"),
+                        labels={
+                            'purchasing_group': 'Purchasing Group',
+                            'avg_lead_time'   : 'Lead Time Rata-rata (Hari)',
+                            'metode_tender'   : 'Metode Tender'
+                        }
+                    )
+                    fig_t2.add_hline(y=55, line_dash="dash", line_color="red",
+                                     annotation_text="Target 55 Hari",
+                                     annotation_position="bottom right")
+                    fig_t2.update_traces(textposition='outside', textfont_size=10)
+                    fig_t2.update_layout(
+                        height=420,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                    )
+                    st.plotly_chart(fig_t2, use_container_width=True)
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
+                # ── Tabel Detail ──────────────────────────────────────────────
+                st.markdown("##### 📋 Detail per Purchasing Group × Metode Tender")
+                df_t_display = tender_data.copy()
+                df_t_display['efisiensi_pct'] = (
+                    df_t_display['efisiensi'] /
+                    df_t_display['total_oe'].replace(0, float('nan')) * 100
+                ).round(1).fillna(0)
+                df_t_display['total_oe']       = df_t_display['total_oe'].apply(format_idr)
+                df_t_display['total_realisasi'] = df_t_display['total_realisasi'].apply(format_idr)
+                df_t_display['efisiensi']       = df_t_display['efisiensi'].apply(format_idr)
+                df_t_display['efisiensi_pct']   = df_t_display['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
+                df_t_display['avg_lead_time']   = df_t_display['avg_lead_time'].apply(
+                    lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                st.dataframe(
+                    df_t_display.rename(columns={
+                        'purchasing_group': 'Purchasing Group',
+                        'metode_tender'   : 'Metode Tender',
+                        'jml_item_po'     : 'Jml Item PO',
+                        'total_oe'        : 'Total OE',
+                        'total_realisasi' : 'Realisasi PO',
+                        'efisiensi'       : 'Efisiensi',
+                        'efisiensi_pct'   : '% Efisiensi',
+                        'avg_lead_time'   : 'Lead Time Avg',
+                    }),
+                    use_container_width=True, height=350
+                )
+
+                csv_tender = tender_data.to_csv(index=False)
+                st.download_button(
+                    label="Download as CSV",
+                    icon=":material/download:",
+                    data=csv_tender,
+                    file_name=f"kinerja_pg_tender_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+
+            else:
+                st.info("Tidak ada data metode tender pada periode ini. Pastikan kolom metode_pelelangan sudah terisi di tabel po_items.")
 
     # =====================================================
     # HALAMAN 5: HALAMAN ALERT
@@ -1596,7 +1895,7 @@ col_foot1, col_foot2 = st.columns([5, 1])
 with col_foot1:
     st.markdown(
         f"<div style='color:#666; margin-top: 10px;'>"
-        f"PR-PO Monitoring System - Pengadaan Barang v1.6 | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"PR-PO Monitoring System - Pengadaan Barang v1.7 | Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
     )
