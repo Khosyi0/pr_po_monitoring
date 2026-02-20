@@ -1661,202 +1661,236 @@ else:
                 st.info("Tidak ada data kinerja Purchasing Group pada rentang waktu ini.")
 
         # ══════════════════════════════════════════════════════════════════════
-        # TAB 2: BREAKDOWN PER METODE TENDER
+        # TAB 2: BREAKDOWN KONTRAK & TURN AROUND
         # ══════════════════════════════════════════════════════════════════════
         with tab2:
-            st.markdown("Perbandingan kinerja pengadaan berdasarkan metode tender: Tender Normal vs Tender Kontrak.")
+            st.markdown("Breakdown pengadaan berdasarkan **jenis tender** dan **Turn Around**.")
+            st.info("**Jenis Tender** dikalkulasi dari `contract_no`: diawali angka '4' = PR-PO Kontrak, selainnya = Tender Normal. **Turn Around** dikalkulasi dari `department_code`: diawali 'TA' = Turn Around.")
 
-            # 1. Tambahkan prefix 'v.' secara dinamis agar Postgres tidak bingung saat JOIN
-            tender_filter = filter_conditions.replace("tgl_create_pr", "v.tgl_create_pr") \
-                                             .replace("department_code", "v.department_code") \
-                                             .replace("purchasing_group", "v.purchasing_group")
-            tender_bagian_pr = bagian_pr_cond.replace("bagian_pr", "v.bagian_pr")
-            tender_bagian_po = bagian_po_cond.replace("bagian_po", "v.bagian_po")
+            col1, col2 = st.columns(2)
 
-            # 2. Masukkan ke dalam query dengan prefix v. pada kolom yang ambigu
-            tender_query = f"""
-            SELECT
-                COALESCE(v.purchasing_group, 'Unassigned')             AS purchasing_group,
-                COALESCE(po.metode_pelelangan, 'Tidak Diketahui')      AS metode_tender,
-                COUNT(DISTINCT CASE WHEN {tender_bagian_po}
-                    THEN v.nomor_po || '-' || v.item_po::text END)     AS jml_item_po,
-                COALESCE(SUM(CASE WHEN {tender_bagian_pr} THEN v.oe ELSE 0 END), 0)   AS total_oe,
-                COALESCE(SUM(CASE WHEN {tender_bagian_po}
-                    THEN v.total_amount_local_curr ELSE 0 END), 0)     AS total_realisasi,
-                COALESCE(SUM(CASE WHEN {tender_bagian_pr} THEN v.oe ELSE 0 END), 0)
-                    - COALESCE(SUM(CASE WHEN {tender_bagian_po}
-                    THEN v.total_amount_local_curr ELSE 0 END), 0)     AS efisiensi,
-                ROUND(AVG(CASE WHEN {tender_bagian_po} AND v.lead_time_process_po IS NOT NULL
-                    THEN v.lead_time_process_po END)::numeric, 1)      AS avg_lead_time
-            FROM vw_pr_po_complete v
-            LEFT JOIN po_items po
-                ON v.nomor_po = po.nomor_po AND v.item_po = po.item_po
-            WHERE {tender_filter}
-              AND v.nomor_po IS NOT NULL
-            GROUP BY COALESCE(v.purchasing_group, 'Unassigned'),
-                     COALESCE(po.metode_pelelangan, 'Tidak Diketahui')
-            ORDER BY 1, total_realisasi DESC
-            """
-
-            with st.spinner("Memuat data per metode tender..."):
-                tender_data = load_data(tender_query)
-
-            if not tender_data.empty:
-
-                # ── KPI Tender Summary ────────────────────────────────────────
+            # ── Kiri: Breakdown Kontrak vs Non-Kontrak ────────────────────
+            with col1:
                 st.markdown("""
                         <h1 style='display: flex; align-items: center; font-size:22px;'>
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M6 1v3H1V1zM1 0a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V1a1 1 0 0 0-1-1zm14 12v3h-5v-3zm-5-1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1zM6 8v7H1V8zM1 7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zm14-6v7h-5V1zm-5-1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V1a1 1 0 0 0-1-1z"/>
+                                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
                             </svg>
-                            Ringkasan per Metode Tender (Semua PG)
-                        </h1>
-                    """, unsafe_allow_html=True)
-                
-                tender_summary = tender_data.groupby('metode_tender').agg(
-                    jml_item_po   = ('jml_item_po',   'sum'),
-                    total_oe      = ('total_oe',       'sum'),
-                    total_realisasi=('total_realisasi','sum'),
-                    efisiensi     = ('efisiensi',      'sum'),
-                    avg_lead_time = ('avg_lead_time',  'mean')
-                ).reset_index()
-                tender_summary['efisiensi_pct'] = (
-                    tender_summary['efisiensi'] /
-                    tender_summary['total_oe'].replace(0, float('nan')) * 100
-                ).round(1).fillna(0)
-                tender_summary['avg_lead_time'] = tender_summary['avg_lead_time'].round(1)
-
-                # Tampilkan sebagai metric cards per metode
-                cols = st.columns(len(tender_summary))
-                for i, (_, row) in enumerate(tender_summary.iterrows()):
-                    with cols[i]:
-                        pct_label = f"{row['efisiensi_pct']:+.1f}% efisiensi"
-                        st.metric(
-                            label=f":material/sell: {row['metode_tender']}",
-                            value=format_idr(row['total_realisasi']),
-                            delta=pct_label
-                        )
-                        st.caption(
-                            f"OE: {format_idr(row['total_oe'])} | "
-                            f"{int(row['jml_item_po']):,} item | "
-                            f"Lead Time: {row['avg_lead_time']} Hari"
-                        )
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                # ── Chart: Realisasi per Metode Tender per PG ─────────────────
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.markdown("""
-                        <h1 style='display: flex; align-items: center; font-size:22px;'>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                                <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
-                            </svg>
-                            Nilai Realisasi PO per Metode Tende
+                            Kontrak vs Non-Kontrak per Purchasing Group
                         </h1>
                     """, unsafe_allow_html=True)
 
-                    tender_data['label'] = tender_data['total_realisasi'].apply(format_idr_short)
-                    fig_t1 = px.bar(
-                        tender_data,
+                st.caption("Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.")
+
+                kontrak_query = f"""
+                SELECT
+                    COALESCE(purchasing_group, 'Unassigned')              AS purchasing_group,
+                    jenis_tender                                           AS jenis_kontrak,
+                    COUNT(DISTINCT CASE WHEN {bagian_po_cond}
+                        THEN nomor_po || '-' || item_po::text END)         AS jml_item,
+                    COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                        THEN total_amount_local_curr ELSE 0 END), 0)       AS total_realisasi,
+                    ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                        THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
+                FROM vw_pr_po_complete
+                WHERE {filter_conditions}
+                  AND nomor_po IS NOT NULL
+                GROUP BY COALESCE(purchasing_group, 'Unassigned'),
+                         jenis_tender
+                ORDER BY purchasing_group, jenis_kontrak
+                """
+                with st.spinner("Memuat data kontrak..."):
+                    kontrak_data = load_data(kontrak_query)
+
+                if not kontrak_data.empty:
+                    # Ringkasan global
+                    kontrak_sum = kontrak_data.groupby('jenis_kontrak').agg(
+                        jml_item       =('jml_item',        'sum'),
+                        total_realisasi=('total_realisasi', 'sum'),
+                        avg_lead_time  =('avg_lead_time',   'mean')
+                    ).reset_index()
+
+                    c1, c2 = st.columns(2)
+                    for i, (_, row) in enumerate(kontrak_sum.iterrows()):
+                        col_m = c1 if i == 0 else c2
+                        with col_m:
+                            lt = f"{row['avg_lead_time']:.1f} Hari" if pd.notna(row['avg_lead_time']) else "N/A"
+                            st.metric(
+                                f"{':material/assignment:' if 'Kontrak' in str(row['jenis_kontrak']) else ':material/lock_open:'} {row['jenis_kontrak']}",
+                                format_idr(row['total_realisasi']),
+                                delta=f"{int(row['jml_item']):,} item | {lt}"
+                            )
+
+                    # Chart stacked bar
+                    kontrak_data['label'] = kontrak_data['total_realisasi'].apply(format_idr_short)
+                    fig_k = px.bar(
+                        kontrak_data,
                         x='purchasing_group', y='total_realisasi',
-                        color='metode_tender', barmode='stack',
+                        color='jenis_kontrak', barmode='stack',
                         text='label',
+                        color_discrete_map={'PR - PO Kontrak': '#1f77b4', 'Tender Normal': '#ff7f0e'},
                         labels={
                             'purchasing_group': 'Purchasing Group',
                             'total_realisasi' : 'Total Realisasi (IDR)',
-                            'metode_tender'   : 'Metode Tender'
+                            'jenis_kontrak'   : 'Jenis'
                         }
                     )
-                    fig_t1.update_traces(textposition='inside', textfont_size=10)
-                    fig_t1.update_layout(
+                    fig_k.update_traces(textposition='inside', textfont_size=9)
+                    fig_k.update_layout(
                         height=420,
                         legend=dict(orientation="h", yanchor="bottom", y=1.02)
                     )
-                    st.plotly_chart(fig_t1, use_container_width=True)
+                    st.plotly_chart(fig_k, use_container_width=True)
 
-                with col2:
+                    # Lead time kontrak vs non-kontrak per PG
                     st.markdown("""
                         <h1 style='display: flex; align-items: center; font-size:22px;'>
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                                 <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
                             </svg>
-                            Lead Time per Metode Tender
+                            Lead Time: Kontrak vs Non-Kontrak
                         </h1>
                     """, unsafe_allow_html=True)
 
-                    tender_lt = tender_data[tender_data['avg_lead_time'].notna()]
-                    fig_t2 = px.bar(
-                        tender_lt,
+                    kontrak_lt = kontrak_data[kontrak_data['avg_lead_time'].notna()]
+                    fig_klt = px.bar(
+                        kontrak_lt,
                         x='purchasing_group', y='avg_lead_time',
-                        color='metode_tender', barmode='group',
-                        text=tender_lt['avg_lead_time'].apply(lambda x: f"{x} Hr"),
+                        color='jenis_kontrak', barmode='group',
+                        text=kontrak_lt['avg_lead_time'].apply(lambda x: f"{x} Hr"),
+                        color_discrete_map={'PR - PO Kontrak': '#1f77b4', 'Tender Normal': '#ff7f0e'},
                         labels={
                             'purchasing_group': 'Purchasing Group',
-                            'avg_lead_time'   : 'Lead Time Rata-rata (Hari)',
-                            'metode_tender'   : 'Metode Tender'
+                            'avg_lead_time'   : 'Lead Time Avg (Hari)',
+                            'jenis_kontrak'   : 'Jenis'
                         }
                     )
-                    fig_t2.add_hline(y=55, line_dash="dash", line_color="red",
-                                     annotation_text="Target 55 Hari",
-                                     annotation_position="bottom right")
-                    fig_t2.update_traces(textposition='outside', textfont_size=10)
-                    fig_t2.update_layout(
-                        height=420,
+                    fig_klt.add_hline(y=55, line_dash="dash", line_color="red",
+                                      annotation_text="Target 55 Hari",
+                                      annotation_position="bottom right")
+                    fig_klt.update_traces(textposition='outside', textfont_size=9)
+                    fig_klt.update_layout(
+                        height=380,
                         legend=dict(orientation="h", yanchor="bottom", y=1.02)
                     )
-                    st.plotly_chart(fig_t2, use_container_width=True)
+                    st.plotly_chart(fig_klt, use_container_width=True)
+                else:
+                    st.info("Tidak ada data kontrak pada periode ini.")
 
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                # ── Tabel Detail ──────────────────────────────────────────────
+            # ── Kanan: Breakdown Turn Around ─────────────────────────────
+            with col2:
                 st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:22px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                            <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
-                        </svg>
-                        Detail per Purchasing Group × Metode Tender
-                    </h1>
-                """, unsafe_allow_html=True)
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z"/>
+                            </svg>
+                            Distribusi Turn Around per Purchasing Group
+                        </h1>
+                    """, unsafe_allow_html=True)
+                
+                st.caption("Kategori kecepatan proses pengadaan dari data SAP.")
 
-                df_t_display = tender_data.copy()
-                df_t_display['efisiensi_pct'] = (
-                    df_t_display['efisiensi'] /
-                    df_t_display['total_oe'].replace(0, float('nan')) * 100
-                ).round(1).fillna(0)
-                df_t_display['total_oe']       = df_t_display['total_oe'].apply(format_idr)
-                df_t_display['total_realisasi'] = df_t_display['total_realisasi'].apply(format_idr)
-                df_t_display['efisiensi']       = df_t_display['efisiensi'].apply(format_idr)
-                df_t_display['efisiensi_pct']   = df_t_display['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
-                df_t_display['avg_lead_time']   = df_t_display['avg_lead_time'].apply(
-                    lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
-                st.dataframe(
-                    df_t_display.rename(columns={
-                        'purchasing_group': 'Purchasing Group',
-                        'metode_tender'   : 'Metode Tender',
-                        'jml_item_po'     : 'Jml Item PO',
-                        'total_oe'        : 'Total OE',
-                        'total_realisasi' : 'Realisasi PO',
-                        'efisiensi'       : 'Efisiensi',
-                        'efisiensi_pct'   : '% Efisiensi',
-                        'avg_lead_time'   : 'Lead Time Avg',
-                    }),
-                    use_container_width=True, height=350
-                )
+                ta_query = f"""
+                SELECT
+                    COALESCE(purchasing_group, 'Unassigned')              AS purchasing_group,
+                    turn_around_calc                                       AS turn_around,
+                    COUNT(DISTINCT CASE WHEN {bagian_po_cond}
+                        THEN nomor_po || '-' || item_po::text END)         AS jml_item,
+                    COALESCE(SUM(CASE WHEN {bagian_po_cond}
+                        THEN total_amount_local_curr ELSE 0 END), 0)       AS total_realisasi,
+                    ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                        THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
+                FROM vw_pr_po_complete
+                WHERE {filter_conditions}
+                  AND nomor_po IS NOT NULL
+                GROUP BY COALESCE(purchasing_group, 'Unassigned'),
+                         turn_around_calc
+                ORDER BY purchasing_group, jml_item DESC
+                """
+                with st.spinner("Memuat data turn around..."):
+                    ta_data = load_data(ta_query)
 
-                csv_tender = tender_data.to_csv(index=False)
+                if not ta_data.empty:
+                    # Ringkasan global per kategori turn around
+                    ta_sum = ta_data.groupby('turn_around').agg(
+                        jml_item       =('jml_item',        'sum'),
+                        total_realisasi=('total_realisasi', 'sum'),
+                        avg_lead_time  =('avg_lead_time',   'mean')
+                    ).reset_index().sort_values('jml_item', ascending=False)
+
+                    # Pie chart distribusi item per turn around
+                    fig_ta_pie = px.pie(
+                        ta_sum,
+                        values='jml_item',
+                        names='turn_around',
+                        hole=0.4,
+                        title="Distribusi Jumlah Item per Turn Around"
+                    )
+                    fig_ta_pie.update_layout(height=320)
+                    st.plotly_chart(fig_ta_pie, use_container_width=True)
+
+                    # Bar chart lead time per turn around
+                    ta_lt = ta_sum[ta_sum['avg_lead_time'].notna()].copy()
+                    ta_lt['avg_lead_time'] = ta_lt['avg_lead_time'].round(1)
+                    ta_lt['label'] = ta_lt['avg_lead_time'].apply(lambda x: f"{x} Hr")
+                    ta_lt = ta_lt.sort_values('avg_lead_time')
+                    fig_ta_lt = px.bar(
+                        ta_lt,
+                        x='avg_lead_time', y='turn_around',
+                        orientation='h', text='label',
+                        color='avg_lead_time',
+                        color_continuous_scale=['#2ca02c', '#ffdd57', '#d62728'],
+                        labels={
+                            'avg_lead_time': 'Lead Time Rata-rata (Hari)',
+                            'turn_around'  : 'Turn Around'
+                        },
+                        title="Lead Time Rata-rata per Kategori Turn Around"
+                    )
+                    fig_ta_lt.add_vline(x=55, line_dash="dash", line_color="red",
+                                        annotation_text="Target 55 Hari",
+                                        annotation_position="top right")
+                    fig_ta_lt.update_traces(textposition='outside')
+                    fig_ta_lt.update_layout(height=350, coloraxis_showscale=False)
+                    st.plotly_chart(fig_ta_lt, use_container_width=True)
+
+                    # Tabel detail
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
+                            </svg>
+                            Detail per PG × Turn Around
+                        </h1>
+                    """, unsafe_allow_html=True)
+
+                    df_ta_disp = ta_data.copy()
+                    df_ta_disp['total_realisasi'] = df_ta_disp['total_realisasi'].apply(format_idr)
+                    df_ta_disp['avg_lead_time']   = df_ta_disp['avg_lead_time'].apply(
+                        lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                    st.dataframe(
+                        df_ta_disp.rename(columns={
+                            'purchasing_group': 'Purchasing Group',
+                            'turn_around'     : 'Turn Around',
+                            'jml_item'        : 'Jml Item',
+                            'total_realisasi' : 'Total Realisasi',
+                            'avg_lead_time'   : 'Lead Time Avg',
+                        }),
+                        use_container_width=True, height=300
+                    )
+                else:
+                    st.info("Tidak ada data turn around pada periode ini.")
+
+            # Download gabungan
+            if not kontrak_data.empty:
+                st.markdown("---")
+                csv_k = kontrak_data.to_csv(index=False)
                 st.download_button(
-                    label="Download as CSV",
+                    label="Download Data Kontrak sebagai CSV",
                     icon=":material/download:",
-                    data=csv_tender,
-                    file_name=f"kinerja_pg_tender_{datetime.now().strftime('%Y%m%d')}.csv",
+                    data=csv_k,
+                    file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv"
                 )
-
-            else:
-                st.info("Tidak ada data metode tender pada periode ini. Pastikan kolom metode_pelelangan sudah terisi di tabel po_items.")
 
     # =====================================================
     # HALAMAN 5: HALAMAN ALERT
