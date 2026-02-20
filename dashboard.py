@@ -612,6 +612,7 @@ else:
                     PR-PO Creation Trend
                 </h1>
             """, unsafe_allow_html=True)
+            
             trend_query = f"""
             WITH pr_monthly AS (
                 SELECT
@@ -638,6 +639,7 @@ else:
             FULL OUTER JOIN po_monthly po ON pr.month_date = po.month_date
             ORDER BY month
             """
+            
             with st.spinner("Memuat trend..."):
                 trend_data = load_data(trend_query)
 
@@ -645,20 +647,27 @@ else:
                 trend_data['month'] = pd.to_datetime(trend_data['month'])
                 trend_data = trend_data.sort_values('month')
                 
-                trend_data['total_pr'] = trend_data['total_pr'].cumsum()
-                trend_data['total_po'] = trend_data['total_po'].cumsum()
+                show_cumulative = st.toggle("Tampilkan secara Kumulatif (Running Total)", value=False)
+                
+                if show_cumulative:
+                    y_pr = trend_data['total_pr'].cumsum()
+                    y_po = trend_data['total_po'].cumsum()
+                    y_axis_title = 'Cumulative Count'
+                else:
+                    y_pr = trend_data['total_pr']
+                    y_po = trend_data['total_po']
+                    y_axis_title = 'Count per Month'
 
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=trend_data['month'], y=trend_data['total_pr'],
+                fig.add_trace(go.Scatter(x=trend_data['month'], y=y_pr,
                                         mode='lines+markers', name='PR Created',
                                         line=dict(color='#1f77b4', width=2)))
-                fig.add_trace(go.Scatter(x=trend_data['month'], y=trend_data['total_po'],
+                fig.add_trace(go.Scatter(x=trend_data['month'], y=y_po,
                                         mode='lines+markers', name='PO Created',
                                         line=dict(color='#2ca02c', width=2)))
                 
-                fig.update_layout(height=400, xaxis_title='Month', yaxis_title='Cumulative Count')
-                
-                st.plotly_chart(fig, use_container_width=True) 
+                fig.update_layout(height=400, xaxis_title='Month', yaxis_title=y_axis_title)
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
 
@@ -881,6 +890,10 @@ else:
             table_data = load_data(table_query)
 
         if not table_data.empty:
+
+            table_data['no_pr'] = table_data['no_pr'].replace('No PR', '-')
+            table_data['department_code'] = table_data['department_code'].replace('Unknown', '-')
+            
             for col in ['estimasi_pr', 'total_amount_local_curr', 'efisiensi']:
                 if col in table_data.columns:
                     table_data[col] = table_data[col].apply(
@@ -1402,13 +1415,16 @@ else:
                 st.metric("Efisiensi", format_idr(t_efis), delta=f"{t_efis_pct:.1f}% {delta_efis}")
             with col5:
                 lt_label = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
-                lt_delta = "✅ On Target" if (avg_lt and avg_lt <= 30) else "⚠️ Over Target"
+                lt_delta = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
                 st.metric("Avg Lead Time", lt_label, delta=lt_delta)
 
         st.markdown("---")
 
         # ── TAB: OVERVIEW | TENDER TYPE ────────────────────────────────────────
-        tab1, tab2 = st.tabs(["📊 Overview per Purchasing Group", "🏷️ Breakdown per Metode Tender"])
+        tab1, tab2 = st.tabs([
+            ":material/overview: Overview per Purchasing Group", 
+            ":material/sell: Breakdown per Metode Tender"
+        ])
 
         # ══════════════════════════════════════════════════════════════════════
         # TAB 1: OVERVIEW PER PURCHASING GROUP
@@ -1455,7 +1471,14 @@ else:
 
             if not pg_data.empty:
                 # ── Tabel Ringkasan ───────────────────────────────────────────
-                st.markdown("##### 📋 Tabel Ringkasan per Purchasing Group")
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
+                        </svg>
+                        Tabel Ringkasan per Purchasing Group
+                    </h1>
+                """, unsafe_allow_html=True)
 
                 df_table = pg_data.copy()
                 df_table['konversi_pct'] = (
@@ -1499,7 +1522,16 @@ else:
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.markdown("##### 💰 Perbandingan Nilai OE vs Realisasi PO")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
+                                <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
+                            </svg>
+                            Perbandingan Nilai OE vs Realisasi PO
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     df_melted = pg_data.melt(
                         id_vars=['purchasing_group'],
                         value_vars=['nilai_oe', 'nilai_po'],
@@ -1522,7 +1554,16 @@ else:
                     st.plotly_chart(fig_val, use_container_width=True)
 
                 with col2:
-                    st.markdown("##### 📈 % Efisiensi per Purchasing Group")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M6.5 1A1.5 1.5 0 0 0 5 2.5V3H1.5A1.5 1.5 0 0 0 0 4.5v1.384l7.614 2.03a1.5 1.5 0 0 0 .772 0L16 5.884V4.5A1.5 1.5 0 0 0 14.5 3H11v-.5A1.5 1.5 0 0 0 9.5 1h-3zm0 1h3a.5.5 0 0 1 .5.5V3H6v-.5a.5.5 0 0 1 .5-.5z"/>
+                                <path d="M0 12.5A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6.85L8.129 8.947a.5.5 0 0 1-.258 0L0 6.85v5.65z"/>
+                            </svg>
+                            % Efisiensi per Purchasing Group
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     pg_efis = pg_data[pg_data['efisiensi_pct'].notna()].copy()
                     pg_efis['warna'] = pg_efis['efisiensi_pct'].apply(
                         lambda x: '#2ca02c' if x >= 0 else '#d62728')
@@ -1550,7 +1591,15 @@ else:
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.markdown("##### ⏱️ Rata-rata Lead Time per Purchasing Group")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
+                            </svg>
+                            Rata-rata Lead Time per Purchasing Group
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     pg_lt = pg_data[pg_data['avg_lead_time'].notna()].copy()
                     pg_lt['warna'] = pg_lt['avg_lead_time'].apply(
                         lambda x: '#2ca02c' if x <= 55 else '#d62728')
@@ -1571,7 +1620,16 @@ else:
                     st.plotly_chart(fig_lt, use_container_width=True)
 
                 with col2:
-                    st.markdown("##### 🔄 % Konversi PR → PO per Purchasing Group")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>
+                                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>
+                            </svg>
+                            Rata-rata Lead Time per Purchasing Group
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     pg_data['konversi_pct'] = (
                         pg_data['jml_item_po'] /
                         pg_data['jml_item_pr'].replace(0, float('nan')) * 100
@@ -1601,28 +1659,36 @@ else:
         with tab2:
             st.markdown("Perbandingan kinerja pengadaan berdasarkan metode tender: Tender Normal vs Tender Kontrak.")
 
+            # 1. Tambahkan prefix 'v.' secara dinamis agar Postgres tidak bingung saat JOIN
+            tender_filter = filter_conditions.replace("tgl_create_pr", "v.tgl_create_pr") \
+                                             .replace("department_code", "v.department_code") \
+                                             .replace("purchasing_group", "v.purchasing_group")
+            tender_bagian_pr = bagian_pr_cond.replace("bagian_pr", "v.bagian_pr")
+            tender_bagian_po = bagian_po_cond.replace("bagian_po", "v.bagian_po")
+
+            # 2. Masukkan ke dalam query dengan prefix v. pada kolom yang ambigu
             tender_query = f"""
             SELECT
-                COALESCE(purchasing_group, 'Unassigned')                             AS purchasing_group,
-                COALESCE(po.metode_pelelangan, 'Tidak Diketahui')                   AS metode_tender,
-                COUNT(DISTINCT CASE WHEN {bagian_po_cond}
-                    THEN v.nomor_po || '-' || v.item_po::text END)                   AS jml_item_po,
-                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN v.oe ELSE 0 END), 0)   AS total_oe,
-                COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                    THEN v.total_amount_local_curr ELSE 0 END), 0)                   AS total_realisasi,
-                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN v.oe ELSE 0 END), 0)
-                    - COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                    THEN v.total_amount_local_curr ELSE 0 END), 0)                   AS efisiensi,
-                ROUND(AVG(CASE WHEN {bagian_po_cond} AND v.lead_time_process_po IS NOT NULL
-                    THEN v.lead_time_process_po END)::numeric, 1)                    AS avg_lead_time
+                COALESCE(v.purchasing_group, 'Unassigned')             AS purchasing_group,
+                COALESCE(po.metode_pelelangan, 'Tidak Diketahui')      AS metode_tender,
+                COUNT(DISTINCT CASE WHEN {tender_bagian_po}
+                    THEN v.nomor_po || '-' || v.item_po::text END)     AS jml_item_po,
+                COALESCE(SUM(CASE WHEN {tender_bagian_pr} THEN v.oe ELSE 0 END), 0)   AS total_oe,
+                COALESCE(SUM(CASE WHEN {tender_bagian_po}
+                    THEN v.total_amount_local_curr ELSE 0 END), 0)     AS total_realisasi,
+                COALESCE(SUM(CASE WHEN {tender_bagian_pr} THEN v.oe ELSE 0 END), 0)
+                    - COALESCE(SUM(CASE WHEN {tender_bagian_po}
+                    THEN v.total_amount_local_curr ELSE 0 END), 0)     AS efisiensi,
+                ROUND(AVG(CASE WHEN {tender_bagian_po} AND v.lead_time_process_po IS NOT NULL
+                    THEN v.lead_time_process_po END)::numeric, 1)      AS avg_lead_time
             FROM vw_pr_po_complete v
             LEFT JOIN po_items po
                 ON v.nomor_po = po.nomor_po AND v.item_po = po.item_po
-            WHERE {filter_conditions}
+            WHERE {tender_filter}
               AND v.nomor_po IS NOT NULL
-            GROUP BY COALESCE(purchasing_group, 'Unassigned'),
+            GROUP BY COALESCE(v.purchasing_group, 'Unassigned'),
                      COALESCE(po.metode_pelelangan, 'Tidak Diketahui')
-            ORDER BY purchasing_group, total_realisasi DESC
+            ORDER BY 1, total_realisasi DESC
             """
 
             with st.spinner("Memuat data per metode tender..."):
@@ -1631,7 +1697,15 @@ else:
             if not tender_data.empty:
 
                 # ── KPI Tender Summary ────────────────────────────────────────
-                st.markdown("##### 📊 Ringkasan per Metode Tender (Semua PG)")
+                st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M6 1v3H1V1zM1 0a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V1a1 1 0 0 0-1-1zm14 12v3h-5v-3zm-5-1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1zM6 8v7H1V8zM1 7a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1zm14-6v7h-5V1zm-5-1a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V1a1 1 0 0 0-1-1z"/>
+                            </svg>
+                            Ringkasan per Metode Tender (Semua PG)
+                        </h1>
+                    """, unsafe_allow_html=True)
+                
                 tender_summary = tender_data.groupby('metode_tender').agg(
                     jml_item_po   = ('jml_item_po',   'sum'),
                     total_oe      = ('total_oe',       'sum'),
@@ -1651,7 +1725,7 @@ else:
                     with cols[i]:
                         pct_label = f"{row['efisiensi_pct']:+.1f}% efisiensi"
                         st.metric(
-                            label=f"🏷️ {row['metode_tender']}",
+                            label=f":material/sell: {row['metode_tender']}",
                             value=format_idr(row['total_realisasi']),
                             delta=pct_label
                         )
@@ -1667,7 +1741,16 @@ else:
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    st.markdown("##### 💰 Nilai Realisasi PO per Metode Tender")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
+                                <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
+                            </svg>
+                            Nilai Realisasi PO per Metode Tende
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     tender_data['label'] = tender_data['total_realisasi'].apply(format_idr_short)
                     fig_t1 = px.bar(
                         tender_data,
@@ -1688,7 +1771,15 @@ else:
                     st.plotly_chart(fig_t1, use_container_width=True)
 
                 with col2:
-                    st.markdown("##### ⏱️ Lead Time per Metode Tender")
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
+                            </svg>
+                            Lead Time per Metode Tender
+                        </h1>
+                    """, unsafe_allow_html=True)
+
                     tender_lt = tender_data[tender_data['avg_lead_time'].notna()]
                     fig_t2 = px.bar(
                         tender_lt,
@@ -1714,7 +1805,15 @@ else:
                 st.markdown("<br>", unsafe_allow_html=True)
 
                 # ── Tabel Detail ──────────────────────────────────────────────
-                st.markdown("##### 📋 Detail per Purchasing Group × Metode Tender")
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
+                        </svg>
+                        Detail per Purchasing Group × Metode Tender
+                    </h1>
+                """, unsafe_allow_html=True)
+
                 df_t_display = tender_data.copy()
                 df_t_display['efisiensi_pct'] = (
                     df_t_display['efisiensi'] /
