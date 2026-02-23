@@ -1,5 +1,5 @@
 """
-v_detail.py — Halaman Detailed PR-PO Data
+v_detail.py - Halaman Detailed PR-PO Data
 """
 import streamlit as st
 import pandas as pd

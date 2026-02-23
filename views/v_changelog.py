@@ -1,5 +1,5 @@
 """
-v_changelog.py — Halaman Log Perubahan
+v_changelog.py - Halaman Log Perubahan
 """
 import streamlit as st
 import pandas as pd
@@ -22,7 +22,8 @@ def render(**kwargs):
     changelog_data = [
         {"Tanggal": "23 Feb 2026", "Versi": "v1.8", "Perubahan": """
     - Refactor: dashboard dipecah menjadi multi-file (app.py, config_db.py, utils.py, views/)
-    - Menambahkan info detail dari masing-masing chart"""},
+    - Menambahkan info detail dari masing-masing chart
+    - Menambahkan detail dari masing-masing chart"""},
         {"Tanggal": "20 Feb 2026", "Versi": "v1.7", "Perubahan": """- Menambahkan beberapa info di halaman Kinerja Purchasing Group
     - Total Item PR
     - Total Item PO

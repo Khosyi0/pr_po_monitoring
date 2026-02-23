@@ -1,5 +1,5 @@
 """
-v_alert.py — Halaman Alert
+v_alert.py - Halaman Alert
 """
 import streamlit as st
 import pandas as pd
@@ -53,7 +53,32 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         st.caption("Menampilkan PR yang belum diproses menjadi PO selama lebih dari 30 hari sejak dibuat.")
         
         if st.session_state.get(key_alert_pr, False):
-            st.info("Masih belum ada info")
+            st.info("""\
+**📋 PR Pending Mendekati Kadaluarsa (> 30 Hari)**
+
+Tabel ini menampilkan PR yang belum dikonversi menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
+
+**Kalkulasi SQL:**
+```sql
+umur_hari = CURRENT_DATE - tgl_create_pr::DATE
+Filter : nomor_po IS NULL           -- belum ada PO
+     AND no_pr != 'No PR'           -- bukan baris fiktif
+     AND umur_hari > 30             -- lebih dari 30 hari
+ORDER BY umur_hari DESC             -- yang paling lama di atas
+```
+
+**Kolom yang ditampilkan:**
+| Kolom | Keterangan |
+|---|---|
+| `no_pr` | Nomor Purchase Requisition di SAP |
+| `tgl_create_pr` | Tanggal PR dibuat |
+| `department` | Kode departemen pemohon |
+| `bagian` | Bagian/seksi pemohon |
+| `estimasi_pr` | Nilai estimasi per baris PR (kolom `estimasi_pr`) |
+| `umur_hari` | Selisih hari dari tanggal buat hingga hari ini |
+
+Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` → filter nilai > 30.
+            """)
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True) # Spasi sebelum tabel
 
@@ -113,7 +138,31 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             st.caption("Menampilkan PO yang tanggal kirimnya sudah lewat namun barang belum diterima.")
 
             if st.session_state.get(key_alert_po, False):
-                st.info("Masih belum ada info")
+                st.info("""\
+**⏰ PO Overdue (Melewati Delivery Date)**
+
+Tabel ini menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
+
+**Kalkulasi SQL:**
+```sql
+hari_terlambat = CURRENT_DATE - del_date_po::DATE
+Filter : del_date_po::DATE < CURRENT_DATE
+     AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
+ORDER BY hari_terlambat DESC
+```
+
+**Kolom yang ditampilkan:**
+| Kolom | Keterangan |
+|---|---|
+| `nomor_po` | Nomor Purchase Order |
+| `date_ordered` | Tanggal PO diterbitkan |
+| `target_delivery` | Tanggal delivery yang disepakati (`del_date_po`) |
+| `vendor_name` | Nama vendor pemasok |
+| `on_time_delivery` | Status pengiriman saat ini |
+| `hari_terlambat` | Jumlah hari keterlambatan dari tanggal target |
+
+Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan status belum selesai.
+                """)
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -169,7 +218,32 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             st.caption("&nbsp;", unsafe_allow_html=True) 
 
             if st.session_state.get(key_alert_aging, False):
-                st.info("Masih belum ada info")
+                st.info("""\
+**Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
+
+**Kalkulasi SQL:**
+```sql
+aging_days = CURRENT_DATE − date_ordered::DATE
+
+CASE
+  WHEN aging_days <= 15 THEN '1. 0-15 Hari'
+  WHEN aging_days <= 30 THEN '2. 16-30 Hari'
+  WHEN aging_days <= 60 THEN '3. 31-60 Hari'
+  ELSE                       '4. > 60 Hari'
+END AS umur_po
+```
+
+**Filter data:** Hanya PO dengan `on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')`, barang belum diterima.
+
+**Cara membaca chart:**
+| Bucket | Status |
+|---|---|
+| 0–15 Hari | Masih sangat baru, belum perlu tindakan |
+| 16–30 Hari | Pantau berkala |
+| 31–60 Hari | Follow-up aktif ke vendor |
+| > 60 Hari | 🔴 Kritis, eskalasi segera ke atasan/tim vendor |
+
+                """)
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 

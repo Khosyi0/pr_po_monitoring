@@ -1,5 +1,5 @@
 """
-v_dashboard.py — Halaman Dashboard Monitoring
+v_dashboard.py - Halaman Dashboard Monitoring
 """
 import streamlit as st
 import pandas as pd
@@ -107,12 +107,12 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
             if st.session_state.get(key1, False):
                 st.info("""
-**PR Status by Department** — Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
+**PR Status by Department**: Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
 
 **Kolom yang digunakan:**
-- `department_code` — kode departemen dari tabel `purchase_requisitions`
-- `no_pr` — nomor PR, di-COUNT DISTINCT untuk menghitung jumlah PR unik
-- `nomor_po` — digunakan untuk menentukan apakah PR sudah terkonversi ke PO
+- `department_code`: kode departemen dari tabel `purchase_requisitions`
+- `no_pr`: nomor PR, di-COUNT DISTINCT untuk menghitung jumlah PR unik
+- `nomor_po`: digunakan untuk menentukan apakah PR sudah terkonversi ke PO
 
 **Kalkulasi:**
 | Metrik | Formula SQL | Keterangan |
@@ -121,7 +121,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 | PR with PO | `COUNT(DISTINCT no_pr) WHERE nomor_po IS NOT NULL` | PR yang sudah ada PO-nya |
 | PR without PO | `Total PR - PR with PO` | PR yang belum diproses |
 
-**Tidak ada formula Excel langsung** untuk chart ini — data diambil dari relasi tabel `pr_items` ↔ `po_items` di database. Di Excel, padanannya adalah `COUNTIF` atau `SUMIF` dengan kondisi apakah kolom *No PO* di sheet PO SAP terisi atau kosong untuk setiap *No PR*.
+**Tidak ada formula Excel langsung** untuk chart ini, data diambil dari relasi tabel `pr_items` ↔ `po_items` di database. Di Excel, padanannya adalah `COUNTIF` atau `SUMIF` dengan kondisi apakah kolom *No PO* di sheet PO SAP terisi atau kosong untuk setiap *No PR*.
                 """)
 
             dept_query = f"""
@@ -172,7 +172,21 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key2}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key2})
 
             if st.session_state.get(key2, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Top 10 Vendors by PO Value**: Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
+
+**Kalkulasi SQL:**
+| Metrik | Formula |
+|---|---|
+| Jumlah PO | `COUNT(DISTINCT nomor_po)` |
+| Total Nilai | `SUM(total_amount_local_curr)` |
+
+Diurutkan descending berdasarkan `total_value`, lalu diambil 10 teratas.
+
+**Sumber kolom:** `total_amount_local_curr` dari tabel `po_items`, di-join ke tabel `vendors`.
+
+Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap vendor, urutkan descending, ambil 10 teratas.
+                """)
 
             vendor_query = f"""
             SELECT
@@ -224,7 +238,21 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key3}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key3})
 
             if st.session_state.get(key3, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**PR-PO Creation Trend**: Line chart jumlah PR dan PO yang dibuat per bulan.
+
+**Kalkulasi SQL:**
+| Metrik | Formula |
+|---|---|
+| PR per bulan | `COUNT(DISTINCT no_pr \|\| '-' \|\| line_item_pr)` GROUP BY `DATE_TRUNC('month', tgl_create_pr)` |
+| PO per bulan | `COUNT(nomor_po)` GROUP BY `DATE_TRUNC('month', date_ordered)` |
+
+Kedua sumber digabung dengan `FULL OUTER JOIN` agar bulan tanpa PR atau tanpa PO tetap muncul.
+
+Mode **Kumulatif**: menggunakan `.cumsum()` di Python setelah data diambil, cocok untuk memantau pencapaian target tahunan.
+
+Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan)` per baris bulan.
+                """)
         
             trend_query = f"""
             WITH pr_monthly AS (
@@ -306,7 +334,24 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key4}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key4})
 
             if st.session_state.get(key4, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Lead Time Distribution**: Pie chart distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).
+
+**Bucket klasifikasi SQL:**
+```
+CASE
+  WHEN lead_time_process_po <= 7  THEN '0-7 days'
+  WHEN lead_time_process_po <= 14 THEN '8-14 days'
+  WHEN lead_time_process_po <= 30 THEN '15-30 days'
+  WHEN lead_time_process_po <= 60 THEN '31-60 days'
+  ELSE                                 '60+ days'
+END
+```
+
+**Sumber kolom:** `lead_time_process_po` di `vw_pr_po_complete`, dihitung sebagai selisih hari antara `tgl_create_pr` dan `date_ordered` (tanggal PO diterbitkan).
+
+Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)` atau nested `=IF(...)`.
+                """)
                 
             leadtime_query = f"""
             SELECT
@@ -374,7 +419,25 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             st.button(icon, key=f"btn_{key5}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key5})
 
         if st.session_state.get(key5, False):
-            st.info("""Masih belum ada info""")
+            st.info("""\
+**Top 10 PR Without PO (Pending)**: Tabel 10 PR tertua yang belum diproses menjadi PO.
+
+**Kalkulasi SQL:**
+```sql
+SELECT no_pr, tgl_create_pr, department_code, bagian_pr,
+       SUM(oe) AS total_estimasi
+FROM vw_pr_po_complete
+WHERE nomor_po IS NULL
+  AND no_pr != 'No PR'
+GROUP BY no_pr, tgl_create_pr, department_code, bagian_pr
+ORDER BY tgl_create_pr ASC   -- yang paling lama muncul di atas
+LIMIT 10
+```
+
+**Kolom `total_estimasi`:** `SUM(oe)`: total nilai estimasi seluruh baris item pada PR tersebut.
+
+Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending → ambil 10 baris teratas.
+            """)
 
         pr_without_po_query = f"""
         SELECT
@@ -427,7 +490,20 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key6}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key6})
 
             if st.session_state.get(key6, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Delivery Performance**: Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
+
+**Sumber:** Kolom `on_time_delivery` di `vw_pr_po_complete`, diisi oleh ETL berdasarkan perbandingan tanggal aktual vs target delivery.
+
+| Status | Kondisi |
+|---|---|
+| TEPAT WAKTU | Barang tiba (tanggal GR) ≤ `del_date_po` |
+| TERLAMBAT | Barang tiba (tanggal GR) > `del_date_po` |
+| IN PROGRESS | PO sudah terbit, Good Receipt belum masuk |
+| PENDING | Belum ada informasi delivery sama sekali |
+
+Di Excel: `=IF(tgl_gr="","IN PROGRESS",IF(tgl_gr<=del_date_po,"TEPAT WAKTU","TERLAMBAT"))`
+                """)
                 
             delivery_query = f"""
             SELECT
@@ -478,7 +554,28 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key7}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key7})
 
             if st.session_state.get(key7, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Material Category Value**: Bar chart total nilai PO per kategori ABC material.
+
+**Kalkulasi SQL:**
+```sql
+SELECT abc_indicator,
+       SUM(total_amount_local_curr) AS total_value
+FROM vw_pr_po_complete
+WHERE abc_indicator IS NOT NULL
+GROUP BY abc_indicator
+ORDER BY abc_indicator
+```
+
+**Arti klasifikasi ABC (Analisis Pareto):**
+| Kategori | Proporsi Item | Proporsi Nilai |
+|---|---|---|
+| A | ~20% | ~80% - material strategis, harga tinggi |
+| B | ~30% | ~15% - material menengah |
+| C | ~50% | ~5% - material umum, harga rendah |
+
+**Sumber:** Kolom `abc_indicator` dari master material SAP, tersedia di kolom *ABC Ind.* pada data PO SAP.
+                """)
                 
             material_query = f"""
             SELECT

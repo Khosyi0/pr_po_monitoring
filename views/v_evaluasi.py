@@ -1,5 +1,5 @@
 """
-v_evaluasi.py — Halaman Evaluasi Harga Barang
+v_evaluasi.py - Halaman Evaluasi Harga Barang
 """
 import streamlit as st
 import pandas as pd
@@ -96,7 +96,23 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key_scatter}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_scatter})
 
             if st.session_state.get(key_scatter, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**OE vs Realisasi Harga PO (per Material)**: Scatter chart perbandingan nilai estimasi vs realisasi PO per material.
+
+**Kalkulasi SQL:**
+| Kolom | Formula |
+|---|---|
+| OE (sumbu X) | `SUM(estimasi_pr × quantity_pr)` per material |
+| Realisasi (sumbu Y) | `SUM(total_amount_local_curr)` per material |
+| Warna titik | 🔴 Merah = `realisasi > OE` (overspend) · 🟢 Hijau = `realisasi ≤ OE` (efisien) |
+
+**Formula Excel:**
+- Kolom **OE (BW)**: `= Estimasi_PR × Qty_PR`
+- Kolom **Efisiensi (BX)**: `= OE − Total_Amount_in_Local_Curr`
+- Nilai **negatif** di kolom Efisiensi = overspend
+
+Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
+                """)
 
             scatter_query = f"""
             SELECT
@@ -169,7 +185,21 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key_overspend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_overspend})
 
             if st.session_state.get(key_overspend, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Top 10 Material: Overspend Terbesar**: Bar chart 10 material dengan selisih (realisasi - OE) terbesar.
+
+**Kalkulasi SQL:**
+```sql
+overspend = SUM(total_amount_local_curr) - SUM(estimasi_pr * quantity_pr)
+```
+Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif.
+
+**Formula Excel:**
+- Kolom **OE (BW)**: `= Estimasi_PR × Qty_PR`
+- Kolom **Efisiensi (BX)**: `= OE − Total_Amount_in_Local_Curr`
+- Filter baris dengan nilai Efisiensi **negatif** (konvensi Excel: negatif = realisasi lebih mahal dari OE)
+- Urutkan ascending, ambil 10 teratas (nilai paling negatif = paling overspend)
+                """)
 
             overspend_query = f"""
             SELECT
@@ -242,7 +272,23 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key_vendor_var}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_vendor_var})
 
             if st.session_state.get(key_vendor_var, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Variasi Harga Antar Vendor (Top 10 Material)**: Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
+
+**Kalkulasi harga satuan SQL:**
+```sql
+unit_price = total_amount_local_curr / NULLIF(qty_po, 0)
+```
+
+Chart menampilkan scatter harga satuan tiap transaksi PO per vendor, untuk 10 material dengan nilai total terbesar.
+
+**Cara membaca:**
+- Rentang harga **sempit** = harga pasar sudah terstabilisasi antar vendor
+- Rentang harga **lebar** = ada potensi penghematan besar melalui seleksi vendor atau negosiasi
+- Vendor dengan harga terendah konsisten = kandidat utama untuk dijadikan **vendor preferens**
+
+Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor` untuk membandingkan.
+                """)
 
             st.caption("10 material dengan jumlah vendor terbanyak. Perbandingan harga satuan rata-rata per vendor.")
 
@@ -335,7 +381,22 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.button(icon, key=f"btn_{key_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend})
 
             if st.session_state.get(key_trend, False):
-                st.info("""Masih belum ada info""")
+                st.info("""\
+**Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO dari waktu ke waktu.
+
+**Kalkulasi SQL:**
+```sql
+unit_price = AVG(total_amount_local_curr / NULLIF(qty_po, 0))
+```
+Di-group per `DATE_TRUNC('month', date_ordered)` untuk tampilan bulanan.
+
+**Kegunaan analisis:**
+- Tren **naik** = indikasi inflasi bahan baku atau leverage vendor meningkat → perlu renegosiasi
+- Tren **turun** = negosiasi berhasil atau kondisi pasar lebih kompetitif ✅
+- **Lonjakan tiba-tiba** = perlu investigasi (perubahan spesifikasi, vendor baru, atau potensi kesalahan input)
+
+Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bulan_x)`
+                """)
 
             st.caption("Rata-rata harga satuan per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar.")
 
@@ -441,7 +502,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
         if not detail_harga_data.empty:
             def status_harga(persen):
-                if pd.isna(persen):       return "—"
+                if pd.isna(persen):       return "-"
                 elif persen > 10:         return "🔴 Jauh Melebihi OE"
                 elif persen > 0:          return "🟡 Melebihi OE"
                 elif persen >= -5:        return "🟢 Sesuai OE"
