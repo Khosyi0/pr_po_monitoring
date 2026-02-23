@@ -22,8 +22,7 @@ def render(**kwargs):
     changelog_data = [
         {"Tanggal": "23 Feb 2026", "Versi": "v1.8", "Perubahan": """
     - Refactor: dashboard dipecah menjadi multi-file (app.py, config_db.py, utils.py, views/)
-    - Menambahkan info detail dari masing-masing chart
-    - Menambahkan detail dari masing-masing chart"""},
+    - Menambahkan info detail dari masing-masing chart di semua halaman"""},
         {"Tanggal": "20 Feb 2026", "Versi": "v1.7", "Perubahan": """- Menambahkan beberapa info di halaman Kinerja Purchasing Group
     - Total Item PR
     - Total Item PO
@@ -54,12 +53,12 @@ def render(**kwargs):
         - Tren Lead Time per Bulan
         - Ringkasan Kecepatan per PG x Jenis Tender"""},
         {"Tanggal": "19 Feb 2026", "Versi": "v1.6", "Perubahan": """
-    - Update UI
+    - Memperbarui UI dengan ikon dan warna yang lebih menarik
     - Menambahkan halaman Kinerja Purchasing Group
     - Menambahkan Changelog"""},
         {"Tanggal": "18 Feb 2026", "Versi": "v1.5", "Perubahan": """
     - Optimisasi Query
-    - Deployment Website
+    - Deployment Dashboard Website
     - Menambahkan halaman Evaluasi Harga Barang
         - Total Material Unik
         - Total OE
@@ -72,7 +71,12 @@ def render(**kwargs):
         - Variasi Harga Antar Vendor (Top 10 Material)
         - Tren Harga Historis per Material
         - Detail Evaluasi Harga per Material"""},
-        {"Tanggal": "17 Feb 2026", "Versi": "v1.4", "Perubahan": "Update Struktur Database dan Persiapan Deployment Website"},
+        {"Tanggal": "17 Feb 2026", "Versi": "v1.4", "Perubahan": """
+    - Update Struktur Database
+    - Persiapan Deployment Website
+        - Konfigurasi neon.tech untuk hosting database
+        - Konfigurasi streamlit cloud untuk hosting aplikasi
+        - Konfigurasi koneksi database PostgreSQL dengan neon.tech dan Secrets di streamlit cloud"""},
         {"Tanggal": "13 Feb 2026", "Versi": "v1.3", "Perubahan": """- Menambahkan halaman alert
     - PR Pending Mendekati Kadaluarsa (> 30 Hari)
     - PO Overdue (Melewati Delivery Date)
@@ -94,8 +98,10 @@ def render(**kwargs):
         - Top 10 PR Without PO (Pending)
         - Delivery Performance
         - Material Category Value"""},
-        
-        {"Tanggal": "10 Feb 2026", "Versi": "v1.0", "Perubahan": "Rilis awal dashboard monitoring"},
+        {"Tanggal": "10 Feb 2026", "Versi": "v1.0", "Perubahan": """
+    - Rilis awal dashboard monitoring (lokal)
+    - Penggunaan streamlit untuk visualisasi data PR-PO
+    - Koneksi ke database PostgreSQL untuk mengambil data PR-PO"""},
     ]
 
     for item in changelog_data:
