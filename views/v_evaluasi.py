@@ -107,8 +107,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 | Warna titik | 🔴 Merah = `realisasi > OE` (overspend) · 🟢 Hijau = `realisasi ≤ OE` (efisien) |
 
 **Formula Excel:**
-- Kolom **OE (BW)**: `= Estimasi_PR × Qty_PR`
-- Kolom **Efisiensi (BX)**: `= OE − Total_Amount_in_Local_Curr`
+- Kolom **OE**: `= Estimasi_PR × Qty_PR`
+- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
 - Nilai **negatif** di kolom Efisiensi = overspend
 
 Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
@@ -195,8 +195,8 @@ overspend = SUM(total_amount_local_curr) - SUM(estimasi_pr * quantity_pr)
 Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif.
 
 **Formula Excel:**
-- Kolom **OE (BW)**: `= Estimasi_PR × Qty_PR`
-- Kolom **Efisiensi (BX)**: `= OE − Total_Amount_in_Local_Curr`
+- Kolom **OE**: `= Estimasi_PR × Qty_PR`
+- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
 - Filter baris dengan nilai Efisiensi **negatif** (konvensi Excel: negatif = realisasi lebih mahal dari OE)
 - Urutkan ascending, ambil 10 teratas (nilai paling negatif = paling overspend)
                 """)

@@ -493,7 +493,7 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
                 st.info("""\
 **Delivery Performance**: Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
 
-**Sumber:** Kolom `on_time_delivery` di `vw_pr_po_complete`, diisi oleh ETL berdasarkan perbandingan tanggal aktual vs target delivery.
+**Sumber:** Kolom `on_time_delivery` di `vw_pr_po_complete`, diisi berdasarkan perbandingan tanggal aktual vs target delivery.
 
 | Status | Kondisi |
 |---|---|

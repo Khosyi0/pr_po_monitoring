@@ -54,7 +54,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         
         if st.session_state.get(key_alert_pr, False):
             st.info("""\
-**📋 PR Pending Mendekati Kadaluarsa (> 30 Hari)**
+**PR Pending Mendekati Kadaluarsa (> 30 Hari)**
 
 Tabel ini menampilkan PR yang belum dikonversi menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
 
@@ -139,7 +139,7 @@ Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` 
 
             if st.session_state.get(key_alert_po, False):
                 st.info("""\
-**⏰ PO Overdue (Melewati Delivery Date)**
+**PO Overdue (Melewati Delivery Date)**
 
 Tabel ini menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
 

@@ -238,8 +238,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 | Efisiensi | `Nilai OE − Nilai Realisasi` |
 
 **Formula Excel:**
-- Kolom **OE (BW)**: `= Estimasi_PR × Qty_PR`
-- Kolom **Efisiensi (BX)**: `= OE − Total_Amount_in_Local_Curr`
+- Kolom **OE**: `= Estimasi_PR × Qty_PR`
+- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
 - Lalu `=SUMIF(kolom_pg, nama_pg, kolom_oe)` dan `=SUMIF(kolom_pg, nama_pg, kolom_realisasi)`
 
 **Cara membaca:** Bar Realisasi (biru) **lebih pendek** dari OE (oranye) = ada penghematan ✅. Lebih panjang = over budget ❌.
@@ -298,7 +298,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             / NULLIF(SUM(oe), 0) * 100
 ```
 
-**Formula Excel (kolom % Efisiensi BY):**
+**Formula Excel (kolom % Efisiensi):**
 ```
 = (OE - Total_Amount) / OE
 ```
