@@ -164,18 +164,23 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
 
             alert_po_query = f"""
             SELECT
-                v.nomor_po,
-                v.date_ordered,
-                p.del_date_po AS target_delivery,
-                v.vendor_name,
-                v.on_time_delivery,
-                CURRENT_DATE - p.del_date_po::DATE AS hari_terlambat
-            FROM vw_pr_po_complete v
-            LEFT JOIN purchase_orders p ON v.nomor_po = p.nomor_po
+                nomor_po,
+                date_ordered,
+                target_delivery,
+                vendor_name,
+                on_time_delivery,
+                CURRENT_DATE - target_delivery::DATE AS hari_terlambat
+            FROM (
+                SELECT 
+                    v.*, 
+                    p.del_date_po AS target_delivery
+                FROM vw_pr_po_complete v
+                LEFT JOIN purchase_orders p ON v.nomor_po = p.nomor_po
+            ) sub
             WHERE {filter_conditions}
-            AND v.nomor_po IS NOT NULL
-            AND p.del_date_po::DATE < CURRENT_DATE
-            AND v.on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
+            AND nomor_po IS NOT NULL
+            AND target_delivery::DATE < CURRENT_DATE
+            AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
             GROUP BY 1, 2, 3, 4, 5, 6
             ORDER BY hari_terlambat DESC
             """

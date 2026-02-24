@@ -26,9 +26,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         st.markdown("Analisis harga barang pada PO: perbandingan terhadap OE, variasi harga antar vendor, dan tren harga historis.")
         st.markdown("""
             <style>
-            /* Mengecilkan ukuran font pada nilai metrik */
             [data-testid="stMetricValue"] > div {
-                font-size: 1.8rem !important; 
+                font-size: 1.8rem !important; /* Ukuran font standar yang nyaman dibaca, tidak terlalu besar/kecil */
+                white-space: normal !important; /* KUNCI: Mencegah teks dipotong (...) dan memungkinkannya turun baris */
+                word-wrap: break-word !important; /* Memastikan angka/kata panjang bisa patah dengan rapi */
+                line-height: 1.2 !important; /* Mengatur jarak vertikal jika teks menjadi 2 baris */
             }
             </style>
         """, unsafe_allow_html=True)
@@ -177,9 +179,9 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
                     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
                     is_open = st.session_state[kpi["key"]]
                     icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
-                        st.session_state[kpi["key"]] = not is_open
-                        st.rerun()
+                    tooltip = "Hide Formula" if is_open else "Show Formula"
+                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
+                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
         # ── Baris 2: 2 metric tambahan (kiri saja) ────────────────────────────
         row2_kpis = KPI_EVAL[4:]
@@ -193,9 +195,9 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
                     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
                     is_open = st.session_state[kpi["key"]]
                     icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
-                        st.session_state[kpi["key"]] = not is_open
-                        st.rerun()
+                    tooltip = "Hide Formula" if is_open else "Show Formula"
+                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
+                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
         # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
         for kpi in KPI_EVAL:

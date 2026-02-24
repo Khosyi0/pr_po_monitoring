@@ -23,6 +23,16 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 PR-PO Monitoring Dashboard
             </h1>
         """, unsafe_allow_html=True)
+        st.markdown("""
+            <style>
+            [data-testid="stMetricValue"] > div {
+                font-size: 2rem !important; /* Ukuran font standar yang nyaman dibaca, tidak terlalu besar/kecil */
+                white-space: normal !important; /* KUNCI: Mencegah teks dipotong (...) dan memungkinkannya turun baris */
+                word-wrap: break-word !important; /* Memastikan angka/kata panjang bisa patah dengan rapi */
+                line-height: 1.2 !important; /* Mengatur jarak vertikal jika teks menjadi 2 baris */
+            }
+            </style>
+        """, unsafe_allow_html=True)
         st.markdown("---")
 
         # ── KPI ──────────────────────────────────────────
@@ -166,9 +176,9 @@ AS total_savings
                     st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
                     is_open = st.session_state[kpi["key"]]
                     icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
-                        st.session_state[kpi["key"]] = not is_open
-                        st.rerun()
+                    tooltip = "Hide Formula" if is_open else "Show Formula"
+                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
+                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
         # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
         for kpi in KPI_DASH:

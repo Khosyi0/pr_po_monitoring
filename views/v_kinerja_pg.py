@@ -27,10 +27,30 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         st.markdown("Analisis komprehensif jumlah item, nilai pengadaan (OE vs Realisasi), efisiensi, dan kecepatan proses per Purchasing Group, termasuk breakdown per metode tender.")
         st.markdown("""
             <style>
-            /* Mengecilkan ukuran font pada nilai metrik */
             [data-testid="stMetricValue"] > div {
-                font-size: 1.4rem !important; 
+                font-size: 1.8rem !important; /* Ukuran font standar yang nyaman dibaca, tidak terlalu besar/kecil */
+                white-space: normal !important; /* KUNCI: Mencegah teks dipotong (...) dan memungkinkannya turun baris */
+                word-wrap: break-word !important; /* Memastikan angka/kata panjang bisa patah dengan rapi */
+                line-height: 1.2 !important; /* Mengatur jarak vertikal jika teks menjadi 2 baris */
             }
+            </style>
+        """, unsafe_allow_html=True)
+        st.markdown(f"""
+            <style>
+            /* Warna Hijau */
+            .metric-green div[data-testid="stMetricDelta"] > div {{
+                color: #09ab3b !important;
+            }}
+            /* Warna Oranye - Targetkan sampai ke teks terdalam */
+            .metric-orange div[data-testid="stMetricDelta"] > div,
+            .metric-orange span[data-testid="stMetricDeltaText"] {{
+                color: #ffa500 !important;
+                -webkit-text-fill-color: #ffa500 !important;
+            }}
+            /* Warna Merah */
+            .metric-red div[data-testid="stMetricDelta"] > div {{
+                color: #ff4b4b !important;
+            }}
             </style>
         """, unsafe_allow_html=True)
         st.markdown("---")
@@ -160,8 +180,8 @@ ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                         st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
                         is_open = st.session_state[kpi["key"]]
                         icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        # on_click - tidak trigger rerun penuh, tab aktif tetap terjaga
-                        st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula",
+                        tooltip = "Hide Formula" if is_open else "Show Formula"
+                        st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
                                   on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
             for kpi in KPI_PG:
@@ -953,17 +973,198 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 total      = int(speed_kpi['total_lt'][0] or 1)
                 ontime_pct = ontime / total * 100
 
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Median Lead Time", f"{med_lt} Hari")
-                with col2:
-                    st.metric("Rentang Lead Time", f"{min_lt} - {max_lt} Hari")
-                with col3:
-                    st.metric("On-Time (<=55 Hari)", f"{ontime:,}",
-                              delta=f"{ontime_pct:.1f}% dari total")
-                with col4:
-                    st.metric("Terlambat (>55 Hari)", f"{late:,}",
-                              delta=f"{100-ontime_pct:.1f}% dari total")
+                if ontime_pct >= 80:
+                    color_class = "green"
+                    d_color = "normal"   # Biarkan hijau bawaan
+                elif 60 <= ontime_pct < 80:
+                    color_class = "orange"
+                    d_color = "off"      # Matikan warna bawaan agar CSS kita masuk
+                else:
+                    color_class = "red"
+                    d_color = "inverse"  # Biarkan merah bawaan
+
+                SPEED_KPI = [
+                    {
+                        "key": "kpi_speed_median",
+                        "metric_args": ("Median Lead Time", f"{med_lt} Hari"),
+                        "metric_kwargs": {},
+                        "formula": """\
+**Median Lead Time**: Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY lead_time_process_po)::numeric,
+1) AS median_lt
+```
+
+**Mengapa median, bukan rata-rata?**
+
+| Metrik | Sifat |
+|---|---|
+| **Rata-rata (AVG)** | Mudah terpengaruh outlier, satu PO dengan lead time 500 hari bisa menarik rata-rata jauh ke atas |
+| **Median** | Nilai yang tepat di tengah data, 50% PO selesai lebih cepat, 50% lebih lambat |
+
+Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO dengan lead time ekstrem yang mendistorsi gambaran keseluruhan. Gunakan median sebagai ukuran "kecepatan tipikal" proses pengadaan.
+"""
+                    },
+                    {
+                        "key": "kpi_speed_rentang",
+                        "metric_args": ("Rentang Lead Time", f"{min_lt} - {max_lt} Hari"),
+                        "metric_kwargs": {},
+                        "formula": """\
+**Rentang Lead Time**: Selisih antara lead time terpendek dan terpanjang dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(MIN(lead_time_process_po)::numeric, 0) AS min_lt,
+ROUND(MAX(lead_time_process_po)::numeric, 0) AS max_lt
+```
+
+**Cara membaca:**
+- **Rentang sempit** (mis. 5-30 hari) → proses pengadaan konsisten dan terprediksi
+- **Rentang lebar** (mis. 0-500 hari) → ada variabilitas tinggi, perlu investigasi outlier
+
+**Penyebab umum rentang sangat lebar:**
+- PO kontrak (cepat) vs tender terbuka (lama) dalam satu periode
+- PR darurat vs pengadaan rutin
+- Kendala dokumen / approval yang berlarut-larut pada sebagian PO
+
+Filter: hanya baris dengan `nomor_po IS NOT NULL AND lead_time_process_po IS NOT NULL`
+"""
+                    },
+                    {
+                        "key": "kpi_speed_ontime",
+                        "metric_args": ("On-Time (<=55 Hari)", f"{ontime:,}"),
+                        "metric_kwargs": {
+                            "delta": f"{ontime_pct:.1f}% dari total",
+                            "delta_color": d_color
+                        },
+                        "formula": """\
+**On-Time (≤55 Hari)**: Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END) AS jml_ontime
+```
+
+**% dari total** = `jml_ontime / total_lt × 100`
+
+**Target SLA = 55 hari** dihitung dari tanggal PR dibuat (`tgl_create_pr`) hingga tanggal PO diterbitkan (`date_ordered`).
+
+| % On-Time | Interpretasi |
+|---|---|
+| ≥ 80% | 🟢 Proses pengadaan berjalan baik |
+| 60–79% | 🟡 Perlu perhatian, identifikasi bottleneck |
+| < 60% | 🔴 Kritis, evaluasi menyeluruh diperlukan |
+
+Untuk melihat distribusi lengkap per rentang waktu, lihat chart **Distribusi Lead Time Overall** di bawah.
+"""
+                    },
+                    {
+                        "key": "kpi_speed_late",
+                        "metric_args": ("Terlambat (>55 Hari)", f"{late:,}"),
+                        "metric_kwargs": {
+                            "delta": f"{100-ontime_pct:.1f}% dari total",
+                            "delta_color": d_color
+                        },
+                        "formula": """\
+**Terlambat (>55 Hari)**: Jumlah PO yang melebihi batas SLA 55 hari.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END) AS jml_late
+```
+
+**% dari total** = `jml_late / total_lt × 100`
+
+**Penyebab umum keterlambatan:**
+- Proses approval PR yang panjang (multi-level signatory)
+- Tender/lelang yang memerlukan waktu lama (>30 hari)
+- Vendor tidak responsif atau dokumen tidak lengkap
+- PO lintas departemen dengan koordinasi rumit
+
+**Tindak lanjut yang disarankan:**
+1. Drill-down ke tabel **Ringkasan Kecepatan per PG** di bawah untuk identifikasi PG dengan % terlambat tertinggi
+2. Bandingkan lead time kontrak vs tender di tab **Breakdown per Metode Tender**
+3. Cek chart **Tren Lead Time per Bulan** untuk melihat apakah keterlambatan memburuk atau membaik
+"""
+                    }
+                ]
+
+                for kpi in SPEED_KPI:
+                    if kpi["key"] not in st.session_state:
+                        st.session_state[kpi["key"]] = False
+
+                speed_cols = st.columns(len(SPEED_KPI))
+                for col, kpi in zip(speed_cols, SPEED_KPI):
+                    with col:
+                        m_col, btn_col = st.columns([5, 1])
+                        with m_col:
+                            st.metric(
+                                label=kpi["metric_args"][0], 
+                                value=kpi["metric_args"][1], 
+                                delta=kpi["metric_kwargs"].get("delta"),
+                                delta_color=d_color
+                            )
+                        with btn_col:
+                            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                            is_open = st.session_state[kpi["key"]]
+                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+
+                            tooltip = "Hide Formula" if is_open else "Show Formula"
+                            
+                            st.button(
+                                icon, 
+                                key=f"btn_{kpi['key']}", 
+                                help=tooltip,
+                                on_click=toggle_state, 
+                                kwargs={"state_key": kpi["key"]}
+                            )
+                        # ── JS: paksa warna delta On-Time & Terlambat sesuai threshold ──
+                # st.markdown('<div class="...">') tidak bisa membungkus st.metric()
+                # karena setiap widget Streamlit dirender sebagai elemen DOM independen.
+                # Satu-satunya cara reliable: JS langsung cari elemen via label teks.
+                import streamlit.components.v1 as _comp
+                _ontime_color = "#09ab3b" if ontime_pct >= 80 else ("#ffa500" if ontime_pct >= 60 else "#ff4b4b")
+                _late_color   = _ontime_color
+                _comp.html(f"""
+                <script>
+                (function() {{
+                    function applyColors() {{
+                        var doc    = window.parent.document;
+                        var labels = doc.querySelectorAll('[data-testid="stMetricLabel"]');
+                        var found  = 0;
+                        labels.forEach(function(label) {{
+                            var text = (label.innerText || label.textContent || "").trim();
+                            var color = null;
+                            if (text.indexOf("On-Time")   !== -1) color = "{_ontime_color}";
+                            if (text.indexOf("Terlambat") !== -1) color = "{_late_color}";
+                            if (!color) return;
+                            var metric = label.closest('[data-testid="stMetric"]');
+                            if (!metric) return;
+                            var delta = metric.querySelector('[data-testid="stMetricDelta"]');
+                            if (!delta) return;
+                            // Set warna di semua elemen dalam delta (termasuk ikon panah)
+                            [delta].concat(Array.from(delta.querySelectorAll("*"))).forEach(function(el) {{
+                                el.style.setProperty("color", color, "important");
+                                el.style.setProperty("-webkit-text-fill-color", color, "important");
+                            }});
+                            found++;
+                        }});
+                        // DOM belum siap, coba lagi
+                        if (found < 2) setTimeout(applyColors, 150);
+                    }}
+                    // Jalankan saat load dan juga langsung (untuk handle rerun Streamlit)
+                    setTimeout(applyColors, 250);
+                    window.addEventListener("load", function() {{ setTimeout(applyColors, 250); }});
+                }})();
+                </script>
+                """, height=0)
+
+                for kpi in SPEED_KPI:
+                    if st.session_state[kpi["key"]]:
+                        st.info(kpi["formula"])
 
             st.markdown("---")
 
