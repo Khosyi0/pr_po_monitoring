@@ -20,6 +20,16 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "24 Feb 2026", "Versi": "v1.9", "Perubahan": """
+    - Fix bug navigasi halaman
+        - Menggunakan navigasi bawaan dengan custom CSS untuk menggantikan 'streamlit-option-menu' yang menyebabkan bug navigasi
+    - Menambahkan 'Show Formula' di setiap info penting di atas pada semua halaman
+    - Update halaman Kinerja Purchasing Group
+        - Fix bug 'Show Formula' dengan navigasi antar tab di halaman Kinerja Purchasing Group
+        - Menghapus "Rata-rata Lead Time" di tab 'Kecepatan Proses'karena duplicate dengan info di atas
+        - Mengecilkan font info agar value "Total OE" dan "Efisiensi" dapat terbaca
+        - Mengubah chart Distribusi Lead Time Overall dari Bar Chart menjadi Pie Chart
+    - Menambahkan caption singkat untuk setiap chart di semua halaman"""},
         {"Tanggal": "23 Feb 2026", "Versi": "v1.8", "Perubahan": """
     - Refactor: dashboard dipecah menjadi multi-file (app.py, config_db.py, utils.py, views/)
     - Menambahkan info detail dari masing-masing chart di semua halaman"""},
@@ -53,7 +63,7 @@ def render(**kwargs):
         - Tren Lead Time per Bulan
         - Ringkasan Kecepatan per PG x Jenis Tender"""},
         {"Tanggal": "19 Feb 2026", "Versi": "v1.6", "Perubahan": """
-    - Memperbarui UI dengan ikon dan warna yang lebih menarik
+    - Memperbarui UI dengan ikon dan warna yang cocok untuk tema gelap dan terang
     - Menambahkan halaman Kinerja Purchasing Group
     - Menambahkan Changelog"""},
         {"Tanggal": "18 Feb 2026", "Versi": "v1.5", "Perubahan": """
@@ -105,5 +115,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9"])):
             st.markdown(item["Perubahan"])

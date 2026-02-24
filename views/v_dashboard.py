@@ -60,8 +60,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         with st.spinner("Memuat KPI..."):
             kpi_data = load_data(kpi_query)
 
-        col1, col2, col3, col4 = st.columns(4)
-
         total_pr     = int(kpi_data['total_pr'][0] or 0)
         total_po     = int(kpi_data['total_po'][0] or 0)
         pr_with_po   = int(kpi_data['pr_with_po'][0] or 0)
@@ -70,14 +68,112 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         savings      = float(kpi_data['total_savings'][0] or 0)
         savings_pct  = float(kpi_data['avg_savings_pct'][0] or 0)
 
-        with col1:
-            st.metric("Total PR", f"{total_pr:,}", delta=f"{pr_with_po:,} with PO")
-        with col2:
-            st.metric("Total PO", f"{total_po:,}", delta=f"{pr_without:,} PR pending")
-        with col3:
-            st.metric("Total Estimasi PR", format_idr(estimasi))
-        with col4:
-            st.metric("Total Savings", format_idr(savings), delta=f"{savings_pct:.1f}% avg")
+        # ── Definisi KPI: urutan kiri→kanan, key, label, formula ─────────────
+        KPI_DASH = [
+            {
+                "key": "kpi_total_pr",
+                "metric_args": ("Total PR", f"{total_pr:,}"),
+                "metric_kwargs": {"delta": f"{pr_with_po:,} with PO"},
+                "formula": """\
+**Total PR**: Jumlah baris Purchase Requisition unik dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(DISTINCT CASE
+    WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+    THEN no_pr || '-' || line_item_pr::text
+END) AS total_pr
+```
+Setiap kombinasi `no_pr + line_item_pr` dihitung sebagai satu item PR.
+
+| Sub-metrik | Kalkulasi |
+|---|---|
+| PR with PO | `COUNT(DISTINCT ...)` dimana `nomor_po IS NOT NULL` |
+| PR pending | `Total PR − PR with PO` |\
+""",
+            },
+            {
+                "key": "kpi_total_po",
+                "metric_args": ("Total PO", f"{total_po:,}"),
+                "metric_kwargs": {"delta": f"{pr_without:,} PR pending"},
+                "formula": """\
+**Total PO**: Jumlah baris Purchase Order dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
+```
+Menghitung semua baris PO (termasuk duplikat per line item), bukan COUNT DISTINCT, agar sesuai dengan jumlah item yang dipesan.
+
+**PR pending** = jumlah baris PR yang **belum** memiliki PO pasangan. Semakin kecil = semakin baik.\
+""",
+            },
+            {
+                "key": "kpi_estimasi",
+                "metric_args": ("Total Estimasi PR", format_idr(estimasi)),
+                "metric_kwargs": {},
+                "formula": """\
+**Total Estimasi PR (OE)** - Total nilai Owner's Estimate dari semua PR dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_estimasi
+```
+
+**Sumber kolom `oe`:** Dihitung di view sebagai `estimasi_pr × quantity_pr` - nilai estimasi harga satuan dikali kuantitas yang diminta.
+
+Ini adalah **anggaran yang disiapkan** oleh pemohon PR sebelum proses pengadaan dimulai. Dibandingkan dengan Total Realisasi PO untuk mengukur efisiensi pengadaan.\
+""",
+            },
+            {
+                "key": "kpi_savings",
+                "metric_args": ("Total Savings", format_idr(savings)),
+                "metric_kwargs": {"delta": f"{savings_pct:.1f}% avg"},
+                "formula": """\
+**Total Savings** - Selisih antara total nilai OE (anggaran) dengan total realisasi PO.
+
+**Kalkulasi SQL:**
+```sql
+SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END)
+- SUM(CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END)
+AS total_savings
+```
+
+| Kondisi | Artinya |
+|---|---|
+| Savings **positif** | Realisasi PO lebih murah dari OE → ada penghematan ✅ |
+| Savings **negatif** | Realisasi PO melebihi OE → over budget ❌ |
+
+**% avg** = rata-rata persentase efisiensi per item: `AVG((oe - realisasi) / oe × 100)`\
+""",
+            },
+        ]
+
+        # ── Inisialisasi session state ─────────────────────────────────────────
+        for kpi in KPI_DASH:
+            if kpi["key"] not in st.session_state:
+                st.session_state[kpi["key"]] = False
+
+        # ── Render metric + tombol per kolom ──────────────────────────────────
+        kpi_cols = st.columns(len(KPI_DASH))
+        for col, kpi in zip(kpi_cols, KPI_DASH):
+            with col:
+                # Bagi kolom: metric lebar, tombol sempit
+                m_col, btn_col = st.columns([5, 1])
+                with m_col:
+                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
+                with btn_col:
+                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                    is_open = st.session_state[kpi["key"]]
+                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
+                        st.session_state[kpi["key"]] = not is_open
+                        st.rerun()
+
+        # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
+        for kpi in KPI_DASH:
+            if st.session_state[kpi["key"]]:
+                st.info(kpi["formula"])
 
         st.markdown("---")
 
@@ -123,6 +219,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Tidak ada formula Excel langsung** untuk chart ini, data diambil dari relasi tabel `pr_items` ↔ `po_items` di database. Di Excel, padanannya adalah `COUNTIF` atau `SUMIF` dengan kondisi apakah kolom *No PO* di sheet PO SAP terisi atau kosong untuk setiap *No PR*.
                 """)
+
+            st.caption("Jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.")
 
             dept_query = f"""
             SELECT
@@ -187,6 +285,8 @@ Diurutkan descending berdasarkan `total_value`, lalu diambil 10 teratas.
 
 Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap vendor, urutkan descending, ambil 10 teratas.
                 """)
+
+            st.caption("Top 10 vendor dengan total nilai PO terbesar.")
 
             vendor_query = f"""
             SELECT
@@ -253,6 +353,8 @@ Mode **Kumulatif**: menggunakan `.cumsum()` di Python setelah data diambil, coco
 
 Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan)` per baris bulan.
                 """)
+
+            st.caption("Jumlah PR dan PO yang dibuat per bulan.")
         
             trend_query = f"""
             WITH pr_monthly AS (
@@ -352,6 +454,8 @@ END
 
 Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)` atau nested `=IF(...)`.
                 """)
+
+            st.caption("Distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).")
                 
             leadtime_query = f"""
             SELECT
@@ -373,7 +477,6 @@ Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)
                 leadtime_data = load_data(leadtime_query)
 
             if not leadtime_data.empty:
-                # Pastikan urutan kategori benar
                 category_order = ['0-7 days', '8-14 days', '15-30 days', '31-60 days', '60+ days']
                 leadtime_data['lead_time_range'] = pd.Categorical(
                     leadtime_data['lead_time_range'], categories=category_order, ordered=True
@@ -438,6 +541,8 @@ LIMIT 10
 
 Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending → ambil 10 baris teratas.
             """)
+
+        st.caption("Tabel 10 PR tertua yang belum diproses menjadi PO.")
 
         pr_without_po_query = f"""
         SELECT
@@ -504,6 +609,8 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
 
 Di Excel: `=IF(tgl_gr="","IN PROGRESS",IF(tgl_gr<=del_date_po,"TEPAT WAKTU","TERLAMBAT"))`
                 """)
+
+            st.caption("Status pengiriman PO (tepat waktu vs terlambat vs pending).")
                 
             delivery_query = f"""
             SELECT
@@ -576,6 +683,8 @@ ORDER BY abc_indicator
 
 **Sumber:** Kolom `abc_indicator` dari master material SAP, tersedia di kolom *ABC Ind.* pada data PO SAP.
                 """)
+
+            st.caption("Total nilai PO per kategori ABC material.")
                 
             material_query = f"""
             SELECT

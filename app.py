@@ -299,7 +299,7 @@ try:
         Date Range
     </p>
     """, unsafe_allow_html=True)
-    date_from = st.sidebar.date_input("From", value=datetime.now().date() - timedelta(days=90))
+    date_from = st.sidebar.date_input("From", value=datetime.now().date() - timedelta(days=360))
     date_to   = st.sidebar.date_input("To",   value=datetime.now().date())
 
     if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
@@ -346,7 +346,7 @@ col_foot1, col_foot2 = st.columns([4, 1])
 with col_foot1:
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"PR-PO Monitoring System — v1.8 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"PR-PO Monitoring System - v1.9 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
     )

@@ -54,9 +54,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         
         if st.session_state.get(key_alert_pr, False):
             st.info("""\
-**PR Pending Mendekati Kadaluarsa (> 30 Hari)**
-
-Tabel ini menampilkan PR yang belum dikonversi menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
+**PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
 
 **Kalkulasi SQL:**
 ```sql
@@ -139,9 +137,7 @@ Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` 
 
             if st.session_state.get(key_alert_po, False):
                 st.info("""\
-**PO Overdue (Melewati Delivery Date)**
-
-Tabel ini menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
+**PO Overdue (Melewati Delivery Date)**: Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
 
 **Kalkulasi SQL:**
 ```sql
@@ -214,9 +210,6 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
                 tooltip = "Hide Formula" if is_open else "Show Formula"
                 st.button(icon, key=f"btn_{key_alert_aging}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_alert_aging})
 
-            # Menambahkan caption kosong hanya agar sejajar dengan kolom kiri
-            st.caption("&nbsp;", unsafe_allow_html=True) 
-
             if st.session_state.get(key_alert_aging, False):
                 st.info("""\
 **Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
@@ -226,10 +219,10 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
 aging_days = CURRENT_DATE − date_ordered::DATE
 
 CASE
-  WHEN aging_days <= 15 THEN '1. 0-15 Hari'
-  WHEN aging_days <= 30 THEN '2. 16-30 Hari'
-  WHEN aging_days <= 60 THEN '3. 31-60 Hari'
-  ELSE                       '4. > 60 Hari'
+  WHEN aging_days <= 15 THEN '0-15 Hari'
+  WHEN aging_days <= 30 THEN '16-30 Hari'
+  WHEN aging_days <= 60 THEN '31-60 Hari'
+  ELSE                       '> 60 Hari'
 END AS umur_po
 ```
 
@@ -245,15 +238,17 @@ END AS umur_po
 
                 """)
 
+            st.caption("Jumlah PO yang belum dikirim")
+
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
             aging_query = f"""
             SELECT
                 CASE
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 15 THEN '1. 0-15 Hari'
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 30 THEN '2. 16-30 Hari'
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 60 THEN '3. 31-60 Hari'
-                    ELSE '4. > 60 Hari'
+                    WHEN CURRENT_DATE - date_ordered::DATE <= 15 THEN '0-15 Hari'
+                    WHEN CURRENT_DATE - date_ordered::DATE <= 30 THEN '16-30 Hari'
+                    WHEN CURRENT_DATE - date_ordered::DATE <= 60 THEN '31-60 Hari'
+                    ELSE '> 60 Hari'
                 END AS umur_po,
                 COUNT(DISTINCT nomor_po) AS total_po
             FROM vw_pr_po_complete
@@ -266,14 +261,18 @@ END AS umur_po
                 aging_data = load_data(aging_query)
 
             if not aging_data.empty:
+                category_aging = ['0-15 Hari', '16-30 Hari', '31-60 Hari', '> 60 Hari']
+                
                 fig = px.bar(
                     aging_data, x='umur_po', y='total_po',
                     labels={'umur_po': 'Aging (Hari)', 'total_po': 'Jumlah PO'},
-                    text_auto=True
+                    text_auto=True,
+                    category_orders={'umur_po': category_aging}
                 )
+                
                 fig.update_layout(
-                    height=400, # Disamakan tinggi dengan dataframe kiri
-                    margin=dict(t=20, b=0, l=0, r=0) # Menghapus judul bawaan plotly agar tidak double
+                    height=400,
+                    margin=dict(t=20, b=0, l=0, r=0)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:

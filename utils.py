@@ -1,5 +1,5 @@
 """
-utils.py — Fungsi pembantu: format uang, CSS, dan filter kondisi SQL
+utils.py - Fungsi pembantu: format uang, CSS, dan filter kondisi SQL
 """
 
 import streamlit as st

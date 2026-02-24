@@ -25,6 +25,14 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("Analisis komprehensif jumlah item, nilai pengadaan (OE vs Realisasi), efisiensi, dan kecepatan proses per Purchasing Group, termasuk breakdown per metode tender.")
+        st.markdown("""
+            <style>
+            /* Mengecilkan ukuran font pada nilai metrik */
+            [data-testid="stMetricValue"] > div {
+                font-size: 1.4rem !important; 
+            }
+            </style>
+        """, unsafe_allow_html=True)
         st.markdown("---")
 
         # ── KPI RINGKASAN ─────────────────────────────────────────────────────
@@ -81,26 +89,126 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         
             # MENGGUNAKAN PR_WITH_PO AGAR SINKRON DENGAN DASHBOARD
             konversi_pct = (pr_with_po / t_item_pr * 100) if t_item_pr > 0 else 0
+            delta_efis = "efisien" if t_efis >= 0 else "over budget"
+            lt_label   = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
+            lt_delta   = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
 
-            col1, col2, col3, col4, col5 = st.columns(5)
-            with col1:
-                st.metric("Total Item PR", f"{t_item_pr:,}",
-                          delta=f"{konversi_pct:.1f}% sudah PO")
-            with col2:
-                st.metric("Total Item PO", f"{t_item_po:,}")
-            with col3:
-                st.metric("Total OE", format_idr(t_oe))
-            with col4:
-                delta_efis = "efisien" if t_efis >= 0 else "over budget"
-                st.metric("Efisiensi", format_idr(t_efis), delta=f"{t_efis_pct:.1f}% {delta_efis}")
-            with col5:
-                lt_label = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
-                lt_delta = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
-                st.metric("Avg Lead Time", lt_label, delta=lt_delta)
+            KPI_PG = [
+                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{t_item_pr:,}"),   "metric_kwargs": {"delta": f"{konversi_pct:.1f}% sudah PO"},          "formula": """**Total Item PR**: Jumlah baris item Purchase Requisition unik dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(DISTINCT CASE
+    WHEN no_pr != 'No PR' AND {bagian_pr_cond}
+    THEN no_pr || '-' || line_item_pr::text
+END) AS total_item_pr
+```
+
+**% sudah PO** = `pr_with_po / total_item_pr × 100` - persentase item PR yang sudah berhasil dikonversi menjadi PO."""},
+                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{t_item_po:,}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah baris item Purchase Order dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_item_po
+```
+
+Menghitung semua baris PO per line item, bukan COUNT DISTINCT nomor PO. Satu nomor PO bisa memiliki banyak baris item material yang berbeda."""},
+                {"key": "kpi_pg_oe",        "metric_args": ("Total OE", format_idr(t_oe)),        "metric_kwargs": {},                                                   "formula": """**Total OE (Owner's Estimate)**: Total nilai anggaran estimasi dari semua PR dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_oe
+```
+
+**Sumber kolom `oe`:** `estimasi_pr × quantity_pr` - nilai estimasi harga satuan dikali kuantitas yang diminta pemohon PR."""},
+                {"key": "kpi_pg_efisiensi", "metric_args": ("Efisiensi", format_idr(t_efis)),     "metric_kwargs": {"delta": f"{t_efis_pct:.1f}% {delta_efis}"},         "formula": """**Efisiensi**: Selisih antara total OE dan total realisasi PO.
+
+**Kalkulasi:**
+```
+Efisiensi   = Total OE − Total Realisasi PO
+% Efisiensi = Efisiensi / Total OE × 100
+```
+
+| Kondisi | Interpretasi |
+|---|---|
+| **Positif** | Realisasi lebih murah dari anggaran → penghematan ✅ |
+| **Negatif** | Realisasi melebihi anggaran → perlu evaluasi ❌ |"""},
+                {"key": "kpi_pg_lead_time", "metric_args": ("Avg Lead Time", lt_label),           "metric_kwargs": {"delta": lt_delta},                                  "formula": """**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+    THEN lead_time_process_po END)::numeric, 1) AS avg_lead_time_overall
+```
+
+**Sumber `lead_time_process_po`:** Selisih hari antara `tgl_create_pr` dan `date_ordered`.
+
+**Target SLA = 55 hari.** Informasi detail per bulan dan per jenis tender tersedia di tab **Kecepatan Proses**."""},
+            ]
+
+            for kpi in KPI_PG:
+                if kpi["key"] not in st.session_state:
+                    st.session_state[kpi["key"]] = False
+
+            kpi_cols = st.columns(len(KPI_PG))
+            for col, kpi in zip(kpi_cols, KPI_PG):
+                with col:
+                    m_col, btn_col = st.columns([5, 1])
+                    with m_col:
+                        st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
+                    with btn_col:
+                        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                        is_open = st.session_state[kpi["key"]]
+                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                        # on_click - tidak trigger rerun penuh, tab aktif tetap terjaga
+                        st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula",
+                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+
+            for kpi in KPI_PG:
+                if st.session_state[kpi["key"]]:
+                    st.info(kpi["formula"])
 
         st.markdown("---")
 
         # ── TAB: OVERVIEW | TENDER TYPE | KECEPATAN PROSES ───────────────────
+        # ── Inject JS: simpan & pulihkan tab aktif via localStorage ─────────
+        # Streamlit versi lama tidak support key= di st.tabs().
+        # JS ini menyimpan tab yang diklik ke localStorage dan memulihkannya
+        # setelah rerun, sehingga tab tidak kembali ke tab 1 saat tombol ditekan.
+        import streamlit.components.v1 as components
+        components.html("""
+        <script>
+        (function() {
+            var STORAGE_KEY = 'pg_active_tab';
+            var SELECTOR    = 'button[data-baseweb="tab"]';
+
+            function restoreTab(tabs) {
+                var saved = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+                if (saved > 0 && tabs[saved]) {
+                    setTimeout(function() { tabs[saved].click(); }, 80);
+                }
+                tabs.forEach(function(tab, idx) {
+                    tab.addEventListener('click', function() {
+                        localStorage.setItem(STORAGE_KEY, idx);
+                    });
+                });
+            }
+
+            function init() {
+                var tabs = Array.from(window.parent.document.querySelectorAll(SELECTOR));
+                var pgTabs = tabs.slice(0, 3);
+                if (pgTabs.length === 3) {
+                    restoreTab(pgTabs);
+                } else {
+                    setTimeout(init, 100);
+                }
+            }
+
+            window.addEventListener('load', function() { setTimeout(init, 150); });
+        })();
+        </script>
+        """, height=0)
+
         tab1, tab2, tab3 = st.tabs([
             ":material/overview: Overview per Purchasing Group",
             ":material/sell: Breakdown per Metode Tender",
@@ -228,7 +336,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
                     if st.session_state.get(key_val, False):
                         st.info("""\
-**Perbandingan Nilai OE vs Realisasi PO**: Grouped bar chart membandingkan anggaran estimasi (OE) vs realisasi PO per Purchasing Group.
+**Perbandingan Nilai OE vs Realisasi PO**: Grouped bar chart perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group.
 
 **Kalkulasi SQL:**
 | Metrik | Formula |
@@ -244,6 +352,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Cara membaca:** Bar Realisasi (biru) **lebih pendek** dari OE (oranye) = ada penghematan ✅. Lebih panjang = over budget ❌.
                         """)
+
+                    st.caption("Perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group")
 
                     df_melted = pg_data.melt(
                         id_vars=['purchasing_group'],
@@ -290,7 +400,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
                     if st.session_state.get(key_efis, False):
                         st.info("""\
-**% Efisiensi per Purchasing Group**: Bar chart horizontal persentase penghematan yang dicapai tiap PG.
+**% Efisiensi per Purchasing Group**: Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
 
 **Kalkulasi SQL:**
 ```sql
@@ -305,11 +415,13 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 Format cell sebagai **persentase (%)**.
 
 **Interpretasi warna:**
-- 🟢 **Positif** = realisasi di bawah anggaran → PG berhasil hemat
-- 🔴 **Negatif** = realisasi melebihi anggaran → PG over budget
+- 🟢 **Positif** = realisasi di bawah anggaran → Purchasing Group berhasil hemat
+- 🔴 **Negatif** = realisasi melebihi anggaran → Purchasing Group over budget
 
-Semakin tinggi %, semakin besar penghematan yang dicapai PG tersebut.
+Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group tersebut.
                         """)
+
+                    st.caption("Persentase penghematan yang dicapai tiap Purchasing Group.")
 
                     pg_efis = pg_data[pg_data['efisiensi_pct'].notna()].copy()
                     pg_efis['warna'] = pg_efis['efisiensi_pct'].apply(
@@ -360,7 +472,7 @@ Semakin tinggi %, semakin besar penghematan yang dicapai PG tersebut.
 
                     if st.session_state.get(key_lt, False):
                         st.info("""\
-**Rata-rata Lead Time per Purchasing Group**: Bar chart horizontal rata-rata waktu proses PR→PO per PG.
+**Rata-rata Lead Time per Purchasing Group**: Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
 
 **Kalkulasi SQL:**
 ```sql
@@ -372,8 +484,10 @@ Dihitung sebagai selisih hari antara `tgl_create_pr` (PR dibuat di SAP) dan `dat
 
 Di Excel: `= date_ordered - tgl_create_pr` per baris → `=AVERAGEIF(kolom_pg, nama_pg, kolom_lead_time)`.
 
-**Target:** Garis merah putus-putus = **55 hari**. PG yang melampaui garis ini perlu evaluasi alur proses pengadaannya.
+**Target:** Garis merah putus-putus = **55 hari**. Purchasing Group yang melampaui garis ini perlu evaluasi alur proses pengadaannya.
                         """)
+
+                    st.caption("Rata-rata waktu proses PR→PO per Purchasing Group.")
 
                     pg_lt = pg_data[pg_data['avg_lead_time'].notna()].copy()
                     pg_lt['warna'] = pg_lt['avg_lead_time'].apply(
@@ -418,7 +532,7 @@ Di Excel: `= date_ordered - tgl_create_pr` per baris → `=AVERAGEIF(kolom_pg, n
 
                     if st.session_state.get(key_konv, False):
                         st.info("""\
-**% Konversi PR → PO per Purchasing Group**: Persentase PR yang berhasil dikonversi menjadi PO.
+**% Konversi PR → PO per Purchasing Group**: Bar chart horizontal persentase PR yang berhasil dikonversi menjadi PO.
 
 **Kalkulasi SQL:**
 ```sql
@@ -439,6 +553,8 @@ Di Excel:
 - % **tinggi** (mendekati 100%) = hampir semua PR sudah diproses menjadi PO ✅
 - % **rendah** = banyak PR tertahan/pending → perlu investigasi penyebab (kekurangan dokumen, anggaran, dll)
                         """)
+                    
+                    st.caption("Persentase PR yang berhasil dikonversi menjadi PO.")
 
                     pg_data['konversi_pct'] = (
                         pg_data['pr_with_po'] /
@@ -468,8 +584,7 @@ Di Excel:
         # ══════════════════════════════════════════════════════════════════════
         with tab2:
             st.markdown("Breakdown pengadaan berdasarkan **jenis tender** dan **Turn Around**.")
-            st.info("**Jenis Tender** dikalkulasi dari `contract_no`: diawali angka '4' = PR-PO Kontrak, selainnya = Tender Normal. **Turn Around** dikalkulasi dari `department_code`: diawali 'TA' = Turn Around.")
-
+            
             col1, col2 = st.columns(2)
 
             # ── Kiri: Breakdown Kontrak vs Non-Kontrak ────────────────────
@@ -496,7 +611,7 @@ Di Excel:
 
                 if st.session_state.get(key_kontrak, False):
                     st.info("""\
-**Kontrak vs Non-Kontrak per Purchasing Group**: Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per PG.
+**Kontrak vs Non-Kontrak per Purchasing Group**: Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
 
 **Kalkulasi `jenis_tender` di `vw_pr_po_complete`:**
 ```sql
@@ -505,6 +620,7 @@ CASE
   ELSE 'Tender Normal'
 END
 ```
+Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.
 
 **Formula Excel (kolom Jenis Tender):**
 ```
@@ -518,7 +634,7 @@ END
 | Tender Normal | Proses penawaran/negosiasi baru setiap transaksi → biasanya lebih lama |
                     """)
 
-                st.caption("Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.")
+                st.caption("Komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.")
 
                 kontrak_query = f"""
                 SELECT
@@ -580,7 +696,7 @@ END
                     )
                     st.plotly_chart(fig_k, use_container_width=True)
 
-                    # Lead time kontrak vs non-kontrak per PG
+                    # Lead time kontrak vs non-kontrak per Purchasing Group
                     title_col, btn_col = st.columns([9, 1])
                     with title_col:
                         st.markdown("""
@@ -603,7 +719,7 @@ END
 
                     if st.session_state.get(key_lt_kontrak, False):
                         st.info("""\
-**Lead Time: Kontrak vs Non-Kontrak per PG**: Grouped bar chart rata-rata lead time per jenis tender per PG.
+**Lead Time: Kontrak vs Non-Kontrak per Purchasing Group**: Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
 
 **Kalkulasi SQL:**
 ```sql
@@ -615,10 +731,12 @@ GROUP BY purchasing_group, jenis_tender
 - **PR - PO Kontrak** → lead time **lebih pendek**: vendor & harga sudah disepakati di awal kontrak, tidak perlu proses negosiasi ulang
 - **Tender Normal** → lead time **lebih panjang**: perlu tahap penawaran, evaluasi vendor, dan negosiasi harga
 
-Jika Tender Normal di suatu PG jauh di atas target, pertimbangkan untuk mengonversi material yang sering dipesan ke skema kontrak.
+Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan untuk mengonversi material yang sering dipesan ke skema kontrak.
 
 **Target:** Garis merah putus-putus = **55 hari**.
                         """)
+
+                    st.caption("Rata-rata lead time per jenis tender per Purchasing Group.")
 
                     kontrak_lt = kontrak_data[kontrak_data['avg_lead_time'].notna()]
                     fig_klt = px.bar(
@@ -678,6 +796,7 @@ CASE
   ELSE 'non'
 END
 ```
+**Turn Around** dikalkulasi dari department_code: diawali 'TA' = Turn Around.
 
 **Formula Excel (kolom Turn Around):**
 ```
@@ -690,10 +809,10 @@ END
 | TA | Turn Around, pemeliharaan besar/shutdown pabrik periodik. Volume pengadaan tinggi dalam waktu singkat. |
 | non | Operasional rutin harian |
 
-PG dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari PG operasional, wajar jika lead time-nya lebih ketat.
+Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari Purchasing Group operasional, wajar jika lead time-nya lebih ketat.
                     """)
             
-                st.caption("Kategori kecepatan proses pengadaan dari data SAP.")
+                st.caption("Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).")
 
                 ta_query = f"""
                 SELECT
@@ -764,7 +883,7 @@ PG dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari PG op
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                                 <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
                             </svg>
-                            Detail per PG × Turn Around
+                            Detail per Purchasing Group × Turn Around
                         </h1>
                     """, unsafe_allow_html=True)
 
@@ -834,18 +953,15 @@ PG dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari PG op
                 total      = int(speed_kpi['total_lt'][0] or 1)
                 ontime_pct = ontime / total * 100
 
-                col1, col2, col3, col4, col5 = st.columns(5)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Rata-rata Lead Time", f"{avg_lt} Hari",
-                              delta="On Target" if avg_lt <= 55 else "Over Target")
-                with col2:
                     st.metric("Median Lead Time", f"{med_lt} Hari")
-                with col3:
+                with col2:
                     st.metric("Rentang Lead Time", f"{min_lt} - {max_lt} Hari")
-                with col4:
+                with col3:
                     st.metric("On-Time (<=55 Hari)", f"{ontime:,}",
                               delta=f"{ontime_pct:.1f}% dari total")
-                with col5:
+                with col4:
                     st.metric("Terlambat (>55 Hari)", f"{late:,}",
                               delta=f"{100-ontime_pct:.1f}% dari total")
 
@@ -860,7 +976,7 @@ PG dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari PG op
                     st.markdown("""
                         <h1 style='display: flex; align-items: center; font-size:22px;'>
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
+                                <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
                             </svg>
                             Distribusi Lead Time Overall
                         </h1>
@@ -877,16 +993,16 @@ PG dengan proporsi TA tinggi memiliki karakteristik pengadaan berbeda dari PG op
 
                 if st.session_state.get(key_dist_lt, False):
                     st.info("""\
-**Distribusi Lead Time Overall**: Bar chart jumlah PO per bucket rentang waktu proses, untuk semua PG.
+**Distribusi Lead Time Overall**: Bar chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
 
 **Bucket klasifikasi SQL:**
 ```sql
 CASE
-  WHEN lead_time_process_po <= 14 THEN '1. ≤14 Hari'
-  WHEN lead_time_process_po <= 30 THEN '2. 15–30 Hari'
-  WHEN lead_time_process_po <= 55 THEN '3. 31–55 Hari'
-  WHEN lead_time_process_po <= 90 THEN '4. 56–90 Hari'
-  ELSE                                  '5. >90 Hari'
+  WHEN lead_time_process_po <= 14 THEN '≤14 Hari'
+  WHEN lead_time_process_po <= 30 THEN '15–30 Hari'
+  WHEN lead_time_process_po <= 55 THEN '31–55 Hari'
+  WHEN lead_time_process_po <= 90 THEN '56–90 Hari'
+  ELSE                                  '>90 Hari'
 END
 ```
 
@@ -900,16 +1016,16 @@ END
 Di Excel: `=IFS(lt<=14,"≤14",lt<=30,"15-30",lt<=55,"31-55",lt<=90,"56-90",TRUE,">90")`
                     """)
 
-                st.caption("Berapa banyak PO yang selesai dalam rentang waktu tertentu.")
+                st.caption("Jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.")
 
                 dist_query = f"""
                 SELECT
                     CASE
-                        WHEN lead_time_process_po <= 14  THEN '1. <=14 Hari'
-                        WHEN lead_time_process_po <= 30  THEN '2. 15-30 Hari'
-                        WHEN lead_time_process_po <= 55  THEN '3. 31-55 Hari'
-                        WHEN lead_time_process_po <= 90  THEN '4. 56-90 Hari'
-                        ELSE                                  '5. >90 Hari'
+                        WHEN lead_time_process_po <= 14  THEN '<=14 Hari'
+                        WHEN lead_time_process_po <= 30  THEN '15-30 Hari'
+                        WHEN lead_time_process_po <= 55  THEN '31-55 Hari'
+                        WHEN lead_time_process_po <= 90  THEN '56-90 Hari'
+                        ELSE                                  '>90 Hari'
                     END                    AS bucket,
                     COUNT(*)               AS jumlah,
                     MIN(lead_time_process_po) AS sort_key
@@ -925,21 +1041,29 @@ Di Excel: `=IFS(lt<=14,"≤14",lt<=30,"15-30",lt<=55,"31-55",lt<=90,"56-90",TRUE
                     dist_data = load_data(dist_query)
 
                 if not dist_data.empty:
-                    color_map_dist = {
-                        '1. <=14 Hari' : '#2ca02c',
-                        '2. 15-30 Hari': '#98df8a',
-                        '3. 31-55 Hari': '#ffdd57',
-                        '4. 56-90 Hari': '#ff7f0e',
-                        '5. >90 Hari'  : '#d62728',
-                    }
-                    fig_dist = px.bar(
-                        dist_data, x='bucket', y='jumlah',
-                        color='bucket', color_discrete_map=color_map_dist,
-                        text='jumlah',
-                        labels={'bucket': 'Rentang Waktu', 'jumlah': 'Jumlah PO'}
+                    category_order = ['<=14 Hari', '15-30 Hari', '31-55 Hari', '56-90 Hari', '>90 Hari']
+                    dist_data['bucket'] = pd.Categorical(
+                        dist_data['bucket'], categories=category_order, ordered=True
                     )
-                    fig_dist.update_traces(textposition='outside', showlegend=False)
-                    fig_dist.update_layout(height=400, showlegend=False)
+                    dist_data = dist_data.sort_values('bucket')
+                    color_map_dist = {
+                        '<=14 Hari' : '#2ca02c',
+                        '15-30 Hari': '#98df8a',
+                        '31-55 Hari': '#ffdd57',
+                        '56-90 Hari': '#ff7f0e',
+                        '>90 Hari'  : '#d62728',
+                    }
+                    fig_dist = px.pie(
+                        dist_data, 
+                        values='jumlah', 
+                        names='bucket', 
+                        hole=0.4,
+                        category_orders={'bucket': category_order},
+                        color='bucket',
+                        color_discrete_map=color_map_dist
+                    )
+                    fig_dist.update_traces(sort=False)
+                    fig_dist.update_layout(height=400)
                     st.plotly_chart(fig_dist, use_container_width=True)
                 else:
                     st.info("Tidak ada data distribusi lead time.")
@@ -967,7 +1091,7 @@ Di Excel: `=IFS(lt<=14,"≤14",lt<=30,"15-30",lt<=55,"31-55",lt<=90,"56-90",TRUE
 
                 if st.session_state.get(key_tender_lt, False):
                     st.info("""\
-**Lead Time: Tender Normal vs PR-PO Kontrak**: Grouped bar chart perbandingan rata-rata lead time per PG per jenis tender, dilengkapi statistik median dan % on-time.
+**Lead Time: Tender Normal vs PR-PO Kontrak**: Grouped bar chart perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group., dilengkapi statistik median dan % on-time.
 
 **Kalkulasi SQL:**
 ```sql
@@ -1066,7 +1190,7 @@ Average bisa terdistorsi oleh satu outlier ekstrem (misal: satu PO terlupakan 50
 
                 if st.session_state.get(key_trend_lt, False):
                     st.info("""\
-**Tren Lead Time per Bulan**: Line chart rata-rata lead time bulanan, dibedakan antara Tender Normal dan PR-PO Kontrak.
+**Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak..
 
 **Kalkulasi SQL:**
 ```sql
@@ -1139,7 +1263,7 @@ ORDER BY bulan
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                             <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
                         </svg>
-                        Ringkasan Kecepatan per PG x Jenis Tender
+                        Ringkasan Kecepatan per Purchasing Group x Jenis Tender
                     </h1>
                 """, unsafe_allow_html=True)
                 

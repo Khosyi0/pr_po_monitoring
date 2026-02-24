@@ -53,21 +53,146 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         po_over        = int(harga_kpi['po_melebihi_oe'][0] or 0)
         po_under       = int(harga_kpi['po_dibawah_oe'][0] or 0)
 
-        with col1:
-            st.metric("Total Material Unik", f"{int(harga_kpi['total_material'][0] or 0):,}")
-        with col2:
-            st.metric("Total OE", format_idr(total_oe_val))
-        with col3:
-            st.metric("Total Realisasi PO", format_idr(total_real_val))
-        with col4:
-            delta_label = "efisien" if total_efis_val >= 0 else "melebihi OE"
-            st.metric("Selisih OE vs Realisasi", format_idr(total_efis_val), delta=delta_label)
+        # ── Definisi KPI: urutan kiri→kanan ───────────────────────────────────
+        delta_label = "efisien" if total_efis_val >= 0 else "melebihi OE"
+        KPI_EVAL = [
+            {
+                "key": "kpi_eval_material",
+                "metric_args": ("Total Material Unik", f"{int(harga_kpi['total_material'][0] or 0):,}"),
+                "metric_kwargs": {},
+                "formula": """\
+**Total Material Unik**: Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
 
-        col_a, col_b, _ = st.columns([1, 1, 2])
-        with col_a:
-            st.metric("⚠️ Item PO Melebihi OE", f"{po_over:,} item")
-        with col_b:
-            st.metric("✅ Item PO Di Bawah / Sesuai OE", f"{po_under:,} item")
+**Kalkulasi SQL:**
+```sql
+COUNT(DISTINCT material_no) AS total_material
+```
+Filter: `nomor_po IS NOT NULL AND oe IS NOT NULL` - hanya material yang sudah masuk PO dan memiliki data OE untuk perbandingan harga.\
+""",
+            },
+            {
+                "key": "kpi_eval_oe",
+                "metric_args": ("Total OE", format_idr(total_oe_val)),
+                "metric_kwargs": {},
+                "formula": """\
+**Total OE (Owner's Estimate)**: Total nilai anggaran estimasi untuk semua material yang sudah masuk PO.
+
+**Kalkulasi SQL:**
+```sql
+COALESCE(SUM(oe), 0) AS total_oe
+```
+
+**Sumber kolom `oe`:** Dihitung di view sebagai `estimasi_pr × quantity_pr`.
+
+Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunakan sebagai baseline untuk mengukur apakah realisasi PO lebih mahal atau lebih murah.\
+""",
+            },
+            {
+                "key": "kpi_eval_realisasi",
+                "metric_args": ("Total Realisasi PO", format_idr(total_real_val)),
+                "metric_kwargs": {},
+                "formula": """\
+**Total Realisasi PO**: Total nilai aktual yang dibayarkan dalam Purchase Order.
+
+**Kalkulasi SQL:**
+```sql
+COALESCE(SUM(total_amount_local_curr), 0) AS total_realisasi
+```
+
+**Sumber kolom `total_amount_local_curr`:** Nilai PO dalam mata uang lokal (IDR), diambil langsung dari tabel `po_items`. Sudah memperhitungkan kurs jika PO aslinya dalam mata uang asing.\
+""",
+            },
+            {
+                "key": "kpi_eval_selisih",
+                "metric_args": ("Selisih OE vs Realisasi", format_idr(total_efis_val)),
+                "metric_kwargs": {"delta": delta_label},
+                "formula": """\
+**Selisih OE vs Realisasi**: Perbedaan antara total OE (anggaran) dan total realisasi PO.
+
+**Kalkulasi SQL:**
+```sql
+COALESCE(SUM(oe) - SUM(total_amount_local_curr), 0) AS total_efisiensi
+```
+
+| Kondisi | Interpretasi |
+|---|---|
+| **Positif** (efisien) | Realisasi PO lebih murah dari OE → ada penghematan ✅ |
+| **Negatif** (melebihi OE) | Realisasi PO lebih mahal dari OE → perlu evaluasi ❌ |\
+""",
+            },
+            {
+                "key": "kpi_eval_over",
+                "metric_args": ("⚠️ Item PO Melebihi OE", f"{po_over:,} item"),
+                "metric_kwargs": {},
+                "formula": """\
+**Item PO Melebihi OE**: Jumlah baris item PO yang nilai realisasinya melebihi OE.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN total_amount_local_curr > oe AND oe > 0 THEN 1 END) AS po_melebihi_oe
+```
+
+Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifikasi, kondisi pasar yang lebih mahal dari estimasi, atau kesalahan input OE di awal.\
+""",
+            },
+            {
+                "key": "kpi_eval_under",
+                "metric_args": ("✅ Item PO Di Bawah / Sesuai OE", f"{po_under:,} item"),
+                "metric_kwargs": {},
+                "formula": """\
+**Item PO Di Bawah / Sesuai OE**: Jumlah baris item PO yang nilai realisasinya sama atau lebih murah dari OE.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(CASE WHEN total_amount_local_curr <= oe AND oe > 0 THEN 1 END) AS po_dibawah_oe
+```
+
+Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik performa pengadaan dalam hal kepatuhan anggaran.\
+""",
+            },
+        ]
+
+        # ── Inisialisasi session state ─────────────────────────────────────────
+        for kpi in KPI_EVAL:
+            if kpi["key"] not in st.session_state:
+                st.session_state[kpi["key"]] = False
+
+        # ── Baris 1: 4 metric utama ────────────────────────────────────────────
+        row1_kpis = KPI_EVAL[:4]
+        row1_cols = st.columns(4)
+        for col, kpi in zip(row1_cols, row1_kpis):
+            with col:
+                m_col, btn_col = st.columns([5, 1])
+                with m_col:
+                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
+                with btn_col:
+                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                    is_open = st.session_state[kpi["key"]]
+                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
+                        st.session_state[kpi["key"]] = not is_open
+                        st.rerun()
+
+        # ── Baris 2: 2 metric tambahan (kiri saja) ────────────────────────────
+        row2_kpis = KPI_EVAL[4:]
+        row2_all_cols = st.columns([1, 1, 2])
+        for col, kpi in zip(row2_all_cols[:2], row2_kpis):
+            with col:
+                m_col, btn_col = st.columns([5, 1])
+                with m_col:
+                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
+                with btn_col:
+                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                    is_open = st.session_state[kpi["key"]]
+                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                    if st.button(icon, key=f"btn_{kpi['key']}", help="Show Formula"):
+                        st.session_state[kpi["key"]] = not is_open
+                        st.rerun()
+
+        # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
+        for kpi in KPI_EVAL:
+            if st.session_state[kpi["key"]]:
+                st.info(kpi["formula"])
 
         st.markdown("---")
 
@@ -113,6 +238,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
                 """)
+
+            st.caption("perbandingan nilai estimasi vs realisasi PO per material")
 
             scatter_query = f"""
             SELECT
@@ -200,6 +327,8 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
 - Filter baris dengan nilai Efisiensi **negatif** (konvensi Excel: negatif = realisasi lebih mahal dari OE)
 - Urutkan ascending, ambil 10 teratas (nilai paling negatif = paling overspend)
                 """)
+
+            st.caption("Top 10 material dengan selisih (realisasi - OE) terbesar.")
 
             overspend_query = f"""
             SELECT
@@ -290,7 +419,7 @@ Chart menampilkan scatter harga satuan tiap transaksi PO per vendor, untuk 10 ma
 Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor` untuk membandingkan.
                 """)
 
-            st.caption("10 material dengan jumlah vendor terbanyak. Perbandingan harga satuan rata-rata per vendor.")
+            st.caption("Top 10 perbandingan harga satuan dari vendor berbeda untuk material yang sama.")
 
             vendor_price_query = f"""
             WITH ranked AS (
@@ -382,7 +511,7 @@ Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor
 
             if st.session_state.get(key_trend, False):
                 st.info("""\
-**Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO dari waktu ke waktu.
+**Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO dari waktu ke waktu. Berguna untuk mendeteksi kenaikan harga yang tidak wajar.
 
 **Kalkulasi SQL:**
 ```sql
@@ -398,7 +527,7 @@ Di-group per `DATE_TRUNC('month', date_ordered)` untuk tampilan bulanan.
 Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bulan_x)`
                 """)
 
-            st.caption("Rata-rata harga satuan per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar.")
+            st.caption("Pergerakan rata-rata harga satuan PO dari waktu ke waktu.")
 
             if material_options:
                 selected_mat_trend = st.selectbox(
