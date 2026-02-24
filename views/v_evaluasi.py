@@ -24,6 +24,14 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("Analisis harga barang pada PO: perbandingan terhadap OE, variasi harga antar vendor, dan tren harga historis.")
+        st.markdown("""
+            <style>
+            /* Mengecilkan ukuran font pada nilai metrik */
+            [data-testid="stMetricValue"] > div {
+                font-size: 1.8rem !important; 
+            }
+            </style>
+        """, unsafe_allow_html=True)
         st.markdown("---")
 
         # ── KPI HARGA ─────────────────────────────────────
@@ -239,7 +247,7 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
 Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
                 """)
 
-            st.caption("perbandingan nilai estimasi vs realisasi PO per material")
+            st.caption("Perbandingan nilai estimasi vs realisasi PO per material")
 
             scatter_query = f"""
             SELECT
