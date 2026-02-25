@@ -36,10 +36,21 @@ st.set_page_config(
 
 if 'show_changelog' not in st.session_state:
     st.session_state.show_changelog = False
+
 if 'filter_bagian' not in st.session_state:
     st.session_state.filter_bagian = ['All']
 if 'prev_filter_bagian' not in st.session_state:
     st.session_state.prev_filter_bagian = ['All']
+
+if 'filter_dept' not in st.session_state:
+    st.session_state.filter_dept = ['All']
+if 'prev_filter_dept' not in st.session_state:
+    st.session_state.prev_filter_dept = ['All']
+
+if 'filter_pgroup' not in st.session_state:
+    st.session_state.filter_pgroup = ['All']
+if 'prev_filter_pgroup' not in st.session_state:
+    st.session_state.prev_filter_pgroup = ['All']
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS - Override tampilan nav bawaan Streamlit + inject CSS aplikasi
@@ -204,6 +215,28 @@ try:
             st.session_state.filter_bagian = ['All']
         st.session_state.prev_filter_bagian = st.session_state.filter_bagian
 
+    def update_dept_logic():
+        current = st.session_state.filter_dept
+        prev    = st.session_state.prev_filter_dept
+        if 'All' in current and 'All' not in prev:
+            st.session_state.filter_dept = ['All']
+        elif 'All' in current and len(current) > 1:
+            st.session_state.filter_dept = [x for x in current if x != 'All']
+        elif not current:
+            st.session_state.filter_dept = ['All']
+        st.session_state.prev_filter_dept = st.session_state.filter_dept
+
+    def update_pgroup_logic():
+        current = st.session_state.filter_pgroup
+        prev    = st.session_state.prev_filter_pgroup
+        if 'All' in current and 'All' not in prev:
+            st.session_state.filter_pgroup = ['All']
+        elif 'All' in current and len(current) > 1:
+            st.session_state.filter_pgroup = [x for x in current if x != 'All']
+        elif not current:
+            st.session_state.filter_pgroup = ['All']
+        st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
+
     # ── Department ────────────────────────────────────────────────────────────
     st.sidebar.markdown("""
     <p style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -220,12 +253,15 @@ try:
         Department
     </p>
     """, unsafe_allow_html=True)
-    selected_department = st.sidebar.multiselect(
+    st.sidebar.multiselect(
         "Department",
         options=['All'] + departments['department_code'].tolist(),
-        default=['All'],
+        key="filter_dept", # Hubungkan dengan session state
+        on_change=update_dept_logic, # Panggil logika saat berubah
         label_visibility="collapsed"
     )
+    selected_department = st.session_state.filter_dept
+    
     exclude_dept = False
     if 'All' not in selected_department and selected_department:
         exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
@@ -244,12 +280,15 @@ try:
         Purchasing Group
     </p>
     """, unsafe_allow_html=True)
-    selected_p_group = st.sidebar.multiselect(
+    st.sidebar.multiselect(
         "Purchasing Group",
         options=options_p_group,
-        default=['All'],
+        key="filter_pgroup", # Hubungkan dengan session state
+        on_change=update_pgroup_logic, # Panggil logika saat berubah
         label_visibility="collapsed"
     )
+    selected_p_group = st.session_state.filter_pgroup
+    
     exclude_purchasing_group = False
     if 'All' not in selected_p_group and selected_p_group:
         exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
@@ -346,7 +385,7 @@ col_foot1, col_foot2 = st.columns([4, 1])
 with col_foot1:
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"PR-PO Monitoring System - v1.9 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"PR-PO Monitoring System - v1.5 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
     )

@@ -20,7 +20,20 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
-        {"Tanggal": "24 Feb 2026", "Versi": "v1.9", "Perubahan": """
+        {"Tanggal": "25 Feb 2026", "Versi": "v1.5", "Perubahan": """
+    - Menambahkan info KPI penting di halaman Dashboard Monitoring
+        - Produktivitas PR-PO
+        - Pengelolaan Anggaran Operasional
+        - Sinergi PI Group
+        - Kecepatan Proses PO
+        - % Pengiriman Barang
+        - Ketepatan Pengiriman Barang
+        - Pemenuhan SLA OTOBOS
+        - Efisiensi Pengadaan
+        - Pemenuhan Izin Impor
+        - Pemenuhan SLA Pembebasan Barang
+    - Perbaikan filter Department dan Purchasing Group"""},
+        {"Tanggal": "24 Feb 2026", "Versi": "v1.4.1", "Perubahan": """
     - Fix bug navigasi halaman
         - Menggunakan navigasi bawaan dengan custom CSS untuk menggantikan 'streamlit-option-menu' yang menyebabkan bug navigasi
     - Menambahkan 'Show Formula' di setiap info penting di atas pada semua halaman
@@ -30,10 +43,10 @@ def render(**kwargs):
         - Mengecilkan font info agar value "Total OE" dan "Efisiensi" dapat terbaca
         - Mengubah chart Distribusi Lead Time Overall dari Bar Chart menjadi Pie Chart
     - Menambahkan caption singkat untuk setiap chart di semua halaman"""},
-        {"Tanggal": "23 Feb 2026", "Versi": "v1.8", "Perubahan": """
+        {"Tanggal": "23 Feb 2026", "Versi": "v1.4", "Perubahan": """
     - Refactor: dashboard dipecah menjadi multi-file (app.py, config_db.py, utils.py, views/)
     - Menambahkan info detail dari masing-masing chart di semua halaman"""},
-        {"Tanggal": "20 Feb 2026", "Versi": "v1.7", "Perubahan": """- Menambahkan beberapa info di halaman Kinerja Purchasing Group
+        {"Tanggal": "20 Feb 2026", "Versi": "v1.3", "Perubahan": """- Menambahkan beberapa info di halaman Kinerja Purchasing Group
     - Total Item PR
     - Total Item PO
     - Total OE
@@ -62,11 +75,11 @@ def render(**kwargs):
         - Lead Time: Tender Normal vs PR-PO Kontrak
         - Tren Lead Time per Bulan
         - Ringkasan Kecepatan per PG x Jenis Tender"""},
-        {"Tanggal": "19 Feb 2026", "Versi": "v1.6", "Perubahan": """
+        {"Tanggal": "19 Feb 2026", "Versi": "v1.2.1", "Perubahan": """
     - Memperbarui UI dengan ikon dan warna yang cocok untuk tema gelap dan terang
     - Menambahkan halaman Kinerja Purchasing Group
     - Menambahkan Changelog"""},
-        {"Tanggal": "18 Feb 2026", "Versi": "v1.5", "Perubahan": """
+        {"Tanggal": "18 Feb 2026", "Versi": "v1.2", "Perubahan": """
     - Optimisasi Query
     - Deployment Dashboard Website
     - Menambahkan halaman Evaluasi Harga Barang
@@ -81,17 +94,17 @@ def render(**kwargs):
         - Variasi Harga Antar Vendor (Top 10 Material)
         - Tren Harga Historis per Material
         - Detail Evaluasi Harga per Material"""},
-        {"Tanggal": "17 Feb 2026", "Versi": "v1.4", "Perubahan": """
+        {"Tanggal": "17 Feb 2026", "Versi": "v1.13", "Perubahan": """
     - Update Struktur Database
     - Persiapan Deployment Website
         - Konfigurasi neon.tech untuk hosting database
         - Konfigurasi streamlit cloud untuk hosting aplikasi
         - Konfigurasi koneksi database PostgreSQL dengan neon.tech dan Secrets di streamlit cloud"""},
-        {"Tanggal": "13 Feb 2026", "Versi": "v1.3", "Perubahan": """- Menambahkan halaman alert
+        {"Tanggal": "13 Feb 2026", "Versi": "v1.1.2", "Perubahan": """- Menambahkan halaman alert
     - PR Pending Mendekati Kadaluarsa (> 30 Hari)
     - PO Overdue (Melewati Delivery Date)
     - Rekap Aging PO (Belum Dikirim)"""},
-        {"Tanggal": "12 Feb 2026", "Versi": "v1.2", "Perubahan": """
+        {"Tanggal": "12 Feb 2026", "Versi": "v1.1.1", "Perubahan": """
     - Perbaikan logika select Total PR dan Total PO
     - Menambahkan halaman Detailed PR-PO Data"""},
         {"Tanggal": "11 Feb 2026", "Versi": "v1.1", "Perubahan": """- Menambahkan garis besar dari dashboard
@@ -115,5 +128,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.5"])):
             st.markdown(item["Perubahan"])

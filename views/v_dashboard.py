@@ -62,7 +62,18 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     WHEN total_amount_local_curr IS NOT NULL AND oe IS NOT NULL AND oe > 0
                     AND {bagian_pr_cond} AND {bagian_po_cond}
                     THEN (oe - total_amount_local_curr) / oe * 100
-                    END), 0) AS avg_savings_pct
+                    END), 0)                                                              AS avg_savings_pct,
+            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
+                THEN lead_time_process_po END)::numeric, 2)                              AS avg_lead_time,
+            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
+                THEN nomor_po END)                                                        AS total_po_distinct,
+            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
+                AND status_pengiriman = 'SELESAI' THEN nomor_po END)                     AS po_delivered,
+            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
+                AND on_time_delivery = 'TEPAT WAKTU' THEN nomor_po END)                  AS po_ontime,
+            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
+                AND on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
+                THEN nomor_po END)                                                        AS po_delivered_total
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
         """
@@ -78,12 +89,34 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         savings      = float(kpi_data['total_savings'][0] or 0)
         savings_pct  = float(kpi_data['avg_savings_pct'][0] or 0)
 
-        # ── Definisi KPI: urutan kiri→kanan, key, label, formula ─────────────
+        with st.spinner("Memuat KPI..."):
+            kpi_data = load_data(kpi_query)
+
+        total_pr         = int(kpi_data['total_pr'][0] or 0)
+        total_po         = int(kpi_data['total_po'][0] or 0)
+        pr_with_po       = int(kpi_data['pr_with_po'][0] or 0)
+        pr_without       = int(kpi_data['pr_without_po'][0] or 0)
+        estimasi         = float(kpi_data['total_estimasi'][0] or 0)
+        savings          = float(kpi_data['total_savings'][0] or 0)
+        savings_pct      = float(kpi_data['avg_savings_pct'][0] or 0)
+        _alt             = kpi_data['avg_lead_time'][0]
+        avg_lt_val       = float(_alt) if _alt is not None else 0.0
+        total_po_dist    = int(kpi_data['total_po_distinct'][0] or 0)
+        po_delivered     = int(kpi_data['po_delivered'][0] or 0)
+        po_ontime        = int(kpi_data['po_ontime'][0] or 0)
+        po_del_tot       = int(kpi_data['po_delivered_total'][0] or 0)
+        produktivitas    = (pr_with_po / total_pr * 100) if total_pr > 0 else 0.0
+        pct_pengiriman   = (po_delivered / total_po_dist * 100) if total_po_dist > 0 else 0.0
+        ketepatan_pct    = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
+
+        # ── KPI_DASH: 14 item, 3 per baris ────────────────────────────────────
         KPI_DASH = [
             {
                 "key": "kpi_total_pr",
-                "metric_args": ("Total PR", f"{total_pr:,}"),
-                "metric_kwargs": {"delta": f"{pr_with_po:,} with PO"},
+                "icon_path": "M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5 M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z",
+                "label": "Total PR",
+                "value": f"{total_pr:,}",
+                "delta": f"{pr_with_po:,} with PO",
                 "formula": """\
 **Total PR**: Jumlah baris Purchase Requisition unik dalam periode filter.
 
@@ -94,18 +127,21 @@ COUNT(DISTINCT CASE
     THEN no_pr || '-' || line_item_pr::text
 END) AS total_pr
 ```
-Setiap kombinasi `no_pr + line_item_pr` dihitung sebagai satu item PR.
 
 | Sub-metrik | Kalkulasi |
 |---|---|
-| PR with PO | `COUNT(DISTINCT ...)` dimana `nomor_po IS NOT NULL` |
-| PR pending | `Total PR − PR with PO` |\
+| PR with PO | COUNT DISTINCT dimana `nomor_po IS NOT NULL` |
+| PR pending | Total PR − PR with PO |
+
+**Target:** -\
 """,
             },
             {
                 "key": "kpi_total_po",
-                "metric_args": ("Total PO", f"{total_po:,}"),
-                "metric_kwargs": {"delta": f"{pr_without:,} PR pending"},
+                "icon_path": "M8 1a2.5 2.5 0 0 1 2.5 2.5V4h-5v-.5A2.5 2.5 0 0 1 8 1m3.5 3v-.5a3.5 3.5 0 1 0-7 0V4H1v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4zM2 5h12v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z",
+                "label": "Total PO",
+                "value": f"{total_po:,}",
+                "delta": f"{pr_without:,} PR pending",
                 "formula": """\
 **Total PO**: Jumlah baris Purchase Order dalam periode filter.
 
@@ -113,77 +149,400 @@ Setiap kombinasi `no_pr + line_item_pr` dihitung sebagai satu item PR.
 ```sql
 COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
 ```
-Menghitung semua baris PO (termasuk duplikat per line item), bukan COUNT DISTINCT, agar sesuai dengan jumlah item yang dipesan.
 
-**PR pending** = jumlah baris PR yang **belum** memiliki PO pasangan. Semakin kecil = semakin baik.\
+PR pending = jumlah PR yang belum memiliki PO. Semakin kecil = semakin baik.
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_produktivitas",
+                "icon_path": "M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07",
+                "label": "Produktivitas PR-PO",
+                "value": f"{produktivitas:.2f}%",
+                "delta": "Target: -%",
+                "formula": """\
+**Produktivitas PR-PO**: Persentase item PR yang berhasil dikonversi menjadi PO.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
+```
+
+**Formula Excel:**
+```
+= PR_with_PO / Total_PR × 100%
+```
+
+| % | Interpretasi |
+|---|---|
+| ≥ 90% | 🟢 Sangat baik |
+| 70–89% | 🟡 Perlu perhatian |
+| < 70% | 🔴 Banyak PR pending |
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_savings",
+                "icon_path": "M8 3.293 4 7.293V13a1 1 0 0 0 1 1h2v-3h2v3h2a1 1 0 0 0 1-1V7.293zM13.207 6 8 .793 2.793 6H1l7-7 7 7z",
+                "label": "Total Savings",
+                "value": format_idr(savings),
+                "delta": f"{savings_pct:.1f}% avg",
+                "formula": """\
+**Total Savings**: Selisih OE dengan realisasi PO.
+
+**Kalkulasi SQL:**
+```sql
+SUM(oe_pr) - SUM(total_amount_po) AS total_savings
+AVG((oe - realisasi) / oe * 100)  AS avg_savings_pct
+```
+
+| Kondisi | Artinya |
+|---|---|
+| Positif | Realisasi < OE → penghematan ✅ |
+| Negatif | Realisasi > OE → over budget ❌ |
+
+**Target:** -\
 """,
             },
             {
                 "key": "kpi_estimasi",
-                "metric_args": ("Total Estimasi PR", format_idr(estimasi)),
-                "metric_kwargs": {},
+                "icon_path": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+                "label": "Total Estimasi PR",
+                "value": format_idr(estimasi),
+                "delta": "Owner's Estimate (OE)",
                 "formula": """\
-**Total Estimasi PR (OE)** - Total nilai Owner's Estimate dari semua PR dalam periode filter.
+**Total Estimasi PR (OE)**: Total nilai Owner's Estimate dari semua PR.
 
 **Kalkulasi SQL:**
 ```sql
 COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_estimasi
 ```
 
-**Sumber kolom `oe`:** Dihitung di view sebagai `estimasi_pr × quantity_pr` - nilai estimasi harga satuan dikali kuantitas yang diminta.
+Sumber: `estimasi_pr × quantity_pr`. Anggaran yang disiapkan sebelum proses pengadaan dimulai.
 
-Ini adalah **anggaran yang disiapkan** oleh pemohon PR sebelum proses pengadaan dimulai. Dibandingkan dengan Total Realisasi PO untuk mengukur efisiensi pengadaan.\
+**Target:** -\
 """,
             },
             {
-                "key": "kpi_savings",
-                "metric_args": ("Total Savings", format_idr(savings)),
-                "metric_kwargs": {"delta": f"{savings_pct:.1f}% avg"},
+                "key": "kpi_anggaran",
+                "icon_path": "M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783",
+                "label": "Pengelolaan Anggaran Operasional",
+                "value": "-",
+                "delta": "Target: -",
                 "formula": """\
-**Total Savings** - Selisih antara total nilai OE (anggaran) dengan total realisasi PO.
+**Pengelolaan Anggaran Operasional**: Persentase realisasi anggaran operasional terhadap anggaran yang ditetapkan.
+
+**Status:** Data anggaran/budget tidak tersedia di `vw_pr_po_complete`. Membutuhkan tabel anggaran terpisah.
+
+**Formula Excel (jika data tersedia):**
+```
+= Realisasi_Anggaran / Total_Anggaran × 100%
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_sinergi",
+                "icon_path": "M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5",
+                "label": "Sinergi PI Group",
+                "value": "-",
+                "delta": "Target: -",
+                "formula": """\
+**Sinergi PI Group**: Jumlah atau nilai kolaborasi/transaksi dengan entitas PI Group lainnya.
+
+**Status:** Tidak ada kolom sinergi di `vw_pr_po_complete`. Membutuhkan data dari sistem terpisah.
+
+**Formula Excel (jika data tersedia):**
+```
+= COUNT(PO ke vendor PI Group)
+  atau SUM(nilai PO ke vendor PI Group)
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_kecepatan_po",
+                "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+                "label": "Kecepatan Proses PO",
+                "value": f"{avg_lt_val:.2f} Hari",
+                "delta": "Target: - Hari Kalender",
+                "formula": """\
+**Kecepatan Proses PO**: Rata-rata hari dari PR dibuat hingga PO diterbitkan.
 
 **Kalkulasi SQL:**
 ```sql
-SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END)
-- SUM(CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END)
-AS total_savings
+ROUND(AVG(lead_time_process_po)::numeric, 2) AS avg_lead_time
 ```
 
-| Kondisi | Artinya |
-|---|---|
-| Savings **positif** | Realisasi PO lebih murah dari OE → ada penghematan ✅ |
-| Savings **negatif** | Realisasi PO melebihi OE → over budget ❌ |
+**Formula Excel:**
+```
+= AVERAGE(date_ordered - tgl_create_pr)
+```
 
-**% avg** = rata-rata persentase efisiensi per item: `AVG((oe - realisasi) / oe × 100)`\
+| Benchmark | Status |
+|---|---|
+| ≤ 30 hari | 🟢 Sangat cepat |
+| 31–55 hari | 🟡 Dalam SLA |
+| > 55 hari | 🔴 Melebihi SLA |
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_pengiriman",
+                "icon_path": "M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5V5h1.02a1.5 1.5 0 0 1 1.17.563l1.481 1.85a1.5 1.5 0 0 1 .329.938V10.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 1-4 0H5a2 2 0 1 1-3.998-.085A1.5 1.5 0 0 1 0 10.5zm1.294 7.456A2 2 0 0 1 4.732 11h5.536a2 2 0 0 1 .732-.732V3.5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .294.456M12 10a2 2 0 0 1 1.732 1h.768a.5.5 0 0 0 .5-.5V8.35a.5.5 0 0 0-.11-.312l-1.48-1.85A.5.5 0 0 0 13.02 6H12zm-9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2m9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2",
+                "label": "% Pengiriman Barang",
+                "value": f"{pct_pengiriman:.1f}%",
+                "delta": f"{po_delivered:,} GR / {total_po_dist:,} PO",
+                "formula": """\
+**% Pengiriman Barang (GR/PO)**: Persentase PO yang sudah diterima barangnya.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(DISTINCT CASE WHEN delivery_completed = 'X' THEN nomor_po END)
+/ COUNT(DISTINCT nomor_po) * 100
+```
+
+**Formula Excel:**
+```
+= COUNTIF(delivery_completed,"X") / COUNT(nomor_po) × 100%
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_ketepatan",
+                "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+                "label": "Ketepatan Pengiriman Barang",
+                "value": f"{ketepatan_pct:.1f}%",
+                "delta": f"{po_ontime:,} tepat / {po_del_tot:,} selesai",
+                "formula": """\
+**Ketepatan Pengiriman Barang**: Persentase PO diterima tepat waktu dari total yang sudah dikirim.
+
+**Kalkulasi SQL:**
+```sql
+COUNT(DISTINCT CASE WHEN on_time_delivery = 'TEPAT WAKTU' THEN nomor_po END)
+/ COUNT(DISTINCT CASE WHEN on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
+    THEN nomor_po END) * 100
+```
+
+**Formula Excel:**
+```
+= COUNTIF(on_time_delivery,"TEPAT WAKTU")
+  / COUNTIF(on_time_delivery,"<>IN PROGRESS") × 100%
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_otobos",
+                "icon_path": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
+                "label": "Pemenuhan SLA OTOBOS",
+                "value": "-",
+                "delta": "Average (OTOBOS)",
+                "formula": """\
+**Pemenuhan SLA OTOBOS**: Tingkat pemenuhan SLA sistem OTOBOS.
+
+**Status:** OTOBOS adalah sistem terpisah, tidak terhubung ke database PR-PO ini.
+
+**Formula Excel (jika data tersedia):**
+```
+= COUNT(request selesai dalam SLA) / COUNT(total request) × 100%
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_efisiensi_pengadaan",
+                "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
+                "label": "Efisiensi Pengadaan",
+                "value": f"{savings_pct:.2f}%",
+                "delta": "PO/OE",
+                "formula": """\
+**Efisiensi Pengadaan (PO/OE)**: Rata-rata persentase penghematan dari nilai OE per item PO.
+
+**Kalkulasi SQL:**
+```sql
+AVG(CASE WHEN oe > 0
+    THEN (oe - total_amount_local_curr) / oe * 100
+END) AS efisiensi_pct
+```
+
+**Formula Excel:**
+```
+= AVERAGEIF(oe,">0",(oe-realisasi)/oe*100%)
+```
+
+Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evaluasi Harga Barang.
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_izin_impor",
+                "icon_path": "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2",
+                "label": "Pemenuhan Izin Impor",
+                "value": "-",
+                "delta": "Target: -",
+                "formula": """\
+**Pemenuhan Izin Impor**: Persentase PO impor yang memiliki izin impor lengkap dan valid.
+
+**Status:** Tidak ada kolom izin impor di `vw_pr_po_complete`. Membutuhkan tabel dokumen kepabeanan.
+
+**Formula Excel (jika data tersedia):**
+```
+= COUNT(PO impor dengan izin lengkap) / COUNT(total PO impor) × 100%
+```
+
+**Target:** -\
+""",
+            },
+            {
+                "key": "kpi_pembebasan",
+                "icon_path": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z",
+                "label": "Pemenuhan SLA Pembebasan Barang",
+                "value": "-",
+                "delta": "Target: -",
+                "formula": """\
+**Pemenuhan SLA Pembebasan Barang**: Persentase pengajuan pembebasan barang selesai dalam SLA.
+
+**Status:** Tidak ada kolom pembebasan barang di `vw_pr_po_complete`. Membutuhkan tabel proses bea cukai.
+
+**Formula Excel (jika data tersedia):**
+```
+= COUNT(selesai dalam SLA) / COUNT(total pengajuan) × 100%
+```
+
+**Target:** -\
 """,
             },
         ]
 
-        # ── Inisialisasi session state ─────────────────────────────────────────
+        # ── Session state ──────────────────────────────────────────────────────
         for kpi in KPI_DASH:
             if kpi["key"] not in st.session_state:
                 st.session_state[kpi["key"]] = False
 
-        # ── Render metric + tombol per kolom ──────────────────────────────────
-        kpi_cols = st.columns(len(KPI_DASH))
-        for col, kpi in zip(kpi_cols, KPI_DASH):
-            with col:
-                # Bagi kolom: metric lebar, tombol sempit
-                m_col, btn_col = st.columns([5, 1])
-                with m_col:
-                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
-                with btn_col:
-                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                    is_open = st.session_state[kpi["key"]]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
-                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+        # ── CSS card ───────────────────────────────────────────────────────────
+        st.markdown("""
+        <style>
+        .kpi-card {
+            display: flex;
+            align-items: center;
+            background: var(--secondary-background-color);
+            border-radius: 10px;
+            padding: 16px 14px;
+            gap: 12px; /* Dipersempit agar lebih rapat */
+            height: 100%;
+        }
+        .kpi-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            opacity: 1; /* Icon sekarang full color */
+        }
+        .kpi-body {
+            flex: 1;
+            min-width: 0;
+        }
+        .kpi-label {
+            font-size: 13px;
+            opacity: 0.9;
+            margin: 0 0 2px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kpi-value {
+            font-size: 2rem !important;
+            font-weight: 600 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.1 !important;
+            display: block !important;
+        }
+        .kpi-delta {
+            font-size: 12px;
+            color: #09ab3b;
+            margin: 0;
+        }
+        .kpi-delta-neutral {
+            font-size: 12px;
+            opacity: 0.55;
+            margin: 0;
+        }
+        /* Menghilangkan padding default streamlit pada kolom tombol agar bisa lebih mepet */
+        [data-testid="column"]:nth-child(2) {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
-        for kpi in KPI_DASH:
-            if st.session_state[kpi["key"]]:
-                st.info(kpi["formula"])
+        # ── Helper: render satu baris (max 3 KPI) ─────────────────────────────
+        def render_kpi_row(items):
+            n = len(items)
+            cols = st.columns(3)
+            for i, col in enumerate(cols):
+                with col:
+                    if i >= n:
+                        continue
+                    kpi = items[i]
+                    is_open = st.session_state[kpi["key"]]
+                    neutral = kpi["value"] == "-" or kpi["delta"].startswith("Target:")
+                    delta_cls = "kpi-delta-neutral" if neutral else "kpi-delta"
+                    delta_arrow = "" if neutral else "↑ "
+
+                    card_html = f"""
+                    <div class="kpi-card">
+                        <div class="kpi-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"
+                                 fill="currentColor" viewBox="0 0 16 16">
+                                <path d="{kpi['icon_path']}"/>
+                            </svg>
+                        </div>
+                        <div class="kpi-body">
+                            <p class="kpi-label">{kpi['label']}</p>
+                            <p class="kpi-value">{kpi['value']}</p>
+                            <p class="{delta_cls}">{delta_arrow}{kpi['delta']}</p>
+                        </div>
+                    </div>"""
+
+                    # Menggunakan perbandingan 10:2 agar tombol "Mata" lebih masuk ke kiri
+                    c_card, c_btn = st.columns([10, 2])
+                    with c_card:
+                        st.markdown(card_html, unsafe_allow_html=True)
+                    with c_btn:
+                        # Mengurangi margin top agar icon mata sejajar dengan tengah kartu
+                        st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
+                        tooltip = "Hide Formula" if is_open else "Show Formula"
+                        btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                        st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
+                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+
+        # ── Render 5 baris × 3 kolom ──────────────────────────────────────────
+        for row in range(0, len(KPI_DASH), 3):
+            # 1. Ambil 3 item untuk baris saat ini
+            current_row_items = KPI_DASH[row:row + 3]
+            
+            # 2. Render ketiga kartu tersebut
+            render_kpi_row(current_row_items)
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            
+            # 3. Cek apakah ada tombol dari baris INI yang sedang aktif
+            # Jika aktif, tampilkan infonya tepat di bawah baris ini
+            for kpi in current_row_items:
+                if st.session_state[kpi["key"]]:
+                    st.info(kpi["formula"])
 
         st.markdown("---")
 
