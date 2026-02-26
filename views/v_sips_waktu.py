@@ -6,10 +6,10 @@ Timeline nyata dari data Excel:
                                                                                  <Realisasi SLA (T, hari kerja)>
 
 Kolom waktu:
-  N  PR-PO         = Disposisi Buyer → Tgl PO, hari KALENDER
-  S  Standard SLA  = target: Agreement 12H / Urgent 24H / TA-Investasi 48H / Normal 57H
-  T  Realisasi SLA = Disposisi → PO hari KERJA (rata-rata 8H lebih pendek dari N)
-  U  Nilai SLA     = 1 ontime · 0 miss · '-' belum PO (exclude dari analisis)
+  PR-PO         = Disposisi Buyer → Tgl PO, hari KALENDER
+  Standard SLA  = target: Agreement 12H / Urgent 24H / TA-Investasi 48H / Normal 57H
+  Realisasi SLA = Disposisi → PO hari KERJA (rata-rata 8H lebih pendek dari N)
+  Nilai SLA     = 1 ontime · 0 miss · '-' belum PO (exclude dari analisis)
 """
 
 import streamlit as st
@@ -228,10 +228,10 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
         formula="""\
 **Dekomposisi Waktu per Nama**
 
-| Komponen | Kolom | Artinya |
-|---|---|---|
-| Oranye - PR-PO | N | Disposisi ke PO (hari kalender, waktu tim pengadaan) |
-| Biru - Pra-Disposisi | K minus I | Req Date ke Disposisi (routing/approval sebelum buyer) |
+| Komponen | Artinya |
+|---|---|
+| Oranye - PR-PO | Disposisi ke PO (hari kalender, waktu tim pengadaan) |
+| Biru - Pra-Disposisi | Req Date ke Disposisi (routing/approval sebelum buyer) |
 
 Total bar = rata-rata end-to-end. Bar oranye panjang = buyer lambat setelah menerima PR. Bar biru panjang = PR lama sebelum sampai ke buyer.
 
@@ -432,7 +432,7 @@ Garis putus = rata-rata masing-masing.
 
     col_l, col_r = st.columns(2)
     with col_l:
-        st.caption("Distribusi PR-PO (kolom N, hari kalender)")
+        st.caption("Distribusi PR-PO (hari kalender)")
         d1 = df[df["pr_po_days"].notna() & (df["pr_po_days"]>0)]
         if not d1.empty:
             avg1 = d1["pr_po_days"].mean()
