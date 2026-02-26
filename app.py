@@ -17,11 +17,11 @@ warnings.filterwarnings('ignore')
 from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions
 
-# Views — PR-PO SAP
+# Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
-# Views — SIPS
-from views import v_sips_dashboard, v_sips_detail
+# Views - SIPS
+from views import v_sips_dashboard, v_sips_detail, v_sips_waktu
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -57,7 +57,7 @@ init_state('sips_filter_nama',    ['All'])
 init_state('sips_prev_nama',      ['All'])
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HALAMAN — render functions
+# HALAMAN: render functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_dashboard():    v_dashboard.render(**st.session_state.get('_view_args', {}))
@@ -67,9 +67,10 @@ def _render_kinerja():      v_kinerja_pg.render(**st.session_state.get('_view_ar
 def _render_alert():        v_alert.render(**st.session_state.get('_view_args', {}))
 def _render_sips_dashboard(): v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_detail():    v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NAVIGATION — grouped dict agar muncul section header sebagai toggle
+# NAVIGATION: grouped dict agar muncul section header sebagai toggle
 # ─────────────────────────────────────────────────────────────────────────────
 
 pg = st.navigation(
@@ -84,6 +85,7 @@ pg = st.navigation(
         "SIPS": [
             st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
             st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
+            st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
             # Tambah halaman SIPS lain di sini
         ],
     },
@@ -91,7 +93,7 @@ pg = st.navigation(
 )
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data"}
+SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS"}
 current_page = pg.title
 is_sips      = current_page in SIPS_TITLES
 
@@ -103,7 +105,7 @@ if current_page != st.session_state.last_page:
     st.session_state.last_page = current_page
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS — section headers menjadi toggle pill SAP / SIPS
+# CSS: section headers menjadi toggle pill SAP / SIPS
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Pill aktif: div ke-1 = PR-PO SAP, div ke-2 = SIPS
@@ -524,7 +526,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard — {system_label} | v1.5.1 | "
+        f"Monitoring Dashboard - {system_label} | v1.5.1 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

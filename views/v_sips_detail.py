@@ -1,5 +1,5 @@
 """
-v_sips_detail.py — Halaman Detailed SIPS Data
+v_sips_detail.py - Halaman Detailed SIPS Data
 """
 
 import streamlit as st
@@ -148,7 +148,7 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
     # ── Info jumlah baris ─────────────────────────────────────────────────────
     count_label = f"Menampilkan **{len(df):,}** baris"
     if len(df) == 500:
-        count_label += " *(limit 500 — gunakan filter untuk mempersempit hasil)*"
+        count_label += " *(limit 500, gunakan filter untuk mempersempit hasil)*"
     st.caption(count_label)
 
     st.dataframe(styled, use_container_width=True, height=480)

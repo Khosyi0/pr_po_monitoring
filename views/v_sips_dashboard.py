@@ -1,5 +1,5 @@
 """
-v_sips_dashboard.py — Dashboard Monitoring SIPS
+v_sips_dashboard.py - Dashboard Monitoring SIPS
 """
 
 import streamlit as st
@@ -333,13 +333,15 @@ PO/PR = Total PO / Total PR × 100%
             "delta":    "Waktu PR → PO",
             "dtype":    "neutral",
             "formula":  f"""\
-**Rata-rata PR-PO**: Rata-rata jumlah hari dari Requisition Date hingga Tanggal PO per karyawan.
+**Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+
+⚠️ Kolom N (PR-PO) **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
 
 **Formula Excel:**
 ```
 =AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
 ```
-Kolom N = PR-PO (hari).
+Kolom N = PR-PO (hari kalender: Disposisi Buyer → Tanggal PO).
 
 **Kalkulasi SQL:**
 ```sql
@@ -347,7 +349,8 @@ ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
 AS avg_pr_po
 ```
 
-Nilai saat ini: **{avg_pr_po:.1f} hari**
+Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
+Untuk waktu end-to-end dari Requisition Date → PO, lihat halaman **Analisis Waktu Proses SIPS**.
 
 **Target:** -""",
         },
@@ -373,7 +376,7 @@ COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
               THEN nilai_sla END), 0) AS sla_ontime
 ```
 
-Nilai ini adalah **penjumlahan** kolom Nilai SLA — bukan COUNT — sesuai rumus SUMIFS di Excel.
+Nilai ini adalah **penjumlahan** kolom Nilai SLA, bukan COUNT sesuai rumus SUMIFS di Excel.
 
 **Target:** -""",
         },

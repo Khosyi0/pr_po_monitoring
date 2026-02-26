@@ -47,6 +47,20 @@ def render(**kwargs):
         - Karyawan
         - Date Range
     - Menambahkan halaman Detailed SIPS Data
+    - Menambahkan halaman Analisis Waktu Proses SIPS
+        - Menambahkan Ringkasan Waktu
+            - Rata-rata PR-PO
+            - Rata-rata Realisasi SLA
+            - Waktu Pra-Disposisi
+            - Rata-rata End-to-End
+            - Rata-rata SLA Headroom
+            - % On Time SLA
+        - Menambahkan Dekomposisi Waktu per Nama
+        - Menambahkan Pemenuhan SLA per Jenis Pengadaan
+        - Menambahkan SLA Headroom per Nama
+        - Menambahkan Tren Waktu per Bulan
+        - Menambahkan Distribusi Waktu
+        - Menambahkan Waktu per Prioritas
     - Fix format angka Indonesia di semua halaman"""},
         {"Tanggal": "25 Feb 2026", "Versi": "v1.5", "Perubahan": """
     - Menambahkan info KPI penting di halaman Dashboard Monitoring
