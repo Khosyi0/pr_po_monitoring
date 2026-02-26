@@ -329,7 +329,7 @@ PO/PR = Total PO / Total PR × 100%
             "key":      "sips_kpi_avg_pr_po",
             "icon":     "clock",
             "label":    "Rata-rata PR-PO",
-            "value":    f"{format_number(avg_pr_po)} hari",
+            "value":    f"{format_number(avg_pr_po, decimals=2)} hari",
             "delta":    "Waktu PR → PO",
             "dtype":    "neutral",
             "formula":  f"""\
