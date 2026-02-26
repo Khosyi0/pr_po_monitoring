@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short
+from utils import format_idr, format_idr_short, format_number, format_currency
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -115,8 +115,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "key": "kpi_total_pr",
                 "icon_path": "M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5 M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z",
                 "label": "Total PR",
-                "value": f"{total_pr:,}",
-                "delta": f"{pr_with_po:,} with PO",
+                "value": f"{format_number(total_pr)}",
+                "delta": f"{format_number(pr_with_po)} with PO",
                 "formula": """\
 **Total PR**: Jumlah baris Purchase Requisition unik dalam periode filter.
 
@@ -140,8 +140,8 @@ END) AS total_pr
                 "key": "kpi_total_po",
                 "icon_path": "M8 1a2.5 2.5 0 0 1 2.5 2.5V4h-5v-.5A2.5 2.5 0 0 1 8 1m3.5 3v-.5a3.5 3.5 0 1 0-7 0V4H1v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4zM2 5h12v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z",
                 "label": "Total PO",
-                "value": f"{total_po:,}",
-                "delta": f"{pr_without:,} PR pending",
+                "value": f"{format_number(total_po)}",
+                "delta": f"{format_number(pr_without)} PR pending",
                 "formula": """\
 **Total PO**: Jumlah baris Purchase Order dalam periode filter.
 
@@ -159,7 +159,7 @@ PR pending = jumlah PR yang belum memiliki PO. Semakin kecil = semakin baik.
                 "key": "kpi_produktivitas",
                 "icon_path": "M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07",
                 "label": "Produktivitas PR-PO",
-                "value": f"{produktivitas:.2f}%",
+                "value": f"{format_number(produktivitas, decimals=2)}%",
                 "delta": "Target: -%",
                 "formula": """\
 **Produktivitas PR-PO**: Persentase item PR yang berhasil dikonversi menjadi PO.
@@ -188,7 +188,7 @@ COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
                 "icon_path": "M8 3.293 4 7.293V13a1 1 0 0 0 1 1h2v-3h2v3h2a1 1 0 0 0 1-1V7.293zM13.207 6 8 .793 2.793 6H1l7-7 7 7z",
                 "label": "Total Savings",
                 "value": format_idr(savings),
-                "delta": f"{savings_pct:.1f}% avg",
+                "delta": f"{format_number(savings_pct, decimals=1)}% avg",
                 "formula": """\
 **Total Savings**: Selisih OE dengan realisasi PO.
 
@@ -268,7 +268,7 @@ Sumber: `estimasi_pr × quantity_pr`. Anggaran yang disiapkan sebelum proses pen
                 "key": "kpi_kecepatan_po",
                 "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
                 "label": "Kecepatan Proses PO",
-                "value": f"{avg_lt_val:.2f} Hari",
+                "value": f"{format_number(avg_lt_val, decimals=2)} Hari",
                 "delta": "Target: - Hari Kalender",
                 "formula": """\
 **Kecepatan Proses PO**: Rata-rata hari dari PR dibuat hingga PO diterbitkan.
@@ -296,8 +296,8 @@ ROUND(AVG(lead_time_process_po)::numeric, 2) AS avg_lead_time
                 "key": "kpi_pengiriman",
                 "icon_path": "M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5V5h1.02a1.5 1.5 0 0 1 1.17.563l1.481 1.85a1.5 1.5 0 0 1 .329.938V10.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 1-4 0H5a2 2 0 1 1-3.998-.085A1.5 1.5 0 0 1 0 10.5zm1.294 7.456A2 2 0 0 1 4.732 11h5.536a2 2 0 0 1 .732-.732V3.5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .294.456M12 10a2 2 0 0 1 1.732 1h.768a.5.5 0 0 0 .5-.5V8.35a.5.5 0 0 0-.11-.312l-1.48-1.85A.5.5 0 0 0 13.02 6H12zm-9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2m9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2",
                 "label": "% Pengiriman Barang",
-                "value": f"{pct_pengiriman:.1f}%",
-                "delta": f"{po_delivered:,} GR / {total_po_dist:,} PO",
+                "value": f"{format_number(pct_pengiriman, decimals=1)}%",
+                "delta": f"{format_number(po_delivered)} GR / {format_number(total_po_dist)} PO",
                 "formula": """\
 **% Pengiriman Barang (GR/PO)**: Persentase PO yang sudah diterima barangnya.
 
@@ -319,8 +319,8 @@ COUNT(DISTINCT CASE WHEN delivery_completed = 'X' THEN nomor_po END)
                 "key": "kpi_ketepatan",
                 "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
                 "label": "Ketepatan Pengiriman Barang",
-                "value": f"{ketepatan_pct:.1f}%",
-                "delta": f"{po_ontime:,} tepat / {po_del_tot:,} selesai",
+                "value": f"{format_number(ketepatan_pct, decimals=1)}%",
+                "delta": f"{format_number(po_ontime)} tepat / {format_number(po_del_tot)} selesai",
                 "formula": """\
 **Ketepatan Pengiriman Barang**: Persentase PO diterima tepat waktu dari total yang sudah dikirim.
 
@@ -363,7 +363,7 @@ COUNT(DISTINCT CASE WHEN on_time_delivery = 'TEPAT WAKTU' THEN nomor_po END)
                 "key": "kpi_efisiensi_pengadaan",
                 "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
                 "label": "Efisiensi Pengadaan",
-                "value": f"{savings_pct:.2f}%",
+                "value": f"{format_number(savings_pct, decimals=2)}%",
                 "delta": "PO/OE",
                 "formula": """\
 **Efisiensi Pengadaan (PO/OE)**: Rata-rata persentase penghematan dari nilai OE per item PO.
@@ -611,7 +611,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     go.Bar(name='PR without PO', x=dept_data['department'],
                         y=dept_data['total_pr'] - dept_data['pr_with_po'])
                 ])
-                fig.update_layout(barmode='stack', height=400)
+                fig.update_layout(barmode='stack', height=400, separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
@@ -676,7 +676,7 @@ Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap ven
                     vendor_data, x='total_value', y='vendor', orientation='h',
                     labels={'total_value': 'Total Value (IDR)', 'vendor': 'Vendor'}
                 )
-                fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'})
+                fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'}, separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
@@ -932,7 +932,7 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
         if not pr_without_po.empty:
             pr_without_po['tgl_create_pr'] = pd.to_datetime(pr_without_po['tgl_create_pr']).dt.strftime('%Y-%m-%d')
             pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
-                lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                lambda x: format_currency(x) if pd.notna(x) else ""
             )
             st.dataframe(pr_without_po, use_container_width=True, height=300)
         else:
@@ -1003,7 +1003,7 @@ Di Excel: `=IF(tgl_gr="","IN PROGRESS",IF(tgl_gr<=del_date_po,"TEPAT WAKTU","TER
                     delivery_data, values='count', names='status_delivery',
                     color='status_delivery', color_discrete_map=color_map, hole=0.4
                 )
-                fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
+                fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0), separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No delivery data available.")
@@ -1075,7 +1075,7 @@ ORDER BY abc_indicator
                     labels={'abc_indicator': 'ABC Category', 'total_value': 'Total PO Value (IDR)'},
                     text='label_text'
                 )
-                fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0))
+                fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0), separators=",.")
                 fig.update_traces(
                     textfont_size=12, textangle=0, textposition="outside", cliponaxis=False,
                     hovertemplate="<b>ABC: %{x}</b><br>Total: Rp %{text}<extra></extra>"

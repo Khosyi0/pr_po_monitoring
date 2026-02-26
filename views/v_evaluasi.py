@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short
+from utils import format_idr, format_idr_short, format_number, format_currency
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -68,7 +68,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         KPI_EVAL = [
             {
                 "key": "kpi_eval_material",
-                "metric_args": ("Total Material Unik", f"{int(harga_kpi['total_material'][0] or 0):,}"),
+                "metric_args": ("Total Material Unik", f"{format_number(int(harga_kpi['total_material'][0] or 0))}"),
                 "metric_kwargs": {},
                 "formula": """\
 **Total Material Unik**: Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
@@ -132,7 +132,7 @@ COALESCE(SUM(oe) - SUM(total_amount_local_curr), 0) AS total_efisiensi
             },
             {
                 "key": "kpi_eval_over",
-                "metric_args": ("⚠️ Item PO Melebihi OE", f"{po_over:,} item"),
+                "metric_args": ("⚠️ Item PO Melebihi OE", f"{format_number(po_over)} item"),
                 "metric_kwargs": {},
                 "formula": """\
 **Item PO Melebihi OE**: Jumlah baris item PO yang nilai realisasinya melebihi OE.
@@ -147,7 +147,7 @@ Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifika
             },
             {
                 "key": "kpi_eval_under",
-                "metric_args": ("✅ Item PO Di Bawah / Sesuai OE", f"{po_under:,} item"),
+                "metric_args": ("✅ Item PO Di Bawah / Sesuai OE", f"{format_number(po_under)} item"),
                 "metric_kwargs": {},
                 "formula": """\
 **Item PO Di Bawah / Sesuai OE**: Jumlah baris item PO yang nilai realisasinya sama atau lebih murah dari OE.
@@ -294,7 +294,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 fig.add_annotation(x=max_val * 0.85, y=max_val * 0.9,
                                     text="Batas OE", showarrow=False,
                                     font=dict(color='gray', size=11))
-                fig.update_layout(height=420, legend=dict(orientation='h', yanchor='bottom', y=1.02))
+                fig.update_layout(height=420, legend=dict(orientation='h', yanchor='bottom', y=1.02), separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("Titik di atas garis diagonal = realisasi melebihi OE. Ukuran titik = jumlah PO.")
             else:
@@ -589,6 +589,7 @@ Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bu
                         xaxis_title='Bulan',
                         yaxis_title='Harga Satuan (IDR)',
                         legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                        separators=",.",
                         hovermode='x unified'
                     )
                     st.plotly_chart(fig, use_container_width=True)
@@ -654,7 +655,7 @@ Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bu
                     lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
                 )
             detail_harga_data['persen_selisih_avg'] = detail_harga_data['persen_selisih_avg'].apply(
-                lambda x: f"{x:+.1f}%" if pd.notna(x) else ""
+                lambda x: f"{x:+.1f}".replace('.', ',') + "%" if pd.notna(x) else ""
             )
 
             st.dataframe(

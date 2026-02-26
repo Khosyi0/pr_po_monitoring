@@ -20,6 +20,34 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "26 Feb 2026", "Versi": "v1.5.1", "Perubahan": """
+    - Menambahkan info penting di halaman Dashboard Monitoring SIPS
+        - Total PR
+        - Total PO
+        - PO/PR
+        - Rata-rata PR-PO
+        - SLA On Time
+        - % On Time
+        - OE Proses PO
+        - OE Closed
+        - Total OE
+        - PO Proses PO
+        - PO Closed
+        - Total PO
+        - Efisiensi %
+        - Efisiensi Rp
+        - % On Budget
+    - Menambahkan beberapa chart di halaman Dashboard Monitoring SIPS
+        - Pipeline & Trend PR-PO SIPS
+        - Distribusi Status PR SIPS
+        - Performa SLA per Karyawan
+        - Distribusi Waktu PR → PO
+        - Perbandingan Nilai OE vs PO per Karyawan
+    - Menambahkan filter pada halaman Dashboard Monitoring SIPS
+        - Karyawan
+        - Date Range
+    - Menambahkan halaman Detailed SIPS Data
+    - Fix format angka Indonesia di semua halaman"""},
         {"Tanggal": "25 Feb 2026", "Versi": "v1.5", "Perubahan": """
     - Menambahkan info KPI penting di halaman Dashboard Monitoring
         - Produktivitas PR-PO
@@ -32,7 +60,8 @@ def render(**kwargs):
         - Efisiensi Pengadaan
         - Pemenuhan Izin Impor
         - Pemenuhan SLA Pembebasan Barang
-    - Perbaikan filter Department dan Purchasing Group"""},
+    - Perbaikan filter Department dan Purchasing Group
+    - Menambahkan kerangka halaman dashboard untuk data dari SIPS"""},
         {"Tanggal": "24 Feb 2026", "Versi": "v1.4.1", "Perubahan": """
     - Fix bug navigasi halaman
         - Menggunakan navigasi bawaan dengan custom CSS untuk menggantikan 'streamlit-option-menu' yang menyebabkan bug navigasi
@@ -128,5 +157,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.5"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.5.1"])):
             st.markdown(item["Perubahan"])

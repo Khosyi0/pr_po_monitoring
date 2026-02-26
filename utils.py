@@ -7,43 +7,74 @@ import pandas as pd
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FORMAT RUPIAH
+# FORMAT ANGKA & RUPIAH (STANDAR INDONESIA)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def format_number(x, decimals=0) -> str:
+    """Format angka biasa ke standar Indonesia (titik untuk ribuan, koma untuk desimal)."""
+    if x is None or pd.isna(x):
+        return "0"
+    
+    # Gunakan format bawaan python dulu (koma untuk ribuan, titik untuk desimal)
+    if decimals > 0:
+        raw_formatted = f"{float(x):,.{decimals}f}"
+    else:
+        raw_formatted = f"{int(x):,}"
+        
+    # Tukar koma menjadi titik, dan titik menjadi koma
+    formatted = raw_formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
+    return formatted
+
+def format_currency(x) -> str:
+    """Format ke Rp X.XXX (tanpa singkatan T/M/Jt)."""
+    if x is None or pd.isna(x) or x == 0:
+        return "Rp 0"
+    return f"Rp {format_number(x)}"
+
 
 def format_idr(x) -> str:
     """Format angka menjadi string Rupiah dengan suffix T/M/Jt."""
-    if x is None or (isinstance(x, float) and pd.isna(x)):
+    if x is None or pd.isna(x) or x == 0:
         return "Rp 0"
 
-    if abs(x) >= 1e12:
+    abs_x = abs(x)
+    if abs_x >= 1e12:
         val, suffix = x / 1e12, "T"
-    elif abs(x) >= 1e9:
+    elif abs_x >= 1e9:
         val, suffix = x / 1e9, "M"
-    elif abs(x) >= 1e6:
+    elif abs_x >= 1e6:
         val, suffix = x / 1e6, "Jt"
     else:
-        formatted = f"{x:,.0f}".replace(',', '.')
-        return f"Rp {formatted}"
+        return format_currency(x)
 
+    # Format 2 desimal
     formatted = f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    if formatted.endswith(',00'):
+        formatted = formatted[:-3]
+
     return f"Rp {formatted} {suffix}"
 
 
 def format_idr_short(x) -> str:
     """Format angka ringkas untuk label chart (1 desimal)."""
-    if x is None or (isinstance(x, float) and pd.isna(x)):
+    if x is None or pd.isna(x) or x == 0:
         return "0"
 
-    if abs(x) >= 1e12:
+    abs_x = abs(x)
+    if abs_x >= 1e12:
         val, suffix = x / 1e12, "T"
-    elif abs(x) >= 1e9:
+    elif abs_x >= 1e9:
         val, suffix = x / 1e9, "M"
-    elif abs(x) >= 1e6:
+    elif abs_x >= 1e6:
         val, suffix = x / 1e6, "Jt"
     else:
-        return f"{x:,.0f}".replace(',', '.')
+        return format_number(x)
 
+    # Format 1 desimal
     formatted = f"{val:,.1f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    if formatted.endswith(',0'):
+        formatted = formatted[:-2]
+
     return f"{formatted} {suffix}"
 
 

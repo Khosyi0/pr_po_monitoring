@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short
+from utils import format_idr, format_idr_short, format_number, format_currency
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -114,7 +114,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             lt_delta   = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
 
             KPI_PG = [
-                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{t_item_pr:,}"),   "metric_kwargs": {"delta": f"{konversi_pct:.1f}% sudah PO"},          "formula": """**Total Item PR**: Jumlah baris item Purchase Requisition unik dalam periode filter.
+                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{format_number(t_item_pr)}"),   "metric_kwargs": {"delta": f"{format_number(konversi_pct, decimals=1)}% sudah PO"},          "formula": """**Total Item PR**: Jumlah baris item Purchase Requisition unik dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -125,7 +125,7 @@ END) AS total_item_pr
 ```
 
 **% sudah PO** = `pr_with_po / total_item_pr × 100` - persentase item PR yang sudah berhasil dikonversi menjadi PO."""},
-                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{t_item_po:,}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah baris item Purchase Order dalam periode filter.
+                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{format_number(t_item_po)}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah baris item Purchase Order dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -141,7 +141,7 @@ COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_oe
 ```
 
 **Sumber kolom `oe`:** `estimasi_pr × quantity_pr` - nilai estimasi harga satuan dikali kuantitas yang diminta pemohon PR."""},
-                {"key": "kpi_pg_efisiensi", "metric_args": ("Efisiensi", format_idr(t_efis)),     "metric_kwargs": {"delta": f"{t_efis_pct:.1f}% {delta_efis}"},         "formula": """**Efisiensi**: Selisih antara total OE dan total realisasi PO.
+                {"key": "kpi_pg_efisiensi", "metric_args": ("Efisiensi", format_idr(t_efis)),     "metric_kwargs": {"delta": f"{format_number(t_efis_pct, decimals=1)}% {delta_efis}"},         "formula": """**Efisiensi**: Selisih antara total OE dan total realisasi PO.
 
 **Kalkulasi:**
 ```
@@ -153,7 +153,7 @@ Efisiensi   = Total OE − Total Realisasi PO
 |---|---|
 | **Positif** | Realisasi lebih murah dari anggaran → penghematan ✅ |
 | **Negatif** | Realisasi melebihi anggaran → perlu evaluasi ❌ |"""},
-                {"key": "kpi_pg_lead_time", "metric_args": ("Avg Lead Time", lt_label),           "metric_kwargs": {"delta": lt_delta},                                  "formula": """**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+                {"key": "kpi_pg_lead_time", "metric_args": ("Avg Lead Time", f"{format_number(avg_lt, decimals=1)} Hari" if pd.notna(avg_lt) else "N/A"), "metric_kwargs": {"delta": lt_delta},                                  "formula": """**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
 
 **Kalkulasi SQL:**
 ```sql
@@ -298,17 +298,19 @@ ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                 df_table['efisiensi_pct'] = df_table['efisiensi_pct'].fillna(0)
 
                 df_display = df_table.copy()
-                df_display['nilai_oe']     = df_display['nilai_oe'].apply(format_idr)
-                df_display['nilai_po']     = df_display['nilai_po'].apply(format_idr)
-                df_display['efisiensi']    = df_display['efisiensi'].apply(format_idr)
-                df_display['efisiensi_pct']= df_display['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
+                df_display['jml_item_pr']  = df_display['jml_item_pr'].apply(format_number)
+                df_display['jml_item_po']  = df_display['jml_item_po'].apply(format_number)
+                df_display['nilai_oe']     = df_display['nilai_oe'].apply(format_currency) # Ganti jadi format_currency jika tidak ingin ada T/M/Jt
+                df_display['nilai_po']     = df_display['nilai_po'].apply(format_currency)
+                df_display['efisiensi']    = df_display['efisiensi'].apply(format_currency)
+                df_display['efisiensi_pct']= df_display['efisiensi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
                 df_display['avg_lead_time']= df_display['avg_lead_time'].apply(
-                    lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                    lambda x: f"{format_number(x, decimals=1)} Hari" if pd.notna(x) else "N/A")
                 df_display['min_lead_time']= df_display['min_lead_time'].apply(
-                    lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
+                    lambda x: f"{format_number(x)} Hari" if pd.notna(x) else "N/A")
                 df_display['max_lead_time']= df_display['max_lead_time'].apply(
-                    lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
-                df_display['konversi_pct'] = df_display['konversi_pct'].apply(lambda x: f"{x:.1f}%")
+                    lambda x: f"{format_number(x)} Hari" if pd.notna(x) else "N/A")
+                df_display['konversi_pct'] = df_display['konversi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
 
                 st.dataframe(
                     df_display.rename(columns={
@@ -392,7 +394,8 @@ ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                     fig_val.update_traces(textposition='outside', textfont_size=10)
                     fig_val.update_layout(
                         height=400,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        separators=",."
                     )
                     st.plotly_chart(fig_val, use_container_width=True)
 
@@ -446,7 +449,7 @@ Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group terseb
                     pg_efis = pg_data[pg_data['efisiensi_pct'].notna()].copy()
                     pg_efis['warna'] = pg_efis['efisiensi_pct'].apply(
                         lambda x: '#2ca02c' if x >= 0 else '#d62728')
-                    pg_efis['label'] = pg_efis['efisiensi_pct'].apply(lambda x: f"{x:+.1f}%")
+                    pg_efis['label'] = pg_efis['efisiensi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
                     pg_efis = pg_efis.sort_values('efisiensi_pct', ascending=True)
                     fig_efis = px.bar(
                         pg_efis, x='efisiensi_pct', y='purchasing_group',
@@ -986,7 +989,7 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 SPEED_KPI = [
                     {
                         "key": "kpi_speed_median",
-                        "metric_args": ("Median Lead Time", f"{med_lt} Hari"),
+                        "metric_args": ("Median Lead Time", f"{format_number(med_lt, decimals=1)} Hari"),
                         "metric_kwargs": {},
                         "formula": """\
 **Median Lead Time**: Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
@@ -1010,7 +1013,7 @@ Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO deng
                     },
                     {
                         "key": "kpi_speed_rentang",
-                        "metric_args": ("Rentang Lead Time", f"{min_lt} - {max_lt} Hari"),
+                        "metric_args": ("Rentang Lead Time", f"{format_number(min_lt)} - {format_number(max_lt)} Hari"),
                         "metric_kwargs": {},
                         "formula": """\
 **Rentang Lead Time**: Selisih antara lead time terpendek dan terpanjang dalam periode filter.
@@ -1035,9 +1038,9 @@ Filter: hanya baris dengan `nomor_po IS NOT NULL AND lead_time_process_po IS NOT
                     },
                     {
                         "key": "kpi_speed_ontime",
-                        "metric_args": ("On-Time (<=55 Hari)", f"{ontime:,}"),
+                        "metric_args": ("On-Time (<=55 Hari)", f"{format_number(ontime)}"),
                         "metric_kwargs": {
-                            "delta": f"{ontime_pct:.1f}% dari total",
+                            "delta": f"{format_number(ontime_pct, decimals=1)}% dari total",
                             "delta_color": d_color
                         },
                         "formula": """\
@@ -1063,9 +1066,9 @@ Untuk melihat distribusi lengkap per rentang waktu, lihat chart **Distribusi Lea
                     },
                     {
                         "key": "kpi_speed_late",
-                        "metric_args": ("Terlambat (>55 Hari)", f"{late:,}"),
+                        "metric_args": ("Terlambat (>55 Hari)", f"{format_number(late)}"),
                         "metric_kwargs": {
-                            "delta": f"{100-ontime_pct:.1f}% dari total",
+                            "delta": f"{format_number(100-ontime_pct, decimals=1)}% dari total",
                             "delta_color": d_color
                         },
                         "formula": """\

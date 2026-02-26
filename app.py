@@ -2,10 +2,10 @@
 app.py - File utama PR-PO Monitoring Dashboard
 Jalankan dengan: streamlit run app.py
 
-Navigasi: st.navigation() dengan grouped sections (dict)
+Navigasi: st.navigation() dengan grouped dict
   → Back/Forward browser berfungsi penuh
-  → Section headers di-style menjadi toggle SAP / SIPS
-  → Filter sidebar conditional sesuai halaman aktif
+  → Section headers PR-PO SAP / SIPS distyle menjadi toggle pill
+  → Filter sidebar berbeda per sistem
 """
 
 import streamlit as st
@@ -17,8 +17,11 @@ warnings.filterwarnings('ignore')
 from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions
 
-# Views - PR-PO SAP
+# Views — PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
+
+# Views — SIPS
+from views import v_sips_dashboard, v_sips_detail
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -42,15 +45,19 @@ def init_state(key, value):
         st.session_state[key] = value
 
 init_state('show_changelog',      False)
+# SAP filters
 init_state('filter_bagian',       ['All'])
 init_state('prev_filter_bagian',  ['All'])
 init_state('filter_dept',         ['All'])
 init_state('prev_filter_dept',    ['All'])
 init_state('filter_pgroup',       ['All'])
 init_state('prev_filter_pgroup',  ['All'])
+# SIPS filters
+init_state('sips_filter_nama',    ['All'])
+init_state('sips_prev_nama',      ['All'])
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RENDER FUNCTIONS
+# HALAMAN — render functions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_dashboard():    v_dashboard.render(**st.session_state.get('_view_args', {}))
@@ -58,36 +65,11 @@ def _render_detail():       v_detail.render(**st.session_state.get('_view_args',
 def _render_evaluasi():     v_evaluasi.render(**st.session_state.get('_view_args', {}))
 def _render_kinerja():      v_kinerja_pg.render(**st.session_state.get('_view_args', {}))
 def _render_alert():        v_alert.render(**st.session_state.get('_view_args', {}))
-
-def _render_sips_dashboard():
-    st.markdown("""
-        <h1 style='display:flex; align-items:center; font-size:48px; gap:12px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5
-                         0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5
-                         0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
-            </svg>
-            SIPS Monitoring Dashboard
-        </h1>
-    """, unsafe_allow_html=True)
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("""
-            <div style='text-align:center; padding:60px 20px;'>
-                <div style='font-size:72px; margin-bottom:16px;'>⏳</div>
-                <h2 style='font-size:24px; margin-bottom:8px;'>Menunggu Data</h2>
-                <p style='opacity:0.6; font-size:15px; line-height:1.6;'>
-                    Halaman ini akan menampilkan monitoring data dari aplikasi <strong>SIPS</strong>.<br>
-                    Data Excel SIPS sedang disiapkan — dashboard akan diaktifkan<br>
-                    setelah file diterima dan ETL selesai dikonfigurasi.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
+def _render_sips_dashboard(): v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_detail():    v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NAVIGATION — grouped dict agar muncul section header SAP / SIPS
+# NAVIGATION — grouped dict agar muncul section header sebagai toggle
 # ─────────────────────────────────────────────────────────────────────────────
 
 pg = st.navigation(
@@ -101,14 +83,19 @@ pg = st.navigation(
         ],
         "SIPS": [
             st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
-            # Tambah halaman SIPS lain di sini nanti
+            st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
+            # Tambah halaman SIPS lain di sini
         ],
     },
     position="sidebar",
 )
 
-# Tutup changelog saat navigasi halaman
+# Deteksi sistem aktif dari judul halaman yang sedang dibuka
+SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data"}
 current_page = pg.title
+is_sips      = current_page in SIPS_TITLES
+
+# Tutup changelog otomatis saat navigasi
 if 'last_page' not in st.session_state:
     st.session_state.last_page = current_page
 if current_page != st.session_state.last_page:
@@ -116,17 +103,16 @@ if current_page != st.session_state.last_page:
     st.session_state.last_page = current_page
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS — style section headers menjadi toggle pill SAP / SIPS
+# CSS — section headers menjadi toggle pill SAP / SIPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Deteksi sistem aktif dari judul halaman
-SIPS_TITLES = {"Dashboard Monitoring SIPS"}
-is_sips = current_page in SIPS_TITLES
+# Pill aktif: div ke-1 = PR-PO SAP, div ke-2 = SIPS
+active_div = "2" if is_sips else "1"
 
 st.markdown(f"""
 <style>
 
-/* ── Judul "Main Menu" di atas nav ──────────────────────────────────── */
+/* ── Judul "Main Menu" ───────────────────────────────────────────────── */
 [data-testid="stSidebarNav"]::before {{
     content: "☰  Main Menu";
     display: block;
@@ -138,19 +124,9 @@ st.markdown(f"""
     margin-bottom: 4px;
 }}
 
-/* ── Section headers (PR-PO SAP / SIPS) jadi toggle pill ────────────── */
-[data-testid="stSidebarNavSeparator"] {{
-    display: none;   /* sembunyikan garis pemisah bawaan */
-}}
+/* ── Section headers → satu baris pill toggle ────────────────────────── */
+[data-testid="stSidebarNavSeparator"] {{ display: none; }}
 
-/* Wrapper section header Streamlit */
-[data-testid="stSidebarNavItems"] > div:has(> p) {{
-    display: inline-flex !important;
-    width: auto !important;
-    margin: 0 !important;
-}}
-
-/* Bungkus semua section header dalam satu baris pill */
 [data-testid="stSidebarNavItems"] {{
     display: flex !important;
     flex-wrap: wrap !important;
@@ -159,7 +135,13 @@ st.markdown(f"""
     align-items: center !important;
 }}
 
-/* Tiap label section = satu pill */
+[data-testid="stSidebarNavItems"] > div:has(> p) {{
+    display: inline-flex !important;
+    width: auto !important;
+    margin: 0 !important;
+}}
+
+/* Tiap label section = pill */
 [data-testid="stSidebarNavItems"] > div > p {{
     font-size: 13px !important;
     font-weight: 600 !important;
@@ -171,25 +153,20 @@ st.markdown(f"""
     transition: all 0.15s !important;
     white-space: nowrap !important;
     line-height: 1.4 !important;
-}}
-
-/* Pill tidak aktif */
-[data-testid="stSidebarNavItems"] > div > p {{
     background: transparent !important;
     color: var(--text-color) !important;
     opacity: 0.6 !important;
 }}
 
-/* Pill aktif — deteksi via urutan:
-   div:nth-of-type(1) = PR-PO SAP, div:nth-of-type(2) = SIPS */
-[data-testid="stSidebarNavItems"] > div:nth-of-type({"2" if is_sips else "1"}) > p {{
+/* Pill aktif */
+[data-testid="stSidebarNavItems"] > div:nth-of-type({active_div}) > p {{
     background: #ff4b4b !important;
     color: white !important;
     opacity: 1 !important;
     border-color: #ff4b4b !important;
 }}
 
-/* Div pembungkus halaman-halaman per section */
+/* Nav link div block */
 [data-testid="stSidebarNavItems"] > div:has(> a) {{
     width: 100% !important;
     display: block !important;
@@ -231,7 +208,7 @@ st.markdown(f"""
 </style>
 """, unsafe_allow_html=True)
 
-# JS: buat section header bisa diklik → pindah ke halaman pertama di section
+# JS: section header bisa diklik → pindah ke halaman pertama section-nya
 st.components.v1.html("""
 <script>
 (function() {
@@ -241,32 +218,23 @@ st.components.v1.html("""
         if (!navItems) { setTimeout(makeHeadersClickable, 200); return; }
 
         var divs = navItems.children;
-        var sections = [];  // kumpulkan {headerP, firstLink}
+        var sections = [];
 
         for (var i = 0; i < divs.length; i++) {
-            var p = divs[i].querySelector('p');          // section label
-            var a = divs[i].querySelector('a');          // nav link
-
+            var p = divs[i].querySelector('p');
+            var a = divs[i].querySelector('a');
             if (p && !a) {
-                // Ini section header — cari link pertama di section berikutnya
                 for (var j = i + 1; j < divs.length; j++) {
                     var firstA = divs[j].querySelector('a');
-                    if (firstA) {
-                        sections.push({ p: p, a: firstA });
-                        break;
-                    }
+                    if (firstA) { sections.push({ p: p, a: firstA }); break; }
                 }
             }
         }
 
         sections.forEach(function(s) {
-            // Hanya tambah listener sekali
             if (s.p.dataset.clickable) return;
             s.p.dataset.clickable = '1';
-            s.p.style.cursor = 'pointer';
-            s.p.addEventListener('click', function() {
-                s.a.click();
-            });
+            s.p.addEventListener('click', function() { s.a.click(); });
         });
     }
     setTimeout(makeHeadersClickable, 300);
@@ -276,11 +244,11 @@ st.components.v1.html("""
 """, height=0)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SIDEBAR FILTERS — conditional berdasarkan sistem aktif
+# SIDEBAR FILTERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Default values
-date_from                = datetime.now().date() - timedelta(days=360)
+# Default values (dipakai jika filter tidak ter-render / error)
+date_from                = datetime.now().date() - timedelta(days=366)
 date_to                  = datetime.now().date()
 selected_department      = ['All']
 selected_p_group         = ['All']
@@ -288,11 +256,15 @@ selected_bagian          = ['All']
 exclude_dept             = False
 exclude_purchasing_group = False
 exclude_bagian           = False
+sips_date_from           = datetime.now().date() - timedelta(days=366)
+sips_date_to             = datetime.now().date()
+sips_selected_nama       = ['All']
 
+# ── Header filter ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
     <h2 style='display:flex; align-items:center; font-size:20px;
                color:var(--text-color); margin-top:4px; margin-bottom:4px;'>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
              fill="currentColor" viewBox="0 0 16 16" style="margin-right:8px;">
             <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0
                      1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0
@@ -303,7 +275,9 @@ st.sidebar.markdown("""
     <hr style='margin:4px 0 12px 0; border-color:rgba(128,128,128,0.3);'>
 """, unsafe_allow_html=True)
 
-# ── Filter PR-PO SAP ─────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# FILTERS PR-PO SAP
+# ══════════════════════════════════════════════════════════════════════════════
 if not is_sips:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
@@ -324,39 +298,27 @@ if not is_sips:
         options_p_group = ['All'] + p_group_data['purchasing_group'].tolist()
 
         def update_bagian_logic():
-            current = st.session_state.filter_bagian
-            prev    = st.session_state.prev_filter_bagian
-            if 'All' in current and 'All' not in prev:
-                st.session_state.filter_bagian = ['All']
-            elif 'All' in current and len(current) > 1:
-                st.session_state.filter_bagian = [x for x in current if x != 'All']
-            elif not current:
-                st.session_state.filter_bagian = ['All']
+            cur, prv = st.session_state.filter_bagian, st.session_state.prev_filter_bagian
+            if 'All' in cur and 'All' not in prv:   st.session_state.filter_bagian = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_bagian = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.filter_bagian = ['All']
             st.session_state.prev_filter_bagian = st.session_state.filter_bagian
 
         def update_dept_logic():
-            current = st.session_state.filter_dept
-            prev    = st.session_state.prev_filter_dept
-            if 'All' in current and 'All' not in prev:
-                st.session_state.filter_dept = ['All']
-            elif 'All' in current and len(current) > 1:
-                st.session_state.filter_dept = [x for x in current if x != 'All']
-            elif not current:
-                st.session_state.filter_dept = ['All']
+            cur, prv = st.session_state.filter_dept, st.session_state.prev_filter_dept
+            if 'All' in cur and 'All' not in prv:   st.session_state.filter_dept = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_dept = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.filter_dept = ['All']
             st.session_state.prev_filter_dept = st.session_state.filter_dept
 
         def update_pgroup_logic():
-            current = st.session_state.filter_pgroup
-            prev    = st.session_state.prev_filter_pgroup
-            if 'All' in current and 'All' not in prev:
-                st.session_state.filter_pgroup = ['All']
-            elif 'All' in current and len(current) > 1:
-                st.session_state.filter_pgroup = [x for x in current if x != 'All']
-            elif not current:
-                st.session_state.filter_pgroup = ['All']
+            cur, prv = st.session_state.filter_pgroup, st.session_state.prev_filter_pgroup
+            if 'All' in cur and 'All' not in prv:   st.session_state.filter_pgroup = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_pgroup = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.filter_pgroup = ['All']
             st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
 
-        # Department
+        # ── Department ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
@@ -365,27 +327,23 @@ if not is_sips:
                 <path d="M3 0a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3v-3.5a.5.5 0 0 1
                          .5-.5h3a.5.5 0 0 1 .5.5V16h3a1 1 0 0 0 1-1V1a1 1 0 0
                          0-1-1zm1 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5
-                         0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1a.5.5
-                         0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5h1a.5.5
-                         0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5v-1a.5.5
-                         0 0 1 .5-.5"/>
+                         0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1
+                         a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z
+                         m3.5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0
+                         0 1-.5-.5v-1a.5.5 0 0 1 .5-.5"/>
             </svg>
             Department
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect(
-            "Department",
+        st.sidebar.multiselect("Department",
             options=['All'] + departments['department_code'].tolist(),
-            key="filter_dept",
-            on_change=update_dept_logic,
-            label_visibility="collapsed"
-        )
+            key="filter_dept", on_change=update_dept_logic, label_visibility="collapsed")
         selected_department = st.session_state.filter_dept
         exclude_dept = False
         if 'All' not in selected_department and selected_department:
             exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
 
-        # Purchasing Group
+        # ── Purchasing Group ──────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
@@ -399,65 +357,54 @@ if not is_sips:
             Purchasing Group
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect(
-            "Purchasing Group",
+        st.sidebar.multiselect("Purchasing Group",
             options=options_p_group,
-            key="filter_pgroup",
-            on_change=update_pgroup_logic,
-            label_visibility="collapsed"
-        )
+            key="filter_pgroup", on_change=update_pgroup_logic, label_visibility="collapsed")
         selected_p_group = st.session_state.filter_pgroup
         exclude_purchasing_group = False
         if 'All' not in selected_p_group and selected_p_group:
             exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
 
-        # Bagian
+        # ── Bagian ────────────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
-                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1a.5.5
-                     0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0v-1
-                     A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
-                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1A1.5
-                         1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5 1.5 0 0 1
-                         9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 10 12.5H9A1.5
-                         1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14 8.5h1a1.5 1.5 0 0 1
-                         1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1A1.5 1.5 0 0 1 12.5 11z"/>
+                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
+                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
+                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
+                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
+                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
+                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
+                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
+                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
+                         A1.5 1.5 0 0 1 12.5 11z"/>
             </svg>
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.pills(
-            "Bagian",
-            options=options_bagian,
-            selection_mode="multi",
-            key="filter_bagian",
-            on_change=update_bagian_logic,
-            label_visibility="collapsed"
-        )
+        st.sidebar.pills("Bagian", options=options_bagian, selection_mode="multi",
+            key="filter_bagian", on_change=update_bagian_logic, label_visibility="collapsed")
         selected_bagian = st.session_state.filter_bagian
 
-        # Date Range
+        # ── Date Range ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
-                <path d="M9 7a1 1 0 0 1 1-1h5v2h-5a1 1 0 0 1-1-1M1 7a1 1 0 0 0
-                         1 1h5V6H2a1 1 0 0 0-1 1"/>
                 <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
-                         0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1
-                         2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1
-                         0 0 0 1-1V4z"/>
+                         0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
+                         1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
+                         1 0 0 0 1-1V4z"/>
             </svg>
             Date Range
         </p>
         """, unsafe_allow_html=True)
-        date_from = st.sidebar.date_input("From", value=datetime.now().date() - timedelta(days=360))
-        date_to   = st.sidebar.date_input("To",   value=datetime.now().date())
+        date_from = st.sidebar.date_input("SAP From", value=datetime.now().date() - timedelta(days=366))
+        date_to   = st.sidebar.date_input("SAP To",   value=datetime.now().date())
 
         if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
             st.cache_data.clear()
@@ -466,20 +413,75 @@ if not is_sips:
     except Exception as e:
         st.sidebar.error(f"Error loading filters: {e}")
 
-# ── Filter SIPS ───────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# FILTERS SIPS
+# ══════════════════════════════════════════════════════════════════════════════
 else:
-    st.sidebar.markdown("""
-        <div style='background:var(--secondary-background-color); border-radius:8px;
-                    padding:14px 16px; font-size:13px; color:var(--text-color);
-                    opacity:0.7; text-align:center; line-height:1.7;'>
-            ⏳ Filter SIPS akan tersedia<br>setelah data diterima
-        </div>
-    """, unsafe_allow_html=True)
+    try:
+        nama_data = load_data("""
+            SELECT DISTINCT nama FROM sips_employees ORDER BY nama
+        """)
+        options_nama = ['All'] + nama_data['nama'].tolist()
+
+        def update_nama_logic():
+            cur, prv = st.session_state.sips_filter_nama, st.session_state.sips_prev_nama
+            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_nama = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_nama = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.sips_filter_nama = ['All']
+            st.session_state.sips_prev_nama = st.session_state.sips_filter_nama
+
+        # ── Filter Nama ───────────────────────────────────────────────────────
+        st.sidebar.markdown("""
+        <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2
+                         2 0 0 1 4 0m4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3
+                         6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68
+                         10.289 10 8 10s-3.516.68-4.168 1.332c-.678.678-.83
+                         1.418-.832 1.664z"/>
+            </svg>
+            Nama
+        </p>
+        """, unsafe_allow_html=True)
+        st.sidebar.multiselect("Nama",
+            options=options_nama,
+            key="sips_filter_nama",
+            on_change=update_nama_logic,
+            label_visibility="collapsed"
+        )
+        sips_selected_nama = st.session_state.sips_filter_nama
+
+        # ── Date Range SIPS ───────────────────────────────────────────────────
+        st.sidebar.markdown("""
+        <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
+                         0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
+                         1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
+                         1 0 0 0 1-1V4z"/>
+            </svg>
+            Date Range
+        </p>
+        """, unsafe_allow_html=True)
+        sips_date_from = st.sidebar.date_input("SIPS From", value=datetime.now().date() - timedelta(days=366))
+        sips_date_to   = st.sidebar.date_input("SIPS To", value=datetime.now().date())
+
+        if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="sips_refresh"):
+            st.cache_data.clear()
+            st.rerun()
+
+    except Exception as e:
+        st.sidebar.error(f"Error loading SIPS filters: {e}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD VIEW ARGS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# SAP view args
 filter_conditions = build_filter_conditions(
     date_from, date_to,
     selected_department, exclude_dept,
@@ -492,6 +494,14 @@ st.session_state['_view_args'] = dict(
     bagian_pr_cond=bagian_pr_cond,
     bagian_po_cond=bagian_po_cond,
     load_data=load_data,
+)
+
+# SIPS view args
+st.session_state['_sips_view_args'] = dict(
+    load_data=load_data,
+    date_from=sips_date_from,
+    date_to=sips_date_to,
+    selected_nama=sips_selected_nama,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -514,15 +524,15 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard — {system_label} | v1.6 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"Monitoring Dashboard — {system_label} | v1.5.1 | "
+        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
     )
 
 with col_foot2:
-    if not is_sips:
-        btn_label = "Kembali ke App" if st.session_state.show_changelog else "Log Perubahan"
-        btn_icon  = ":material/arrow_back:" if st.session_state.show_changelog else ":material/history:"
-        if st.button(btn_label, icon=btn_icon, use_container_width=True):
-            st.session_state.show_changelog = not st.session_state.show_changelog
-            st.rerun()
+    btn_label = "Kembali ke App" if st.session_state.show_changelog else "Log Perubahan"
+    btn_icon  = ":material/arrow_back:" if st.session_state.show_changelog else ":material/history:"
+    if st.button(btn_label, icon=btn_icon, use_container_width=True):
+        st.session_state.show_changelog = not st.session_state.show_changelog
+        st.rerun()
