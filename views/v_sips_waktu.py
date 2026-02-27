@@ -6,10 +6,10 @@ Timeline nyata dari data Excel:
                                                                                  <Realisasi SLA (T, hari kerja)>
 
 Kolom waktu:
-  PR-PO         = Disposisi Buyer → Tgl PO, hari KALENDER
+  PR-PO         = Disposisi Buyer -> Tgl PO, hari KALENDER
   Standard SLA  = target: Agreement 12H / Urgent 24H / TA-Investasi 48H / Normal 57H
-  Realisasi SLA = Disposisi → PO hari KERJA (rata-rata 8H lebih pendek dari N)
-  Nilai SLA     = 1 ontime · 0 miss · '-' belum PO (exclude dari analisis)
+  Realisasi SLA = Disposisi -> PO hari KERJA (rata-rata 8H lebih pendek dari N)
+  Nilai SLA     = 1 ontime - 0 miss - '-' belum PO (exclude dari analisis)
 """
 
 import streamlit as st
@@ -19,22 +19,9 @@ import plotly.graph_objects as go
 from utils import format_number
 
 
-def toggle_state(key):
-    st.session_state[key] = not st.session_state[key]
+def toggle_state(state_key):
+    st.session_state[state_key] = not st.session_state[state_key]
 
-def init_toggle(key):
-    if key not in st.session_state:
-        st.session_state[key] = False
-
-def formula_btn(key):
-    init_toggle(key)
-    opened = st.session_state[key]
-    st.button(
-        ":material/visibility_off:" if opened else ":material/visibility:",
-        key=f"btn_{key}",
-        help="Hide Formula" if opened else "Show Formula",
-        on_click=toggle_state, kwargs={"key": key},
-    )
 
 LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
               font_color="gray", margin=dict(t=16, b=16, l=10, r=10), separators=",.")
@@ -77,31 +64,6 @@ def kpi_card(icon, label, value, delta="", dc="n"):
             f'<div class="wt-body"><p class="wt-lbl">{label}</p>'
             f'<p class="wt-val">{value}</p>{d}</div></div>')
 
-def sec_btn(title, sub, key, formula, icon_path):
-    # Buat rasio kolom 9 banding 1 seperti di v_dashboard.py
-    title_col, btn_col = st.columns([9, 1])
-    
-    with title_col:
-        # Render HTML untuk header + SVG + Subtitle
-        st.markdown(f"""
-            <h1 style='display: flex; align-items: center; font-size:24px;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                    <path d="{icon_path}"/>
-                </svg>
-                {title}
-            </h1>
-            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>{sub}</p>
-        """, unsafe_allow_html=True)
-        
-    with btn_col:
-        # Posisikan tombol mata agar sejajar
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        formula_btn(key)
-        
-    # Render info box di bawah (luar kolom) jika tombol ditekan
-    if st.session_state[key]:
-        st.info(formula)
-
 
 def render(load_data, date_from, date_to, selected_nama, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
@@ -111,12 +73,13 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
       <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor"
            viewBox="0 0 16 16" style="margin-bottom:10px;margin-right:8px;">
         <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M2 2a1 1 0 0 0-1 1v1h14V3a1 1 0 0 0-1-1zm13 3H1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1z"/>
-  <path d="M11 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-2 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
+        <path d="M11 7.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-2 3a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm-3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
       </svg>
       Analisis Waktu Proses SIPS
     </h1>""", unsafe_allow_html=True)
     st.markdown("---")
 
+    # ── WHERE clause ─────────────────────────────────────────────────────────
     wp = ["1=1", "nilai_sla IS NOT NULL", "status IN ('Closed','Proses PO')"]
     if date_from:
         wp.append(f"requisition_date >= '{date_from}'")
@@ -177,55 +140,307 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
     pct_ontime   = float(r["pct_ontime"]   or 0)
     cnt_miss     = int(r["cnt_miss"]       or 0)
 
-    # ── 1. KPI Ringkasan ─────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 1: KPI Ringkasan
+    # ══════════════════════════════════════════════════════════════════════════
     st.markdown("""
-            <h1 style='display: flex; align-items: center;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
-                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71z"/>
-                </svg>
-                Ringkasan Waktu
-            </h1>
-        """, unsafe_allow_html=True)
+        <h1 style='display: flex; align-items: center; font-size:24px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71z"/>
+            </svg>
+            Ringkasan Waktu
+        </h1>
+    """, unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(kpi_card("clock","Rata-rata PR-PO",f"{format_number(avg_pr_po, decimals=1)} hari",
-                             "Disposisi Buyer ke Tgl PO (hari kalender)","n"),
-                    unsafe_allow_html=True)
-    with c2:
+    # ── Baris 1: Rata-rata PR-PO | Rata-rata Realisasi SLA | Waktu Pra-Disposisi ──
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("clock", "Rata-rata PR-PO",
+                                 f"{format_number(avg_pr_po, decimals=1)} hari",
+                                 "Disposisi Buyer ke Tgl PO (hari kalender)", "n"),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_pr_po = "show_formula_kpi_pr_po"
+            if key_kpi_pr_po not in st.session_state:
+                st.session_state[key_kpi_pr_po] = False
+            is_open = st.session_state[key_kpi_pr_po]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_pr_po}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_pr_po})
+
+    with col2:
         dc = "g" if avg_real <= avg_std else "r"
-        st.markdown(kpi_card("check","Rata-rata Realisasi SLA",f"{format_number(avg_real, decimals=1)} hari",
-                             f"Disposisi ke PO hari kerja | Standar rata-rata {format_number(avg_std)}H",dc),
-                    unsafe_allow_html=True)
-    with c3:
-        st.markdown(kpi_card("split","Waktu Pra-Disposisi",f"{format_number(avg_pra, decimals=1)} hari",
-                             "Req Date ke Disposisi (routing / approval)","n"),
-                    unsafe_allow_html=True)
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("check", "Rata-rata Realisasi SLA",
+                                 f"{format_number(avg_real, decimals=1)} hari",
+                                 f"Disposisi ke PO hari kerja | Standar rata-rata {format_number(avg_std)}H", dc),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_real = "show_formula_kpi_real"
+            if key_kpi_real not in st.session_state:
+                st.session_state[key_kpi_real] = False
+            is_open = st.session_state[key_kpi_real]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_real}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_real})
+
+    with col3:
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("split", "Waktu Pra-Disposisi",
+                                 f"{format_number(avg_pra, decimals=1)} hari",
+                                 "Req Date ke Disposisi (routing / approval)", "n"),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_pra = "show_formula_kpi_pra"
+            if key_kpi_pra not in st.session_state:
+                st.session_state[key_kpi_pra] = False
+            is_open = st.session_state[key_kpi_pra]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_pra}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_pra})
+
+    # Formula info baris 1 — tampil di bawah baris, lebar penuh
+    if st.session_state.get(key_kpi_pr_po, False):
+        st.info(f"""\
+**Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan (hari kalender).
+
+⚠️ Kolom PR-PO **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit.
+
+**Formula Excel:**
+```
+=AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
+```
+Kolom N = PR-PO (hari kalender: Disposisi Buyer → Tanggal PO).
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
+AS avg_pr_po
+```
+
+Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
+
+**Nilai saat ini:** {format_number(avg_pr_po, decimals=1)} hari
+
+**Target:** -
+""")
+
+    if st.session_state.get(key_kpi_real, False):
+        st.info(f"""\
+**Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
+
+Berbeda dari PR-PO yang menggunakan hari kalender, Realisasi SLA mengeluarkan hari libur/akhir pekan sehingga nilainya lebih kecil (rata-rata selisih ±8 hari).
+
+**Formula Excel:**
+```
+=AVERAGEIFS(SIPS!T:T, SIPS!B:B, nama)
+```
+Kolom T = Realisasi SLA (hari kerja).
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(realisasi_sla)::numeric, 1) AS avg_real
+```
+
+**Interpretasi:**
+
+| Kondisi | Artinya |
+|---|---|
+| Realisasi ≤ Standard SLA | ✅ On-time — proses selesai sebelum target |
+| Realisasi > Standard SLA | ❌ Miss — proses melewati batas SLA |
+
+**Standard SLA rata-rata saat ini:** {format_number(avg_std)} hari &nbsp;|&nbsp; **Realisasi saat ini:** {format_number(avg_real, decimals=1)} hari
+""")
+
+    if st.session_state.get(key_kpi_pra, False):
+        st.info(f"""\
+**Waktu Pra-Disposisi**: Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
+
+Ini adalah waktu **di luar kendali tim pengadaan**.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric, 1)
+AS avg_pra
+```
+Tidak ada kolom langsung di Excel untuk ini, dihitung dari selisih kolom **Tgl Disposisi Buyer** dan kolom **Requisition Date**.
+
+**Nilai saat ini:** {format_number(avg_pra, decimals=1)} hari
+
+**Catatan:** Nilai ini tinggi bisa mengindikasikan bottleneck di proses approval atau routing sebelum PR masuk ke pengadaan.
+""")
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(kpi_card("route","Rata-rata End-to-End",f"{format_number(avg_e2e, decimals=1)} hari",
-                             "Req Date ke Tgl PO (total keseluruhan)","n"),
-                    unsafe_allow_html=True)
-    with c2:
-        dc = "g" if avg_headroom >= 0 else "r"
-        st.markdown(kpi_card("target","Rata-rata SLA Headroom",f"{format_number(avg_headroom, decimals=1)} hari",
-                             "Standard SLA minus Realisasi SLA (sisa waktu)",dc),
-                    unsafe_allow_html=True)
-    with c3:
-        dc = "g" if pct_ontime >= 90 else ("o" if pct_ontime >= 75 else "r")
-        st.markdown(kpi_card("check","% On Time SLA",f"{format_number(pct_ontime, decimals=1)}%",
-                             f"Realisasi SLA <= Standard SLA | Miss: {format_number(cnt_miss)}",dc),
-                    unsafe_allow_html=True)
 
-    # ── 2. Dekomposisi per Nama ───────────────────────────────────────────────
-    sec_btn(
-        title="Dekomposisi Waktu per Nama",
-        sub="Proporsi PR-PO (tim pengadaan) vs Waktu Pra-Disposisi per karyawan",
-        key="wt_decomp",
-        icon_path="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5z",
-        formula="""\
+    # ── Baris 2: Rata-rata End-to-End | SLA Headroom | % On Time SLA ──
+    col4, col5, col6 = st.columns(3)
+
+    with col4:
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("route", "Rata-rata End-to-End",
+                                 f"{format_number(avg_e2e, decimals=1)} hari",
+                                 "Req Date ke Tgl PO (total keseluruhan)", "n"),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_e2e = "show_formula_kpi_e2e"
+            if key_kpi_e2e not in st.session_state:
+                st.session_state[key_kpi_e2e] = False
+            is_open = st.session_state[key_kpi_e2e]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_e2e}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_e2e})
+
+    with col5:
+        dc = "g" if avg_headroom >= 0 else "r"
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("target", "Rata-rata SLA Headroom",
+                                 f"{format_number(avg_headroom, decimals=1)} hari",
+                                 "Standard SLA minus Realisasi SLA (sisa waktu)", dc),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_headroom = "show_formula_kpi_headroom"
+            if key_kpi_headroom not in st.session_state:
+                st.session_state[key_kpi_headroom] = False
+            is_open = st.session_state[key_kpi_headroom]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_headroom}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_headroom})
+
+    with col6:
+        dc = "g" if pct_ontime >= 90 else ("o" if pct_ontime >= 75 else "r")
+        c_card, c_btn = st.columns([10, 2])
+        with c_card:
+            st.markdown(kpi_card("check", "% On Time SLA",
+                                 f"{format_number(pct_ontime, decimals=1)}%",
+                                 f"Realisasi SLA <= Standard SLA | Miss: {format_number(cnt_miss)}", dc),
+                        unsafe_allow_html=True)
+        with c_btn:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+            key_kpi_ontime = "show_formula_kpi_ontime"
+            if key_kpi_ontime not in st.session_state:
+                st.session_state[key_kpi_ontime] = False
+            is_open = st.session_state[key_kpi_ontime]
+            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_kpi_ontime}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_ontime})
+
+    # Formula info baris 2 — tampil di bawah baris, lebar penuh
+    if st.session_state.get(key_kpi_e2e, False):
+        st.info(f"""\
+**Rata-rata End-to-End**: Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
+
+Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
+- Pra-Disposisi = waktu sebelum buyer menerima PR (routing, approval, antrian)
+- PR-PO = waktu pengadaan setelah buyer menerima PR
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(tgl_po - requisition_date)::numeric, 1)
+AS avg_e2e
+```
+Dihitung dari selisih kolom L (Tanggal PO) dan kolom I (Requisition Date).
+
+**Nilai saat ini:** {format_number(avg_e2e, decimals=1)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=1)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=1)} hari
+""")
+
+    if st.session_state.get(key_kpi_headroom, False):
+        st.info(f"""\
+**Rata-rata SLA Headroom**: Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
+
+**Formula:**
+```
+SLA Headroom = Standard SLA − Realisasi SLA
+```
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(standar_sla - realisasi_sla)::numeric, 1)
+AS avg_headroom
+```
+
+**Interpretasi:**
+
+| Nilai | Artinya |
+|---|---|
+| **Positif** | Proses selesai lebih cepat dari target — masih ada sisa waktu ✅ |
+| **0** | Tepat di batas SLA |
+| **Negatif** | Proses melewati Standard SLA — SLA Miss ❌ |
+
+**Nilai saat ini:** {format_number(avg_headroom, decimals=1)} hari
+
+**Target:** ≥ 0 hari (semakin besar semakin baik)
+""")
+
+    if st.session_state.get(key_kpi_ontime, False):
+        st.info(f"""\
+**% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
+
+**Formula Excel:**
+```
+=COUNTIFS(SIPS!U:U, 1, SIPS!B:B, nama) / Total PO × 100%
+```
+Kolom U = Nilai SLA (1 = on-time, 0 = miss, '-' = belum ada PO).
+
+**Kalkulasi SQL:**
+```sql
+ROUND(
+  SUM(CASE WHEN nilai_sla = 1 THEN 1.0 END)
+  / NULLIF(COUNT(*), 0) * 100, 1
+) AS pct_ontime
+```
+Baris dengan `nilai_sla = '-'` (PR belum ada PO) **dikecualikan** dari perhitungan via `WHERE nilai_sla IS NOT NULL`.
+
+**Interpretasi:**
+
+| % On Time | Status |
+|---|---|
+| ≥ 90% | 🟢 Baik |
+| 75% – 89% | 🟡 Perlu perhatian |
+| < 75% | 🔴 Kritis |
+
+**Nilai saat ini:** {format_number(pct_ontime, decimals=1)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
+
+**Target:** ≥ 90%
+""")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 2: Dekomposisi Waktu per Nama
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5z"/>
+                </svg>
+                Dekomposisi Waktu per Nama
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Proporsi PR-PO (tim pengadaan) vs Waktu Pra-Disposisi per karyawan</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_decomp = "show_formula_wt_decomp"
+        if key_wt_decomp not in st.session_state:
+            st.session_state[key_wt_decomp] = False
+        is_open = st.session_state[key_wt_decomp]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_decomp}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_decomp})
+
+    if st.session_state.get(key_wt_decomp, False):
+        st.info("""\
 **Dekomposisi Waktu per Nama**
 
 | Komponen | Artinya |
@@ -256,13 +471,32 @@ GROUP BY nama
                       xaxis=dict(title="Hari", **GRID), yaxis=dict(title=""), **LAYOUT)
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── 3. SLA per Jenis Pengadaan ────────────────────────────────────────────
-    sec_btn(
-        title="Pemenuhan SLA per Jenis Pengadaan",
-        sub="% On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak",
-        key="wt_sla_type",
-        icon_path="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05",
-        formula="""\
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 3: Pemenuhan SLA per Jenis Pengadaan
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05"/>
+                </svg>
+                Pemenuhan SLA per Jenis Pengadaan
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>% On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_sla_type = "show_formula_wt_sla_type"
+        if key_wt_sla_type not in st.session_state:
+            st.session_state[key_wt_sla_type] = False
+        is_open = st.session_state[key_wt_sla_type]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_sla_type}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_sla_type})
+
+    if st.session_state.get(key_wt_sla_type, False):
+        st.info("""\
 **Standard SLA per jenis pengadaan:**
 
 | Standard SLA | Jenis | Prioritas |
@@ -286,8 +520,8 @@ GROUP BY standar_sla
         ontime=("nilai_sla", lambda x: (pd.to_numeric(x,errors="coerce")==1).sum()),
         avg_r =("realisasi_sla","mean"),
     ).reset_index()
-    sla_g["pct"] = (sla_g["ontime"] / sla_g["total"] * 100)
-    sla_g["std_num"] = sla_g["standar_sla"].astype(float)
+    sla_g["pct"]       = (sla_g["ontime"] / sla_g["total"] * 100)
+    sla_g["std_num"]   = sla_g["standar_sla"].astype(float)
     sla_g["standar_sla"] = sla_g["std_num"].apply(lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
 
     col_l, col_r = st.columns(2)
@@ -322,13 +556,32 @@ GROUP BY standar_sla
                          legend=dict(orientation="h", yanchor="bottom", y=1.01), **LAYOUT)
         st.plotly_chart(f2, use_container_width=True)
 
-    # ── 4. SLA Headroom per Nama ──────────────────────────────────────────────
-    sec_btn(
-        title="SLA Headroom per Nama",
-        sub="Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan",
-        key="wt_headroom",
-        icon_path="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4",
-        formula="""\
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 4: SLA Headroom per Nama
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>
+                </svg>
+                SLA Headroom per Nama
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_headroom = "show_formula_wt_headroom"
+        if key_wt_headroom not in st.session_state:
+            st.session_state[key_wt_headroom] = False
+        is_open = st.session_state[key_wt_headroom]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_headroom}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_headroom})
+
+    if st.session_state.get(key_wt_headroom, False):
+        st.info("""\
 **SLA Headroom** = Standard SLA minus Realisasi SLA
 
 | Nilai | Artinya |
@@ -359,13 +612,32 @@ Hijau = rata-rata headroom positif. Merah = sering melewati target.
                      yaxis=dict(title=""), showlegend=False, **LAYOUT)
     st.plotly_chart(fh, use_container_width=True)
 
-    # ── 5. Tren per Bulan ─────────────────────────────────────────────────────
-    sec_btn(
-        title="Tren Waktu per Bulan",
-        sub="Perubahan kecepatan proses dari bulan ke bulan",
-        key="wt_trend",
-        icon_path="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07",
-        formula="""\
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 5: Tren Waktu per Bulan
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
+                </svg>
+                Tren Waktu per Bulan
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Perubahan kecepatan proses dari bulan ke bulan</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_trend = "show_formula_wt_trend"
+        if key_wt_trend not in st.session_state:
+            st.session_state[key_wt_trend] = False
+        is_open = st.session_state[key_wt_trend]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_trend})
+
+    if st.session_state.get(key_wt_trend, False):
+        st.info("""\
 **Tren Waktu per Bulan**
 
 | Elemen | Warna | Keterangan |
@@ -412,13 +684,32 @@ GROUP BY bulan ORDER BY bulan
             xaxis =dict(title="", **GRID), **LAYOUT)
         st.plotly_chart(ft, use_container_width=True)
 
-    # ── 6. Distribusi Waktu ───────────────────────────────────────────────────
-    sec_btn(
-        title="Distribusi Waktu",
-        sub="Sebaran PR-PO dan End-to-End untuk mendeteksi outlier",
-        key="wt_dist",
-        icon_path="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z",
-        formula="""\
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 6: Distribusi Waktu
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
+                </svg>
+                Distribusi Waktu
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Sebaran PR-PO dan End-to-End untuk mendeteksi outlier</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_dist = "show_formula_wt_dist"
+        if key_wt_dist not in st.session_state:
+            st.session_state[key_wt_dist] = False
+        is_open = st.session_state[key_wt_dist]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_dist}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_dist})
+
+    if st.session_state.get(key_wt_dist, False):
+        st.info("""\
 **Distribusi Waktu**
 
 **Kiri - PR-PO (N, hari kalender):** Disposisi ke Tgl PO. Mayoritas diharapkan di bawah Standard SLA.
@@ -454,13 +745,32 @@ Garis putus = rata-rata masing-masing.
                              yaxis=dict(title="Jumlah PR",**GRID), showlegend=False, **LAYOUT)
             st.plotly_chart(f7, use_container_width=True)
 
-    # ── 7. Waktu per Prioritas ────────────────────────────────────────────────
-    sec_btn(
-        title="Waktu per Prioritas",
-        sub="Apakah PR prioritas tinggi benar-benar diproses lebih cepat?",
-        key="wt_prio",
-        icon_path="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2",
-        formula="""\
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 7: Waktu per Prioritas
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
+                </svg>
+                Waktu per Prioritas
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Apakah PR prioritas tinggi benar-benar diproses lebih cepat?</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_wt_prio = "show_formula_wt_prio"
+        if key_wt_prio not in st.session_state:
+            st.session_state[key_wt_prio] = False
+        is_open = st.session_state[key_wt_prio]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_wt_prio}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_prio})
+
+    if st.session_state.get(key_wt_prio, False):
+        st.info("""\
 **Waktu per Prioritas**
 
 | Prioritas | Standard SLA |
