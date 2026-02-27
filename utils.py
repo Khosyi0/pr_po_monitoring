@@ -236,7 +236,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                 st.markdown(user_input)
                 
             # Render animasi loading & balasan AI
-            with st.chat_message("assistant", avatar="assets/mia_icon.png"):
+            with st.chat_message("assistant", avatar="assets/Mia_icon.png"):
                 with st.spinner("Menganalisis data..."):
                     try:
                         # Rakit Prompt Rahasia
