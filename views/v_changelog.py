@@ -20,6 +20,13 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "27 Feb 2026", "Versi": "v1.6", "Perubahan": """
+    - Menambahkan info detail pada masing-masing bagian pada Ringkasan Waktu di halaman Analisis Waktu Proses SIPS
+    - Menambahkan model LLM bernanma untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
+        - Model LLM menggunakan model gemini-3-flash-preview dari Google GenAI dengan prompt rahasia yang dirancang khusus untuk memberikan insight yang tajam, faktual, dan objektif berdasarkan data
+        - Data perusahaan tidak akan menjadi dataset pelatihan model Gemini karena API KEY yang digunakan jenisnya paid (estimasi Rp 20.000 per bulan)
+        - Model LLM memiliki kepribadian bernama Mia (terinspirasi dari nama Petrokimia) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
+        - Penggunaan model LLM ini masih dalam tahap awal (proof of concept) dan akan terus disempurnakan"""},
         {"Tanggal": "26 Feb 2026", "Versi": "v1.5.1", "Perubahan": """
     - Menambahkan info penting di halaman Dashboard Monitoring SIPS
         - Total PR
@@ -171,5 +178,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.5.1"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.6"])):
             st.markdown(item["Perubahan"])

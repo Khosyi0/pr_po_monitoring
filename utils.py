@@ -5,6 +5,8 @@ utils.py - Fungsi pembantu: format uang, CSS, dan filter kondisi SQL
 import streamlit as st
 import pandas as pd
 from google import genai
+import base64
+import os
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FORMAT ANGKA & RUPIAH (STANDAR INDONESIA)
@@ -154,15 +156,26 @@ def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
 def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
     """Merender antarmuka chat LLM secara sebaris (inline) dengan kotak scrollable."""
     st.divider()
+
+    img_path = "assets/Mia_icon.png"
+    img_b64 = ""
+
+    if os.path.exists(img_path):
+        with open(img_path, "rb") as img_file:
+            img_b64 = base64.b64encode(img_file.read()).decode()
+
+    if img_b64:
+        # Jika gambar ditemukan, jadikan icon bulat (border-radius: 50%)
+        icon_html = f'<img src="data:image/png;base64,{img_b64}" width="38" height="38" style="margin-right: 12px; border-radius: 50%; object-fit: cover; border: 2px solid #1f77b4;">'
+    else:
+        # Fallback (cadangan) jika gambar tidak ditemukan, gunakan emoji
+        icon_html = '<span style="font-size: 32px; margin-right: 12px;">🕵️‍♀️</span>'
     
     # Header AI
-    st.markdown("""
-        <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-robot" viewBox="0 0 16 16" style="margin-right: 10px;">
-              <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5M3 8.062C3 6.76 4.235 5.765 5.53 5.889a28.68 28.68 0 0 1 4.94 0C11.765 5.765 13 6.76 13 8.062v1.157a.933.933 0 0 1-.765.935c-.845.147-2.34.346-4.235.346-1.895 0-3.39-.2-4.235-.346A.933.933 0 0 1 3 9.219zm4.542-.827a.25.25 0 0 0-.217.068l-.92.9a25 25 0 0 1-1.871-.183.25.25 0 0 0-.068.495c.55.076 1.232.149 2.02.193a.25.25 0 0 0 .189-.071l.754-.736.847 1.71a.25.25 0 0 0 .404.062l.932-.97a25 25 0 0 0 1.922-.188.25.25 0 0 0-.068-.495c-.538.074-1.207.145-1.98.189a.25.25 0 0 0-.166.076l-.754.785-.842-1.7a.25.25 0 0 0-.182-.135Z"/>
-              <path d="M8.5 1.866a1 1 0 1 0-1 0V3h-2A4.5 4.5 0 0 0 1 7.5V8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1v-.5A4.5 4.5 0 0 0 10.5 3h-2zM14 7.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7.5A3.5 3.5 0 0 1 5.5 4h5A3.5 3.5 0 0 1 14 7.5"/>
-            </svg>
-            AI Procurement Analyst
+    st.markdown(f"""
+        <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4; margin-bottom: 5px;'>
+            {icon_html}
+            Tanya Mia (Asisten Pengadaan Barang)
         </h1>
     """, unsafe_allow_html=True)
     st.caption(f"Tanyakan *insight* atau kesimpulan dari data yang sedang tampil di halaman **{nama_halaman}**.")
@@ -223,24 +236,26 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                 st.markdown(user_input)
                 
             # Render animasi loading & balasan AI
-            with st.chat_message("assistant"):
+            with st.chat_message("assistant", avatar="assets/mia_icon.png"):
                 with st.spinner("Menganalisis data..."):
                     try:
                         # Rakit Prompt Rahasia
                         system_prompt = f"""
-                        Anda adalah Data Analyst senior untuk sistem pengadaan barang (Procurement/SAP/SIPS).
+                        Kamu adalah asisten AI bernama Mia, seorang analis data perempuan yang ceria, sangat teliti, dan bersikap layaknya "detektif" andal yang sedang menyelidiki data sistem perusahaan.
                         
-                        Berikut adalah rangkuman data faktual yang sedang dilihat user di layar saat ini:
-                        --- MULAI DATA ---
+                        Tugas dan Aturan Ketat Mia:
+                        1. IDENTITAS & GAYA BAHASA: Jika disapa atau ditanya siapa kamu, jawab dengan riang: "Halo! Namaku Mia 🕵️‍♀️✨ Aku detektif data yang siap bantu kamu menyelidiki efisiensi dan jejak anggaran di sistem kita! Ada misteri angka apa yang mau kita pecahkan hari ini?". Gunakan gaya bahasa yang ceria, ramah, sedikit playful (gunakan kata "aku" dan "kamu"), tapi tetap SANGAT OBJEKTIF dan tajam saat menganalisis angka.
+                        2. FAKTUAL & OBJEKTIF: Jawab HANYA berdasarkan data di bawah. JIKA DATA TIDAK ADA, katakan dengan nada detektif: "Hmm, sepertinya jejak data itu tidak kutemukan di layar saat ini 🔍."
+                        3. NO HALLUCINATION: Sebagai detektif, kamu pantang mengarang bukti! JANGAN PERNAH mengarang angka, nama vendor, atau metrik yang tidak ada di data.
+                        4. BATASAN DOMAIN: Kamu hanya menyelidiki kasus transaksi, anggaran, vendor, dan dashboard ini. Tolak dengan sopan dan lucu jika diajak bahas resep masakan, coding, atau hal di luar kasus.
+                        5. FORMAT: Berikan analisis yang terstruktur, tebalkan angka penting, pastikan format angka menggunakan standar Rupiah yang rapi, dan tambahkan sedikit emoji (seperti 📉, 💡, 🚨) agar laporannya tidak membosankan.
+                        
+                        Berikut adalah BUKTI-BUKTI DATA yang sedang tayang di layar saat ini:
+                        --- MULAI BUKTI DATA ---
                         {konteks_data_teks}
-                        --- AKHIR DATA ---
+                        --- AKHIR BUKTI DATA ---
                         
-                        Tugas Anda:
-                        1. Jawab pertanyaan user HANYA berdasarkan data di atas. Jangan mengarang vendor atau angka baru.
-                        2. Berikan analisis yang tajam, langsung ke poinnya, dan profesional.
-                        3. Bold angka nominal dan pastikan formatnya menggunakan standar Rupiah.
-                        
-                        Pertanyaan User: {user_input}
+                        Pertanyaan dari User: {user_input}
                         """
                         
                         # Eksekusi API Gemini
