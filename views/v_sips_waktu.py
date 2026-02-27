@@ -16,7 +16,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils import format_number
+from utils import format_number, render_chat_analyst
 
 
 def toggle_state(state_key):
@@ -67,6 +67,8 @@ def kpi_card(icon, label, value, delta="", dc="n"):
 
 def render(load_data, date_from, date_to, selected_nama, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
+
+    info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
 
     st.markdown("""
     <h1 style='display:flex;align-items:center;font-size:60px;'>
@@ -827,3 +829,55 @@ Idealnya Emergency dan Urgent lebih rendah dari Normal.
         f9.update_layout(height=300, xaxis=dict(title="", **GRID),
                          yaxis=dict(title="% On Time", range=[0,115], **GRID), **LAYOUT)
         st.plotly_chart(f9, use_container_width=True)
+
+    # =====================================================================
+    # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+    # =====================================================================
+    
+    konteks_lines = []
+    
+    # 0. Rangkuman Filter
+    konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+    konteks_lines.append(info_filter)
+    konteks_lines.append("\n")
+
+    # 1. Ringkasan KPI Waktu Utama
+    konteks_lines.append("## 1. RINGKASAN KPI WAKTU PROSES SIPS")
+    konteks_lines.append(f"- Rata-rata End-to-End (Total): {avg_e2e:.1f} hari")
+    konteks_lines.append(f"- Rata-rata Pra-Disposisi (Sebelum masuk pengadaan): {avg_pra:.1f} hari")
+    konteks_lines.append(f"- Rata-rata PR-PO (Hari Kalender di pengadaan): {avg_pr_po:.1f} hari")
+    konteks_lines.append(f"- Rata-rata Realisasi SLA (Hari Kerja di pengadaan): {avg_real:.1f} hari")
+    konteks_lines.append(f"- Rata-rata Standard SLA Target: {avg_std:.1f} hari")
+    konteks_lines.append(f"- SLA Headroom (Sisa Waktu): {avg_headroom:.1f} hari")
+    konteks_lines.append(f"- % On Time SLA: {pct_ontime:.1f}% (Jumlah terlambat: {cnt_miss} PO)\n")
+
+    # 2. Dekomposisi Waktu per Nama (Karyawan)
+    if 'decomp' in locals() and not decomp.empty:
+        konteks_lines.append("## 2. DEKOMPOSISI WAKTU PER KARYAWAN")
+        # Menggunakan df decomp yang sudah dihitung sebelumnya
+        konteks_lines.append(decomp.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # 3. SLA Berdasarkan Jenis Standard SLA
+    if 'sla_g' in locals() and not sla_g.empty:
+        konteks_lines.append("## 3. PEMENUHAN SLA BERDASARKAN STANDARD SLA")
+        # Pilih kolom penting
+        df_sla_simple = sla_g[['standar_sla', 'total', 'ontime', 'avg_r', 'pct']]
+        konteks_lines.append(df_sla_simple.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # 4. Waktu per Prioritas Dokumen
+    if 'prio' in locals() and not prio.empty:
+        konteks_lines.append("## 4. WAKTU PROSES BERDASARKAN PRIORITAS")
+        df_prio_simple = prio[['prioritas', 'avg_pr_po', 'avg_real', 'pct']]
+        konteks_lines.append(df_prio_simple.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # Gabungkan semua teks
+    gabungan_konteks = "\n".join(konteks_lines)
+
+    # Panggil komponen chat
+    render_chat_analyst(
+        konteks_data_teks=gabungan_konteks, 
+        nama_halaman="Analisis Waktu Proses SIPS"
+    )

@@ -6,10 +6,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short
+from utils import format_idr, format_idr_short, render_chat_analyst
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
+        
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
         
         # Fungsi helper untuk tombol toggle formula
         def toggle_state(state_key):
@@ -282,3 +284,51 @@ END AS umur_po
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data aging PO.")
+
+        # =====================================================================
+        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # =====================================================================
+        
+        konteks_lines = []
+        
+        # 0. Rangkuman Filter
+        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+        konteks_lines.append(info_filter)
+        konteks_lines.append("\n")
+
+        # 1. Alert PR Kadaluarsa
+        if 'alert_pr_data' in locals() and not alert_pr_data.empty:
+            konteks_lines.append(f"## 1. ALERT: PR PENDING > 30 HARI (Total: {len(alert_pr_data)} PR)")
+            # Ambil maksimal 15 baris untuk menghemat token
+            df_pr_simple = alert_pr_data[['no_pr', 'department', 'umur_hari', 'estimasi_pr']].head(15)
+            konteks_lines.append(df_pr_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
+        else:
+            konteks_lines.append("## 1. ALERT: PR PENDING > 30 HARI\nAman. Tidak ada PR pending > 30 hari.\n")
+
+        # 2. Alert PO Overdue
+        if 'alert_po_data' in locals() and not alert_po_data.empty:
+            konteks_lines.append(f"## 2. ALERT: PO OVERDUE / TERLAMBAT (Total: {len(alert_po_data)} PO)")
+            # Ambil kolom esensial maksimal 20 baris
+            df_po_simple = alert_po_data[['nomor_po', 'vendor_name', 'target_delivery', 'hari_terlambat']].head(20)
+            konteks_lines.append(df_po_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
+        else:
+            konteks_lines.append("## 2. ALERT: PO OVERDUE\nAman. Tidak ada PO overdue/terlambat pengiriman.\n")
+
+        # 3. Alert Aging PO
+        if 'aging_data' in locals() and not aging_data.empty:
+            konteks_lines.append("## 3. RINGKASAN AGING PO (BELUM DIKIRIM)")
+            konteks_lines.append(aging_data.to_markdown(index=False))
+            konteks_lines.append("\n")
+        else:
+            konteks_lines.append("## 3. RINGKASAN AGING PO\nTidak ada data aging PO.\n")
+
+        # Gabungkan konteks
+        gabungan_konteks = "\n".join(konteks_lines)
+
+        # Render chat di bawah halaman Alert
+        render_chat_analyst(
+            konteks_data_teks=gabungan_konteks, 
+            nama_halaman="Halaman Alert (Warning & Action Required)"
+        )

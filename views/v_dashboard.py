@@ -6,10 +6,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short, format_number, format_currency
+from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
+        
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
         
         def toggle_state(state_key):
             st.session_state[state_key] = not st.session_state[state_key]
@@ -1083,3 +1085,52 @@ ORDER BY abc_indicator
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("No material data available.")
+
+        # =====================================================================
+        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # =====================================================================
+        
+        # Merakit teks konteks dari dataframe yang sudah di-load di atas
+        konteks_lines = []
+
+        # 0. Rangkuman Filter yang Sedang Aktif
+        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+        konteks_lines.append(info_filter)
+        konteks_lines.append("\n")
+        
+        # 1. Rangkuman KPI Utama
+        konteks_lines.append("## 1. RINGKASAN KPI UTAMA")
+        konteks_lines.append(f"- Total PR: {total_pr} (PR dengan PO: {pr_with_po}, PR Pending: {pr_without})")
+        konteks_lines.append(f"- Total PO: {total_po}")
+        konteks_lines.append(f"- Total Savings: {format_idr(savings)} (Rata-rata {savings_pct}%)")
+        konteks_lines.append(f"- Kecepatan Rata-rata Proses PO: {avg_lt_val} Hari")
+        konteks_lines.append(f"- Ketepatan Pengiriman Barang: {ketepatan_pct}%\n")
+
+        # 2. Data Top Vendor (Jika ada)
+        if 'vendor_data' in locals() and not vendor_data.empty:
+            konteks_lines.append("## 2. TOP 10 VENDOR (Berdasarkan Nilai PO)")
+            konteks_lines.append(vendor_data.to_markdown(index=False))
+            konteks_lines.append("\n")
+
+        # 3. Data PR Pending (Jika ada)
+        if 'pr_without_po' in locals() and not pr_without_po.empty:
+            konteks_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
+            # Kita tidak perlu mengirim semua kolom ke LLM, cukup ambil inti
+            df_pending_simple = pr_without_po[['no_pr', 'department', 'total_estimasi']]
+            konteks_lines.append(df_pending_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
+            
+        # 4. Status Pengiriman (Jika ada)
+        if 'delivery_data' in locals() and not delivery_data.empty:
+            konteks_lines.append("## 4. STATUS PENGIRIMAN PO")
+            konteks_lines.append(delivery_data.to_markdown(index=False))
+            konteks_lines.append("\n")
+
+        # Gabungkan semua baris menjadi satu teks besar
+        gabungan_konteks = "\n".join(konteks_lines)
+
+        # Render kolom chat di bawah dashboard
+        render_chat_analyst(
+            konteks_data_teks=gabungan_konteks, 
+            nama_halaman="PR-PO Monitoring Dashboard"
+        )

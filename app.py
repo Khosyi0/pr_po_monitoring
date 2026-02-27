@@ -458,7 +458,7 @@ else:
         # ── Date Range SIPS ───────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
@@ -491,12 +491,25 @@ filter_conditions = build_filter_conditions(
 )
 bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, exclude_bagian)
 
+teks_filter_sap = f"""
+- Tanggal: {date_from} s.d {date_to}
+- Department: {', '.join(selected_department)} (Exclude: {exclude_dept})
+- Purchasing Group: {', '.join(selected_p_group)} (Exclude: {exclude_purchasing_group})
+- Bagian: {', '.join(selected_bagian)} (Exclude: {exclude_bagian})
+"""
+
 st.session_state['_view_args'] = dict(
     filter_conditions=filter_conditions,
     bagian_pr_cond=bagian_pr_cond,
     bagian_po_cond=bagian_po_cond,
     load_data=load_data,
+    info_filter=teks_filter_sap,
 )
+
+teks_filter_sips = f"""
+- Tanggal: {sips_date_from} s.d {sips_date_to}
+- Nama: {', '.join(sips_selected_nama)}
+"""
 
 # SIPS view args
 st.session_state['_sips_view_args'] = dict(
@@ -504,6 +517,7 @@ st.session_state['_sips_view_args'] = dict(
     date_from=sips_date_from,
     date_to=sips_date_to,
     selected_nama=sips_selected_nama,
+    info_filter=teks_filter_sips,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

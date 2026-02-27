@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils import format_idr, format_idr_short, format_number
+from utils import format_idr, format_idr_short, format_number, render_chat_analyst
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -147,6 +147,8 @@ def section_header(title, subtitle=""):
 
 def render(load_data, date_from, date_to, selected_nama, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
+
+    info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown("""
@@ -1047,3 +1049,58 @@ GROUP BY status
             separators=",."
         )
         st.plotly_chart(fig_eff, use_container_width=True)
+
+    # =====================================================================
+    # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+    # =====================================================================
+    
+    konteks_lines = []
+    
+    # 0. Rangkuman Filter
+    konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+    konteks_lines.append(info_filter)
+    konteks_lines.append("\n")
+
+    # 1. Rangkuman KPI SIPS Global
+    konteks_lines.append("## 1. RINGKASAN KPI SIPS GLOBAL")
+    konteks_lines.append(f"- Total PR SIPS: {total_pr} dokumen")
+    konteks_lines.append(f"- Total PO SIPS: {total_po} dokumen (Konversi: {po_pr_pct:.1f}%)")
+    konteks_lines.append(f"- Rata-rata Lead Time PR-PO SIPS: {avg_pr_po:.2f} hari")
+    konteks_lines.append(f"- SLA On-Time: {int(sla_ontime)} PO dari total PO ({pct_ontime:.1f}%)")
+    konteks_lines.append(f"- Total OE Keseluruhan: Rp {format_idr(oe_total)}")
+    konteks_lines.append(f"- Total PO Keseluruhan: Rp {format_idr(po_total)}")
+    konteks_lines.append(f"- Efisiensi Anggaran: {efisiensi_pct:.2f}% (Rp {format_idr(efisiensi_rp)})\n")
+
+    # 2. Distribusi Status Dokumen
+    if 'status_counts' in locals() and not status_counts.empty:
+        konteks_lines.append("## 2. DISTRIBUSI STATUS DOKUMEN")
+        konteks_lines.append(status_counts.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # 3. Performa SLA Karyawan
+    if 'perf' in locals() and not perf.empty:
+        konteks_lines.append("## 3. PERFORMA KETEPATAN WAKTU (SLA) PER KARYAWAN")
+        df_perf_simple = perf[['nama', 'total_po', 'sla_ok', 'pct_ontime']].sort_values('pct_ontime', ascending=False)
+        konteks_lines.append(df_perf_simple.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # 4. Efisiensi per Karyawan
+    if 'eff' in locals() and not eff.empty:
+        konteks_lines.append("## 4. EFISIENSI (OE VS PO) PER KARYAWAN")
+        # Menghitung selisih dan persentase efisiensi per orang untuk disajikan ke AI
+        eff_ai = eff.copy()
+        eff_ai['efisiensi_rp'] = eff_ai['oe'] - eff_ai['po']
+        eff_ai['efisiensi_pct'] = ((eff_ai['efisiensi_rp'] / eff_ai['oe']) * 100).round(1).fillna(0)
+        
+        df_eff_simple = eff_ai[['nama', 'oe', 'po', 'efisiensi_rp', 'efisiensi_pct']].sort_values('efisiensi_rp', ascending=False)
+        konteks_lines.append(df_eff_simple.to_markdown(index=False))
+        konteks_lines.append("\n")
+
+    # Gabungkan teks
+    gabungan_konteks = "\n".join(konteks_lines)
+
+    # Panggil fungsi chat
+    render_chat_analyst(
+        konteks_data_teks=gabungan_konteks, 
+        nama_halaman="Dashboard SIPS"
+    )

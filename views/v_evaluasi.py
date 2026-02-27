@@ -6,10 +6,12 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short, format_number, format_currency
+from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
+        
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
 
         # Fungsi helper untuk tombol toggle formula
         def toggle_state(state_key):
@@ -685,3 +687,47 @@ Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bu
             )
         else:
             st.info("Tidak ada data evaluasi harga untuk filter yang dipilih.")
+
+        # =====================================================================
+        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # =====================================================================
+        
+        konteks_lines = []
+        
+        # 0. Rangkuman Filter
+        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+        konteks_lines.append(info_filter)
+        konteks_lines.append("\n")
+
+        # 1. Ringkasan KPI Evaluasi Harga
+        konteks_lines.append("## 1. RINGKASAN KPI EVALUASI HARGA")
+        konteks_lines.append(f"- Total Material Unik: {int(harga_kpi['total_material'][0] or 0)}")
+        konteks_lines.append(f"- Total OE (Estimasi): {format_idr(total_oe_val)}")
+        konteks_lines.append(f"- Total Realisasi PO: {format_idr(total_real_val)}")
+        konteks_lines.append(f"- Selisih OE vs Realisasi: {format_idr(total_efis_val)}")
+        konteks_lines.append(f"- Item PO Melebihi OE (Overspend): {po_over} item")
+        konteks_lines.append(f"- Item PO Sesuai/Di Bawah OE: {po_under} item\n")
+
+        # 2. Data Top Overspend (Material yang paling rugi)
+        if 'overspend_data' in locals() and not overspend_data.empty:
+            konteks_lines.append("## 2. TOP 10 MATERIAL OVERSPEND TERBESAR")
+            # Ambil kolom penting saja agar hemat token
+            df_os_simple = overspend_data[['nama_material', 'total_overspend', 'persen_overspend']]
+            konteks_lines.append(df_os_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
+
+        # 3. Data Detail Harga (Ambil 15 teratas yang paling bermasalah)
+        if 'detail_harga_data' in locals() and not detail_harga_data.empty:
+            konteks_lines.append("## 3. DETAIL EVALUASI HARGA (15 ITEM DENGAN SELISIH TERBURUK)")
+            df_detail_simple = detail_harga_data[['nama_material', 'rata_oe', 'rata_realisasi', 'persen_selisih_avg', 'status']].head(15)
+            konteks_lines.append(df_detail_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
+
+        # Gabungkan semua teks
+        gabungan_konteks = "\n".join(konteks_lines)
+
+        # Render kolom chat di paling bawah halaman
+        render_chat_analyst(
+            konteks_data_teks=gabungan_konteks, 
+            nama_halaman="Evaluasi Harga Barang"
+        )
