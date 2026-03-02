@@ -389,101 +389,112 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
         st.markdown("---")
 
         # ── ROW 2: Harga per Vendor & Tren Harga Historis ─────────────────────────
-        col1, col2 = st.columns(2)
 
-        with col1:
-            title_col, btn_col = st.columns([9, 1])
-            with title_col:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:22px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-people-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                            <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
-                        </svg>
-                        Variasi Harga Antar Vendor (Top 10 Material)
-                    </h1>
-                """, unsafe_allow_html=True)
-            with btn_col:
-                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_vendor_var = "show_formula_eval_vendor_var"
-                if key_vendor_var not in st.session_state:
-                    st.session_state[key_vendor_var] = False
-                is_open = st.session_state[key_vendor_var]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_vendor_var}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_vendor_var})
-
-            if st.session_state.get(key_vendor_var, False):
-                st.info("""\
-**Variasi Harga Antar Vendor (Top 10 Material)**: Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
-
-**Kalkulasi harga satuan SQL:**
-```sql
-unit_price = total_amount_local_curr / NULLIF(qty_po, 0)
-```
-
-Chart menampilkan scatter harga satuan tiap transaksi PO per vendor, untuk 10 material dengan nilai total terbesar.
-
-**Cara membaca:**
-- Rentang harga **sempit** = harga pasar sudah terstabilisasi antar vendor
-- Rentang harga **lebar** = ada potensi penghematan besar melalui seleksi vendor atau negosiasi
-- Vendor dengan harga terendah konsisten = kandidat utama untuk dijadikan **vendor preferens**
-
-Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor` untuk membandingkan.
-                """)
-
-            st.caption("Top 10 perbandingan harga satuan dari vendor berbeda untuk material yang sama.")
-
-            vendor_price_query = f"""
-            WITH ranked AS (
-                SELECT
-                    v.material_no,
-                    COALESCE(m.description, v.pr_description, 'Unknown') AS nama_material,
-                    COUNT(DISTINCT v.vendor_name) AS jumlah_vendor
-                FROM vw_pr_po_complete v
-                LEFT JOIN materials m USING (material_no)
-                WHERE {filter_conditions}
-                AND v.nomor_po IS NOT NULL
-                AND v.qty_po > 0
-                AND v.total_amount_local_curr > 0
-                AND ({bagian_po_cond})
-                GROUP BY v.material_no, m.description, v.pr_description
-                ORDER BY jumlah_vendor DESC
-                LIMIT 10
-            )
+        # 1. Load data variasi vendor terlebih dahulu untuk mendapatkan daftar material
+        vendor_price_query = f"""
+        WITH ranked AS (
             SELECT
-                r.material_no,
-                r.nama_material,
-                v.vendor_name,
-                ROUND((SUM(v.total_amount_local_curr) / NULLIF(SUM(v.qty_po), 0))::numeric, 2) AS harga_satuan_avg,
-                COUNT(DISTINCT v.nomor_po) AS jumlah_po
-            FROM ranked r
-            JOIN vw_pr_po_complete v USING (material_no)
+                v.material_no,
+                COALESCE(m.description, v.pr_description, 'Unknown') AS nama_material,
+                COUNT(DISTINCT v.vendor_name) AS jumlah_vendor
+            FROM vw_pr_po_complete v
+            LEFT JOIN materials m USING (material_no)
             WHERE {filter_conditions}
             AND v.nomor_po IS NOT NULL
             AND v.qty_po > 0
             AND v.total_amount_local_curr > 0
             AND ({bagian_po_cond})
-            GROUP BY r.material_no, r.nama_material, v.vendor_name
-            ORDER BY r.material_no, harga_satuan_avg
-            """
-            with st.spinner("Memuat variasi harga vendor..."):
-                vendor_price_data = load_data(vendor_price_query)
+            GROUP BY v.material_no, m.description, v.pr_description
+            ORDER BY jumlah_vendor DESC
+            LIMIT 10
+        )
+        SELECT
+            r.material_no,
+            r.nama_material,
+            v.vendor_name,
+            ROUND((SUM(v.total_amount_local_curr) / NULLIF(SUM(v.qty_po), 0))::numeric, 2) AS harga_satuan_avg,
+            COUNT(DISTINCT v.nomor_po)                                          AS jumlah_po,
+            ROUND(AVG(v.lead_time_process_po)::numeric, 1)                      AS avg_lead_time,
+            COUNT(CASE WHEN v.on_time_delivery = 'TEPAT WAKTU' THEN 1 END)          AS jml_ontime,
+            COUNT(CASE WHEN v.on_time_delivery IS NOT NULL THEN 1 END)          AS jml_delivery_ada
+        FROM ranked r
+        JOIN vw_pr_po_complete v USING (material_no)
+        WHERE {filter_conditions}
+        AND v.nomor_po IS NOT NULL
+        AND v.qty_po > 0
+        AND v.total_amount_local_curr > 0
+        AND ({bagian_po_cond})
+        GROUP BY r.material_no, r.nama_material, v.vendor_name
+        ORDER BY r.material_no, harga_satuan_avg
+        """
 
-            material_options = []
-            material_labels  = {}
+        with st.spinner("Memuat variasi harga vendor..."):
+            vendor_price_data = load_data(vendor_price_query)
 
-            if not vendor_price_data.empty:
-                material_options = vendor_price_data['material_no'].unique().tolist()
-                material_labels  = {
-                    row['material_no']: f"{row['material_no']} – {row['nama_material'][:40]}"
-                    for _, row in vendor_price_data.drop_duplicates('material_no').iterrows()
-                }
-                selected_mat = st.selectbox(
-                    "Pilih Material:",
-                    options=material_options,
-                    format_func=lambda x: material_labels.get(x, x),
-                    key="select_material_vendor"
-                )
+        material_options = []
+        material_labels  = {}
+
+        if not vendor_price_data.empty:
+            material_options = vendor_price_data['material_no'].unique().tolist()
+            material_labels  = {
+                row['material_no']: f"{row['material_no']} – {row['nama_material'][:40]}"
+                for _, row in vendor_price_data.drop_duplicates('material_no').iterrows()
+            }
+            
+            # 2. Filter Global untuk Material (Satu Filter untuk Kedua Komponen)
+            selected_mat = st.selectbox(
+                "Pilih Material:",
+                options=material_options,
+                format_func=lambda x: material_labels.get(x, x),
+                key="select_material_shared"
+            )
+            
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+            # Memisahkan bagian atas menjadi 2 kolom (Kiri: Variasi Harga, Kanan: Tren Historis)
+            col1, col2 = st.columns(2)
+
+            # ── KOLOM 1: Variasi Harga Antar Vendor (Chart Saja) ─────────────────────
+            with col1:
+                title_col, btn_col = st.columns([9, 1])
+                with title_col:
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" fill="currentColor" class="bi bi-people-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
+                            </svg>
+                            Variasi Harga Antar Vendor (Top 10 Material)
+                        </h1>
+                    """, unsafe_allow_html=True)
+                with btn_col:
+                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                    key_vendor_var = "show_formula_eval_vendor_var"
+                    if key_vendor_var not in st.session_state:
+                        st.session_state[key_vendor_var] = False
+                    is_open = st.session_state[key_vendor_var]
+                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                    tooltip = "Hide Formula" if is_open else "Show Formula"
+                    st.button(icon, key=f"btn_{key_vendor_var}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_vendor_var})
+
+                if st.session_state.get(key_vendor_var, False):
+                    st.info("""\
+        **Variasi Harga Antar Vendor (Top 10 Material)**: Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
+
+        **Kalkulasi harga satuan SQL:**
+        `unit_price = total_amount_local_curr / NULLIF(qty_po, 0)`
+
+        Chart menampilkan scatter harga satuan tiap transaksi PO per vendor, untuk 10 material dengan nilai total terbesar.
+
+        **Cara membaca:**
+        - Rentang harga **sempit** = harga pasar sudah terstabilisasi antar vendor
+        - Rentang harga **lebar** = ada potensi penghematan besar melalui seleksi vendor atau negosiasi
+        - Vendor dengan harga terendah konsisten = kandidat utama untuk dijadikan **vendor preferens**
+
+        Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor` untuk membandingkan.
+                    """)
+
+                st.caption("Top 10 perbandingan harga satuan dari vendor berbeda untuk material yang sama.")
+
                 df_mat = vendor_price_data[vendor_price_data['material_no'] == selected_mat]
                 fig = px.bar(
                     df_mat,
@@ -497,65 +508,69 @@ Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor
                                 coloraxis_showscale=False, xaxis_tickangle=-30)
                 fig.update_traces(textposition='outside')
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Tidak ada data variasi harga yang tersedia.")
 
-        with col2:
-            title_col, btn_col = st.columns([9, 1])
-            with title_col:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:22px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                            <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
-                        </svg>
-                        Tren Harga Historis per Material
-                    </h1>
-                """, unsafe_allow_html=True)
-            with btn_col:
-                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_trend = "show_formula_eval_trend"
-                if key_trend not in st.session_state:
-                    st.session_state[key_trend] = False
-                is_open = st.session_state[key_trend]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend})
 
-            if st.session_state.get(key_trend, False):
-                st.info("""\
-**Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO dari waktu ke waktu. Berguna untuk mendeteksi kenaikan harga yang tidak wajar.
+            # ── KOLOM 2: Tren Harga Historis per Material ────────────────────────────
+            with col2:
+                title_col, btn_col = st.columns([9, 1])
+                with title_col:
+                    st.markdown("""
+                        <h1 style='display: flex; align-items: center; font-size:22px;'>
+                            <svg xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)" width="20" height="20" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
+                            </svg>
+                            Tren Harga Historis per Material
+                        </h1>
+                    """, unsafe_allow_html=True)
+                with btn_col:
+                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                    key_trend = "show_formula_eval_trend"
+                    if key_trend not in st.session_state:
+                        st.session_state[key_trend] = False
+                    is_open = st.session_state[key_trend]
+                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                    tooltip = "Hide Formula" if is_open else "Show Formula"
+                    st.button(icon, key=f"btn_{key_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend})
 
-**Kalkulasi SQL:**
-```sql
-unit_price = AVG(total_amount_local_curr / NULLIF(qty_po, 0))
-```
-Di-group per `DATE_TRUNC('month', date_ordered)` untuk tampilan bulanan.
+                if st.session_state.get(key_trend, False):
+                    st.info("""\
+        **Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar dan melihat konsistensi vendor.
 
-**Kegunaan analisis:**
-- Tren **naik** = indikasi inflasi bahan baku atau leverage vendor meningkat → perlu renegosiasi
-- Tren **turun** = negosiasi berhasil atau kondisi pasar lebih kompetitif ✅
-- **Lonjakan tiba-tiba** = perlu investigasi (perubahan spesifikasi, vendor baru, atau potensi kesalahan input)
+        **Kalkulasi Harga Realisasi (biru):**
+        `harga_satuan = SUM(total_amount_local_curr) / SUM(qty_po)`
+        Dibagi per bulan menggunakan `DATE_TRUNC('month', date_ordered)`.
 
-Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bulan_x)`
-                """)
+        **Kalkulasi OE per Satuan (oranye, jika tampil):**
+        `oe_satuan = SUM(oe) / SUM(qty_po)` — weighted average OE per unit.
+        Kolom `oe` di view = `estimasi_pr × quantity_pr`, sehingga `SUM(oe)/SUM(qty_po)` menghasilkan harga estimasi rata-rata tertimbang yang sebanding langsung dengan harga realisasi.
+        OE hanya ditampilkan jika nilainya ≤10× harga realisasi (skala masuk akal).
 
-            st.caption("Pergerakan rata-rata harga satuan PO dari waktu ke waktu.")
+        **Tooltip hover** menampilkan: harga realisasi, jumlah PO aktif bulan tersebut, dan jumlah vendor berbeda.
 
-            if material_options:
-                selected_mat_trend = st.selectbox(
-                    "Pilih Material:",
-                    options=material_options,
-                    format_func=lambda x: material_labels.get(x, x),
-                    key="select_material_trend"
-                )
+        **Kegunaan analisis:**
+        - Tren **naik** = indikasi inflasi bahan baku atau leverage vendor → perlu renegosiasi ⚠️
+        - Tren **turun** = negosiasi berhasil atau pasar lebih kompetitif ✅
+        - **Lonjakan tiba-tiba** = perlu investigasi (vendor baru, perubahan spesifikasi, atau input keliru)
+        - **OE di atas realisasi** = estimasi terlalu tinggi atau negosiasi berhasil ✅
+        - **OE di bawah realisasi** = harga aktual melebihi estimasi → perlu review anggaran ⚠️
+
+        Di Excel: `=SUMIFS(kolom_amount, kolom_material, kode_x, kolom_bulan, bulan_x) / SUMIFS(kolom_qty, ...)`
+                    """)
+
+                st.caption("Pergerakan rata-rata harga satuan PO dari waktu ke waktu.")
+
                 trend_harga_query = f"""
                 SELECT
-                    DATE_TRUNC('month', date_ordered)::DATE                               AS bulan,
-                    ROUND((SUM(total_amount_local_curr) / NULLIF(SUM(qty_po), 0))::numeric, 2) AS harga_satuan_avg,
-                    COUNT(DISTINCT nomor_po)                                            AS jumlah_po,
-                    ROUND(AVG(oe)::numeric, 2)                                          AS avg_oe
+                    DATE_TRUNC('month', date_ordered)::DATE                                  AS bulan,
+                    ROUND((SUM(total_amount_local_curr) / NULLIF(SUM(qty_po), 0))::numeric, 0) AS harga_satuan_avg,
+                    COUNT(DISTINCT nomor_po)                                                 AS jumlah_po,
+                    COUNT(DISTINCT vendor_name)                                              AS jumlah_vendor,
+                    -- FIX: weighted OE per satuan = SUM(oe) / SUM(quantity_pr)
+                    -- Sebelumnya AVG(estimasi_pr) bisa bias jika qty bervariasi antar PR
+                    -- oe di view = estimasi_pr × quantity_pr, jadi SUM(oe)/SUM(qty_po) adalah weighted price
+                    ROUND((SUM(oe) / NULLIF(SUM(qty_po), 0))::numeric, 0)                   AS oe_satuan_avg
                 FROM vw_pr_po_complete
-                WHERE material_no = '{selected_mat_trend}'
+                WHERE material_no = '{selected_mat}'
                 AND date_ordered IS NOT NULL
                 AND qty_po > 0
                 AND total_amount_local_curr > 0
@@ -568,37 +583,186 @@ Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bu
 
                 if not trend_harga_data.empty:
                     trend_harga_data['bulan'] = pd.to_datetime(trend_harga_data['bulan'])
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
+
+                    # OE valid: ada data, > 0, skalanya masuk akal (max 10x vs harga realisasi)
+                    oe_valid = (
+                        trend_harga_data['oe_satuan_avg'].notna().any()
+                        and trend_harga_data['oe_satuan_avg'].sum() > 0
+                        and trend_harga_data['oe_satuan_avg'].max() < trend_harga_data['harga_satuan_avg'].max() * 10
+                    )
+
+                    fig_trend = go.Figure()
+                    fig_trend.add_trace(go.Scatter(
                         x=trend_harga_data['bulan'],
                         y=trend_harga_data['harga_satuan_avg'],
                         mode='lines+markers',
-                        name='Harga Satuan Realisasi',
-                        line=dict(color='#1f77b4', width=2),
-                        hovertemplate='%{x|%b %Y}<br>Harga: Rp %{y:,.0f}<extra></extra>'
+                        name='Harga Realisasi (PO)',
+                        line=dict(color='#1f77b4', width=2.5),
+                        marker=dict(size=7),
+                        customdata=trend_harga_data[['jumlah_po', 'jumlah_vendor']],
+                        hovertemplate=(
+                            '<b>%{x|%b %Y}</b><br>'
+                            'Harga Realisasi: Rp %{y:,.0f}/unit<br>'
+                            'Jumlah PO: %{customdata[0]}<br>'
+                            'Vendor aktif: %{customdata[1]}'
+                            '<extra></extra>'
+                        )
                     ))
-                    if trend_harga_data['avg_oe'].notna().any() and trend_harga_data['avg_oe'].sum() > 0:
-                        fig.add_trace(go.Scatter(
+                    if oe_valid:
+                        fig_trend.add_trace(go.Scatter(
                             x=trend_harga_data['bulan'],
-                            y=trend_harga_data['avg_oe'],
-                            mode='lines',
-                            name='OE Rata-rata',
-                            line=dict(color='#ff7f0e', dash='dash', width=1.5),
-                            hovertemplate='%{x|%b %Y}<br>OE: Rp %{y:,.0f}<extra></extra>'
+                            y=trend_harga_data['oe_satuan_avg'],
+                            mode='lines+markers',
+                            name='OE / Estimasi (per unit)',
+                            line=dict(color='#ff7f0e', dash='dash', width=2),
+                            marker=dict(size=5, symbol='diamond'),
+                            hovertemplate=(
+                                '<b>%{x|%b %Y}</b><br>'
+                                'OE per unit: Rp %{y:,.0f}/unit'
+                                '<extra></extra>'
+                            )
                         ))
-                    fig.update_layout(
-                        height=380,
+                    fig_trend.update_layout(
+                        height=400,
                         xaxis_title='Bulan',
-                        yaxis_title='Harga Satuan (IDR)',
+                        yaxis_title='Harga Satuan (IDR/unit)',
                         legend=dict(orientation='h', yanchor='bottom', y=1.02),
-                        separators=",.",
-                        hovermode='x unified'
+                        hovermode='x unified',
+                        yaxis=dict(tickformat=',.0f')
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig_trend, use_container_width=True)
+                    if not oe_valid:
+                        st.caption('\u24d8 OE per satuan tidak ditampilkan, data estimasi tidak tersedia atau skalanya tidak sebanding dengan harga realisasi.')
                 else:
                     st.info("Tidak ada data historis untuk material ini.")
-            else:
-                st.info("Tidak ada material yang bisa dipilih untuk tren historis.")
+
+
+# ── TABEL FULL WIDTH: Perbandingan Vendor ────────────────────────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            title_col_tbl, btn_col_tbl = st.columns([9, 1])
+            with title_col_tbl:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path fill-rule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5m0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5"/>
+                        </svg>
+                        Perbandingan Vendor: Harga · Kecepatan · Reliabilitas
+                    </h1>
+                """, unsafe_allow_html=True)
+            
+            with btn_col_tbl:
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                key_tbl_vendor = "show_formula_eval_tbl_vendor"
+                if key_tbl_vendor not in st.session_state:
+                    st.session_state[key_tbl_vendor] = False
+                is_open = st.session_state[key_tbl_vendor]
+                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                tooltip = "Hide Formula" if is_open else "Show Formula"
+                st.button(icon, key=f"btn_{key_tbl_vendor}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_tbl_vendor})
+
+            if st.session_state.get(key_tbl_vendor, False):
+                st.info("""\
+**Perbandingan Vendor**: Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
+
+**Kalkulasi Metrik (SQL):**
+- **Harga Satuan**: `SUM(total_amount_local_curr) / NULLIF(SUM(qty_po), 0)`
+- **Lead Time Proses**: `AVG(lead_time_process_po)` (Rata-rata waktu dari PR ke PO)
+- **On-Time Delivery**: `(Jumlah pengiriman 'TEPAT WAKTU' / Total pengiriman yang memiliki status) × 100%`
+- **Frekuensi**: `COUNT(DISTINCT nomor_po)` (Berapa kali transaksi PO dengan vendor ini)
+
+**Indikator Warna:**
+- 🟢 **Terbaik (Hijau)**: Harga terendah (selisih ≤ 2% dari minimum), Lead Time sangat cepat, On-Time ≥ 90%
+- 🟡 **Menengah (Kuning/Oranye)**: Harga bersaing (selisih ≤ 10%), Lead Time wajar, On-Time ≥ 70%
+- 🔴 **Perlu Perhatian (Merah)**: Harga jauh lebih mahal (> 10%), Lead Time lama, On-Time < 70%
+                """)
+
+            st.caption('Tiga dimensi pembeda antar vendor untuk material yang sama.')
+
+            # Hitung % on-time delivery
+            df_tbl = df_mat.copy()
+            df_tbl['pct_ontime'] = df_tbl.apply(
+                lambda r: round(r['jml_ontime'] / r['jml_delivery_ada'] * 100, 1)
+                if r['jml_delivery_ada'] > 0 else None,
+                axis=1
+            )
+            df_tbl = df_tbl.sort_values('harga_satuan_avg')
+
+            harga_min = df_tbl['harga_satuan_avg'].min()
+            lt_vals   = df_tbl['avg_lead_time'].dropna()
+            lt_min    = lt_vals.min() if len(lt_vals) > 0 else 1
+            max_po    = df_tbl['jumlah_po'].max()
+
+            # Helper: kembalikan HTML cell — pakai single-quote di dalam, tidak ada backslash
+            def _cell_harga(val):
+                if pd.isna(val):
+                    return '<span style="color:gray">-</span>'
+                pct   = (val - harga_min) / harga_min * 100 if harga_min > 0 else 0
+                color = '#09ab3b' if pct <= 2 else ('#f0a500' if pct <= 10 else '#e03c3c')
+                arrow = '&#9660;' if pct <= 2 else ('&#9650;' if pct > 10 else '~')
+                return '<span style="color:' + color + ';font-weight:600">' + arrow + ' ' + format_idr_short(val) + '</span>'
+
+            def _cell_lt(val):
+                if pd.isna(val):
+                    return '<span style="color:gray">-</span>'
+                color = '#09ab3b' if val <= lt_min * 1.3 else ('#f0a500' if val <= lt_min * 2 else '#e03c3c')
+                return '<span style="color:' + color + ';font-weight:600">' + str(int(val)) + ' hari</span>'
+
+            def _cell_ontime(val, jml):
+                if pd.isna(val) or jml == 0:
+                    return '<span style="color:gray">-</span>'
+                color = '#09ab3b' if val >= 90 else ('#f0a500' if val >= 70 else '#e03c3c')
+                return '<span style="color:' + color + ';font-weight:600">' + str(int(val)) + '%</span>'
+
+            def _cell_freq(val):
+                pct   = val / max_po if max_po > 0 else 0
+                bar_w = max(4, int(pct * 56))
+                bar   = '<div style="width:' + str(bar_w) + 'px;height:8px;background:#1f77b4;border-radius:4px;display:inline-block;vertical-align:middle"></div>'
+                txt   = '<span style="font-weight:600;margin-left:6px">' + str(int(val)) + 'x</span>'
+                return bar + txt
+
+            # Build baris tabel
+            BD = 'border-bottom:1px solid rgba(128,128,128,0.2)'
+            P  = 'padding:8px 10px;' + BD
+            rows_parts = []
+            for _, row in df_tbl.iterrows():
+                vname = str(row['vendor_name'])
+                vname = (vname[:38] + '…') if len(vname) > 38 else vname
+                tr = (
+                    '<tr>'
+                    + '<td style="' + P + 'font-size:13px">' + vname + '</td>'
+                    + '<td style="' + P + 'text-align:center">' + _cell_harga(row['harga_satuan_avg']) + '</td>'
+                    + '<td style="' + P + 'text-align:center">' + _cell_lt(row['avg_lead_time']) + '</td>'
+                    + '<td style="' + P + 'text-align:center">' + _cell_ontime(row['pct_ontime'], row['jml_delivery_ada']) + '</td>'
+                    + '<td style="' + P + '">' + _cell_freq(row['jumlah_po']) + '</td>'
+                    + '</tr>'
+                )
+                rows_parts.append(tr)
+
+            TH = 'padding:8px 10px;font-size:18px;font-weight:600;'
+            thead = (
+                '<thead><tr style="border-bottom:2px solid rgba(128,128,128,0.4)">'
+                + '<th style="' + TH + 'text-align:left">Vendor</th>'
+                + '<th style="' + TH + 'text-align:center">Harga Satuan<br><small style="font-weight:400">(IDR/unit, rata-rata)</small></th>'
+                + '<th style="' + TH + 'text-align:center">Lead Time Proses<br><small style="font-weight:400">(PR &#8594; PO, rata-rata)</small></th>'
+                + '<th style="' + TH + 'text-align:center">On-Time Delivery<br><small style="font-weight:400">(% tepat waktu)</small></th>'
+                + '<th style="' + TH + 'text-align:center">Frekuensi<br><small style="font-weight:400">(jumlah PO)</small></th>'
+                + '</tr></thead>'
+            )
+            tabel_html = (
+                '<table style="width:100%;border-collapse:collapse;font-size:14px">'
+                + thead
+                + '<tbody>' + ''.join(rows_parts) + '</tbody>'
+                + '</table>'
+                + '<p style="font-size:12px;margin-top:8px">'
+                + '&#128994; Terbaik &nbsp;|&nbsp; &#128993; Menengah &nbsp;|&nbsp; &#128308; Perlu perhatian'
+                + ' &nbsp;|&nbsp; - = data tidak tersedia &nbsp;|&nbsp; Harga diurutkan dari terendah ke tertinggi'
+                + '</p>'
+            )
+            st.markdown(tabel_html, unsafe_allow_html=True)
+
+        else:
+            st.info("Tidak ada data variasi harga yang tersedia.")
 
         st.markdown("---")
 
@@ -723,11 +887,13 @@ Di Excel: `=AVERAGEIFS(kolom_unit_price, kolom_material, kode_x, kolom_bulan, bu
             konteks_lines.append(df_detail_simple.to_markdown(index=False))
             konteks_lines.append("\n")
 
-        # Gabungkan semua teks
-        gabungan_konteks = "\n".join(konteks_lines)
+        # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
+        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Evaluasi Harga)\n" + "\n".join(konteks_lines)
+        konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
+
 
         # Render kolom chat di paling bawah halaman
         render_chat_analyst(
-            konteks_data_teks=gabungan_konteks, 
+            konteks_data_teks=konteks_final, 
             nama_halaman="Evaluasi Harga Barang"
         )

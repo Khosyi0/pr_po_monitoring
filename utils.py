@@ -149,6 +149,34 @@ def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
         return pr, po
     return "1=1", "1=1"
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIPS WHERE CLAUSE BUILDER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_sips_where(date_from=None, date_to=None,
+                     selected_nama=None, selected_bagian=None,
+                     extra: list = None) -> str:
+    """
+    Bangun WHERE clause untuk query vw_sips.
+    - Filter bagian hanya aktif jika selected_bagian bukan ['All']
+    - Sertakan extra=['nilai_sla IS NOT NULL'] dsb. jika perlu kondisi tambahan
+    """
+    wp = ["1=1"]
+    if extra:
+        wp.extend(extra)
+    if date_from:
+        wp.append(f"requisition_date >= '{date_from}'")
+    if date_to:
+        wp.append(f"requisition_date <= '{date_to}'")
+    if selected_bagian and "All" not in selected_bagian:
+        bg = ", ".join(f"'{b}'" for b in selected_bagian)
+        wp.append(f"bagian IN ({bg})")
+    if selected_nama and "All" not in selected_nama:
+        nms = ", ".join(f"'{n}'" for n in selected_nama)
+        wp.append(f"nama IN ({nms})")
+    return " AND ".join(wp)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # KOMPONEN AI ANALYST (GEMINI)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -175,7 +203,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
     st.markdown(f"""
         <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4; margin-bottom: 5px;'>
             {icon_html}
-            Tanya Mia (Asisten Pengadaan Barang)
+            Tanya ke Mia (Asisten Pengadaan Barang)
         </h1>
     """, unsafe_allow_html=True)
     st.caption(f"Tanyakan *insight* atau kesimpulan dari data yang sedang tampil di halaman **{nama_halaman}**.")
@@ -237,14 +265,14 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                 
             # Render animasi loading & balasan AI
             with st.chat_message("assistant", avatar="assets/Mia_icon.png"):
-                with st.spinner("Menganalisis data..."):
+                with st.spinner("Tunggu, Mia sedang menganalisis data..."):
                     try:
                         # Rakit Prompt Rahasia
                         system_prompt = f"""
                         Kamu adalah asisten AI bernama Mia, seorang analis data perempuan yang ceria, sangat teliti, dan bersikap layaknya "detektif" andal yang sedang menyelidiki data sistem perusahaan.
                         
                         Tugas dan Aturan Ketat Mia:
-                        1. IDENTITAS & GAYA BAHASA: Jika disapa atau ditanya siapa kamu, jawab dengan riang: "Halo! Namaku Mia 🕵️‍♀️✨ Aku detektif data yang siap bantu kamu menyelidiki efisiensi dan jejak anggaran di sistem kita! Ada misteri angka apa yang mau kita pecahkan hari ini?". Gunakan gaya bahasa yang ceria, ramah, sedikit playful (gunakan kata "aku" dan "kamu"), tapi tetap SANGAT OBJEKTIF dan tajam saat menganalisis angka.
+                        1. IDENTITAS & GAYA BAHASA: Namamu adalah Mia, detektif data pengadaan. HANYA perkenalkan dirimu secara penuh jika user SECARA EKSPLISIT bertanya "siapa kamu", "kamu siapa", "perkenalkan dirimu", atau sejenisnya. Jika user hanya menyapa ("halo", "hai", dll.) atau langsung mengajukan pertanyaan data, JANGAN memperkenalkan diri — langsung jawab pertanyaannya saja dengan gaya yang ceria dan to the point. Gunakan gaya bahasa yang ceria, ramah, sedikit playful (gunakan kata "aku" dan "kamu"), tapi tetap SANGAT OBJEKTIF dan tajam saat menganalisis angka.
                         2. FAKTUAL & OBJEKTIF: Jawab HANYA berdasarkan data di bawah. JIKA DATA TIDAK ADA, katakan dengan nada detektif: "Hmm, sepertinya jejak data itu tidak kutemukan di layar saat ini 🔍."
                         3. NO HALLUCINATION: Sebagai detektif, kamu pantang mengarang bukti! JANGAN PERNAH mengarang angka, nama vendor, atau metrik yang tidak ada di data.
                         4. BATASAN DOMAIN: Kamu hanya menyelidiki kasus transaksi, anggaran, vendor, dan dashboard ini. Tolak dengan sopan dan lucu jika diajak bahas resep masakan, coding, atau hal di luar kasus.

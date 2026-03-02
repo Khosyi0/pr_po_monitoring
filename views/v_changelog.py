@@ -20,9 +20,26 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "2 Mar 2026", "Versi": "v1.7", "Perubahan": """
+    - Optimisasi Mia agar dapat membaca keseluruhan data, tidak hanya data yang tampil di halaman tersebut
+    - Menambahkan Mia ke halaman Detailed PR-PO Data dan Detailed SIPS Data
+    - Menambahkan filter "Bagian" (ALPATA, BARUM, BB/BD/BP) pada bagian SIPS
+    - Merubah query pada "Nama" menjadi "NIK" untuk bagian SIPS agar lebih akurat dan konsisten dengan data yang ada
+    - Update filter default untuk tanggal menjadi berawal dari tanggal 1 Januari tahun saat ini
+    - Update halaman Evaluasi Harga Barang
+        - Menambahkan chart Perbandingan Vendor: Harga · Kecepatan · Reliabilitas
+        - Perubahan chart Tren Harga Historis per Material
+        - Filter material menjadi satu diantara tiga chart (Variasi Harga Antar Vendor (Top 10 Material), Tren Harga Historis per Material, dan Perbandingan Vendor: Harga · Kecepatan · Reliabilitas)
+    - Update halaman Analisis Waktu Proses SIPS
+        - Perubahan isi chart Dekomposisi Waktu per Nama menjadi Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan
+        - Menambahkan chart Waktu Realisasi SLA per Purchasing Group
+        - Mengubah chart Distribusi End-to-End (Req Date ke Tgl PO) menjadi Distribusi Realisasi SLA (hari kerja)
+    - Update halaman Dashboard Monitoring SIPS
+        - Menambahkan chart Proporsi PO Kontrak vs Non-Kontrak per Karyawan
+        - Menambahkan chart Beban Kerja (Volume Dokumen) per Karyawan"""},
         {"Tanggal": "27 Feb 2026", "Versi": "v1.6", "Perubahan": """
     - Menambahkan info detail pada masing-masing bagian pada Ringkasan Waktu di halaman Analisis Waktu Proses SIPS
-    - Menambahkan model LLM bernanma untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
+    - Menambahkan model LLM bernama untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
         - Model LLM menggunakan model gemini-3-flash-preview dari Google GenAI dengan prompt rahasia yang dirancang khusus untuk memberikan insight yang tajam, faktual, dan objektif berdasarkan data
         - Data perusahaan tidak akan menjadi dataset pelatihan model Gemini karena API KEY yang digunakan jenisnya paid (estimasi Rp 20.000 per bulan)
         - Model LLM memiliki kepribadian bernama Mia (terinspirasi dari nama Petrokimia) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
@@ -178,5 +195,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.6"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7"])):
             st.markdown(item["Perubahan"])

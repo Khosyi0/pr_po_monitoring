@@ -1514,56 +1514,55 @@ ORDER BY bulan
                 else:
                     st.info("Tidak ada data kecepatan proses.")
 
-            # =====================================================================
-            # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
-            # (Letakkan di luar tab agar chat selalu muncul di bawah)
-            # =====================================================================
-            
-            konteks_lines = []
-            
-            # 0. Rangkuman Filter
-            konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
-            konteks_lines.append(info_filter)
+        # =====================================================================
+        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # Di luar semua tab agar Mia selalu muncul di bawah halaman
+        # =====================================================================
+
+        konteks_lines = []
+
+        # 0. Rangkuman Filter
+        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+        konteks_lines.append(info_filter)
+        konteks_lines.append("\n")
+
+        # 1. Rangkuman KPI Global
+        konteks_lines.append("## 1. RINGKASAN KPI GLOBAL KINERJA PURCHASING GROUP")
+        konteks_lines.append(f"- Total Item PR: {t_item_pr} (Terkonversi ke PO: {konversi_pct:.1f}%)")
+        konteks_lines.append(f"- Total OE: {format_idr(t_oe)}")
+        konteks_lines.append(f"- Total Realisasi PO: {format_idr(t_real)}")
+        konteks_lines.append(f"- Efisiensi Total: {format_idr(t_efis)} ({t_efis_pct:.1f}%)")
+        if pd.notna(avg_lt):
+            konteks_lines.append(f"- Rata-rata Lead Time Keseluruhan: {avg_lt:.1f} Hari")
+        konteks_lines.append("\n")
+
+        # 2. Rangkuman Tab 1: Overview per PG
+        if 'df_table' in locals() and not df_table.empty:
+            konteks_lines.append("## 2. KINERJA PER PURCHASING GROUP (OVERVIEW)")
+            df_pg_simple = df_table[['purchasing_group', 'nilai_po', 'efisiensi_pct', 'avg_lead_time']]
+            konteks_lines.append(df_pg_simple.to_markdown(index=False))
             konteks_lines.append("\n")
 
-            # 1. Rangkuman KPI Global
-            konteks_lines.append("## 1. RINGKASAN KPI GLOBAL KINERJA PURCHASING GROUP")
-            konteks_lines.append(f"- Total Item PR: {t_item_pr} (Terkonversi ke PO: {konversi_pct:.1f}%)")
-            konteks_lines.append(f"- Total OE: {format_idr(t_oe)}")
-            konteks_lines.append(f"- Total Realisasi PO: {format_idr(t_real)}")
-            konteks_lines.append(f"- Efisiensi Total: {format_idr(t_efis)} ({t_efis_pct:.1f}%)")
-            if pd.notna(avg_lt):
-                konteks_lines.append(f"- Rata-rata Lead Time Keseluruhan: {avg_lt:.1f} Hari")
+        # 3. Rangkuman Tab 2: Breakdown Kontrak vs Non-Kontrak
+        if 'kontrak_data' in locals() and not kontrak_data.empty:
+            konteks_lines.append("## 3. BREAKDOWN JENIS TENDER (KONTRAK VS NORMAL) PER PG")
+            df_kontrak_simple = kontrak_data[['purchasing_group', 'jenis_kontrak', 'total_realisasi', 'avg_lead_time']]
+            konteks_lines.append(df_kontrak_simple.to_markdown(index=False))
             konteks_lines.append("\n")
 
-            # 2. Rangkuman Tab 1: Overview per PG
-            if 'df_table' in locals() and not df_table.empty:
-                konteks_lines.append("## 2. KINERJA PER PURCHASING GROUP (OVERVIEW)")
-                # Ambil kolom penting: nama PG, nilai realisasi, efisiensi %, dan lead time rata-rata
-                df_pg_simple = df_table[['purchasing_group', 'nilai_po', 'efisiensi_pct', 'avg_lead_time']]
-                konteks_lines.append(df_pg_simple.to_markdown(index=False))
-                konteks_lines.append("\n")
+        # 4. Rangkuman Tab 3: Detail Kecepatan
+        if 'lt_tender_data' in locals() and not lt_tender_data.empty:
+            konteks_lines.append("## 4. DETAIL KETEPATAN WAKTU (ON-TIME VS LATE) PER PG")
+            df_speed_simple = lt_tender_data[['purchasing_group', 'jml_ontime', 'jml_late', 'ontime_pct']]
+            konteks_lines.append(df_speed_simple.to_markdown(index=False))
+            konteks_lines.append("\n")
 
-            # 3. Rangkuman Tab 2: Breakdown Kontrak vs Non-Kontrak
-            if 'kontrak_data' in locals() and not kontrak_data.empty:
-                konteks_lines.append("## 3. BREAKDOWN JENIS TENDER (KONTRAK VS NORMAL) PER PG")
-                # Ambil kolom: nama PG, jenis tender, realisasi, avg lead time
-                df_kontrak_simple = kontrak_data[['purchasing_group', 'jenis_kontrak', 'total_realisasi', 'avg_lead_time']]
-                konteks_lines.append(df_kontrak_simple.to_markdown(index=False))
-                konteks_lines.append("\n")
+        # Gabungkan konteks lokal dengan konteks global lintas sistem
+        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Kinerja Purchasing Group)\n" + "\n".join(konteks_lines)
+        konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-            # 4. Rangkuman Tab 3: Detail Kecepatan
-            if 'lt_tender_data' in locals() and not lt_tender_data.empty:
-                konteks_lines.append("## 4. DETAIL KETEPATAN WAKTU (ON-TIME VS LATE) PER PG")
-                # Ambil kolom: nama PG, jml ontime, jml late, ontime pct
-                df_speed_simple = lt_tender_data[['purchasing_group', 'jml_ontime', 'jml_late', 'ontime_pct']]
-                konteks_lines.append(df_speed_simple.to_markdown(index=False))
-                konteks_lines.append("\n")
-
-            gabungan_konteks = "\n".join(konteks_lines)
-
-            # Render chat di bawah tab
-            render_chat_analyst(
-                konteks_data_teks=gabungan_konteks, 
-                nama_halaman="Kinerja Purchasing Group"
-            )
+        # Render chat di bawah semua tab
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Kinerja Purchasing Group"
+        )

@@ -16,6 +16,8 @@ warnings.filterwarnings('ignore')
 
 from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions
+from context_builder import build_global_context
+
 
 # Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
@@ -55,6 +57,9 @@ init_state('prev_filter_pgroup',  ['All'])
 # SIPS filters
 init_state('sips_filter_nama',    ['All'])
 init_state('sips_prev_nama',      ['All'])
+init_state('sips_filter_bagian',  ['All'])
+init_state('sips_prev_bagian',    ['All'])
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HALAMAN: render functions
@@ -250,7 +255,9 @@ st.components.v1.html("""
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Default values (dipakai jika filter tidak ter-render / error)
-date_from                = datetime.now().date() - timedelta(days=366)
+current_year = datetime.now().year
+default_start_date = datetime(current_year, 1, 1).date()
+date_from                = default_start_date
 date_to                  = datetime.now().date()
 selected_department      = ['All']
 selected_p_group         = ['All']
@@ -258,9 +265,11 @@ selected_bagian          = ['All']
 exclude_dept             = False
 exclude_purchasing_group = False
 exclude_bagian           = False
-sips_date_from           = datetime.now().date() - timedelta(days=366)
+default_sips_start_date  = datetime(current_year, 1, 1).date()
+sips_date_from           = default_sips_start_date
 sips_date_to             = datetime.now().date()
 sips_selected_nama       = ['All']
+sips_selected_bagian     = ['All']
 
 # ── Header filter ─────────────────────────────────────────────────────────────
 st.sidebar.markdown("""
@@ -405,7 +414,7 @@ if not is_sips:
             Date Range
         </p>
         """, unsafe_allow_html=True)
-        date_from = st.sidebar.date_input("SAP From", value=datetime.now().date() - timedelta(days=366))
+        date_from = st.sidebar.date_input("SAP From", value=default_start_date)
         date_to   = st.sidebar.date_input("SAP To",   value=datetime.now().date())
 
         if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
@@ -420,9 +429,64 @@ if not is_sips:
 # ══════════════════════════════════════════════════════════════════════════════
 else:
     try:
-        nama_data = load_data("""
-            SELECT DISTINCT nama FROM sips_employees ORDER BY nama
+        bagian_data = load_data("""
+            SELECT DISTINCT bagian FROM sips_employees
+            WHERE bagian IS NOT NULL ORDER BY bagian
+
         """)
+        options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
+
+        def update_bagian_sips_logic():
+            cur, prv = st.session_state.sips_filter_bagian, st.session_state.sips_prev_bagian
+            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.sips_filter_bagian = ['All']
+            # Reset filter nama saat bagian berubah
+            st.session_state.sips_filter_nama = ['All']
+            st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
+
+        # ── Filter Bagian ─────────────────────────────────────────────────────
+        st.sidebar.markdown("""
+        <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
+                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
+                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
+                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
+                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
+                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
+                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
+                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
+                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
+                         A1.5 1.5 0 0 1 12.5 11z"/>
+            </svg>
+            Bagian
+        </p>
+        """, unsafe_allow_html=True)
+        st.sidebar.multiselect("Bagian SIPS",
+            options=options_bagian_sips,
+            key="sips_filter_bagian",
+            on_change=update_bagian_sips_logic,
+            label_visibility="collapsed"
+        )
+        sips_selected_bagian = st.session_state.sips_filter_bagian
+
+        # Nama difilter berdasarkan Bagian yang dipilih
+        if 'All' not in sips_selected_bagian and sips_selected_bagian:
+            bagian_sql = "', '".join(sips_selected_bagian)
+            nama_data = load_data(f"""
+                SELECT DISTINCT nama FROM sips_employees
+                WHERE bagian IN ('{bagian_sql}') ORDER BY nama
+            """)
+        else:
+            nama_data = load_data("""
+                SELECT DISTINCT nama FROM sips_employees
+                WHERE bagian IS NOT NULL ORDER BY nama
+
+            """)
+
         options_nama = ['All'] + nama_data['nama'].tolist()
 
         def update_nama_logic():
@@ -435,7 +499,7 @@ else:
         # ── Filter Nama ───────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2
@@ -469,7 +533,7 @@ else:
             Date Range
         </p>
         """, unsafe_allow_html=True)
-        sips_date_from = st.sidebar.date_input("SIPS From", value=datetime.now().date() - timedelta(days=366))
+        sips_date_from = st.sidebar.date_input("SIPS From", value=default_start_date)
         sips_date_to   = st.sidebar.date_input("SIPS To", value=datetime.now().date())
 
         if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="sips_refresh"):
@@ -478,6 +542,34 @@ else:
 
     except Exception as e:
         st.sidebar.error(f"Error loading SIPS filters: {e}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEFAULT FILTER VALUES  (dipakai untuk sistem yang TIDAK aktif saat ini)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_default_start_date = datetime(current_year, 1, 1).date()
+_default_date_from = _default_start_date
+_default_date_to   = datetime.now().date()
+
+# Default SAP (dipakai saat halaman SIPS aktif)
+_default_filter_sap = build_filter_conditions(
+    _default_date_from, _default_date_to,
+    ['All'], False, ['All'], False
+)
+_default_bagian_pr, _default_bagian_po = build_bagian_conditions(['All'], False)
+_default_teks_sap = f"""
+- Tanggal: {_default_date_from} s.d {_default_date_to}
+- Department: All | Purchasing Group: All | Bagian: All
+"""
+
+# Default SIPS (dipakai saat halaman SAP aktif)
+_default_sips_nama       = ['All']
+_default_sips_bagian     = ['All']
+_default_teks_sips = f"""
+- Tanggal: {_default_date_from} s.d {_default_date_to}
+- Bagian: All
+- Nama: All
+"""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD VIEW ARGS
@@ -498,26 +590,58 @@ teks_filter_sap = f"""
 - Bagian: {', '.join(selected_bagian)} (Exclude: {exclude_bagian})
 """
 
-st.session_state['_view_args'] = dict(
-    filter_conditions=filter_conditions,
-    bagian_pr_cond=bagian_pr_cond,
-    bagian_po_cond=bagian_po_cond,
-    load_data=load_data,
-    info_filter=teks_filter_sap,
-)
-
 teks_filter_sips = f"""
 - Tanggal: {sips_date_from} s.d {sips_date_to}
+- Bagian: {', '.join(sips_selected_bagian)}
 - Nama: {', '.join(sips_selected_nama)}
 """
 
+# ── Bangun / refresh konteks global untuk Mia ────────────────────────────────
+global_context = build_global_context(
+    load_data      = load_data,
+    is_sips        = is_sips,
+    # SAP aktif
+    filter_conditions   = filter_conditions,
+    bagian_pr_cond      = bagian_pr_cond,
+    bagian_po_cond      = bagian_po_cond,
+    teks_filter_sap     = teks_filter_sap,
+    # SIPS aktif
+    sips_date_from      = sips_date_from,
+    sips_date_to        = sips_date_to,
+    sips_selected_nama  = sips_selected_nama,
+    sips_selected_bagian = sips_selected_bagian,
+    teks_filter_sips    = teks_filter_sips,
+    # Default SAP (dipakai saat halaman SIPS)
+    default_filter_conditions = _default_filter_sap,
+    default_bagian_pr_cond    = _default_bagian_pr,
+    default_bagian_po_cond    = _default_bagian_po,
+    default_teks_filter_sap   = _default_teks_sap,
+    # Default SIPS (dipakai saat halaman SAP)
+    default_sips_date_from    = _default_date_from,
+    default_sips_date_to      = _default_date_to,
+    default_sips_selected_nama = _default_sips_nama,
+    default_sips_selected_bagian = _default_sips_bagian,
+    default_teks_filter_sips  = _default_teks_sips,
+)
+
+st.session_state['_view_args'] = dict(
+    filter_conditions = filter_conditions,
+    bagian_pr_cond    = bagian_pr_cond,
+    bagian_po_cond    = bagian_po_cond,
+    load_data         = load_data,
+    info_filter       = teks_filter_sap,
+    global_context    = global_context,
+)
+
 # SIPS view args
 st.session_state['_sips_view_args'] = dict(
-    load_data=load_data,
-    date_from=sips_date_from,
-    date_to=sips_date_to,
-    selected_nama=sips_selected_nama,
-    info_filter=teks_filter_sips,
+    load_data         = load_data,
+    date_from         = sips_date_from,
+    date_to           = sips_date_to,
+    selected_nama     = sips_selected_nama,
+    selected_bagian   = sips_selected_bagian,
+    info_filter       = teks_filter_sips,
+    global_context    = global_context,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -540,7 +664,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.6 | "
+        f"Monitoring Dashboard - {system_label} | v1.7 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

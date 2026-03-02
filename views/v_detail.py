@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short
+from utils import format_idr, format_idr_short, format_number, render_chat_analyst
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -83,3 +83,51 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             )
         else:
             st.info("No data found matching your filters")
+
+        # =====================================================================
+        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # =====================================================================
+
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        konteks_lines = []
+
+        # 0. Filter aktif
+        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
+        konteks_lines.append(info_filter)
+        konteks_lines.append("")
+
+        # 1. Ringkasan statistik tabel yang sedang ditampilkan
+        konteks_lines.append("## 1. RINGKASAN DATA TABEL YANG DITAMPILKAN")
+        if 'table_data' in locals() and not table_data.empty:
+            n_rows = len(table_data)
+            konteks_lines.append(f"- Jumlah baris tampil: {n_rows} (limit 100 per query)")
+            # Hitung ringkasan dari data yang ada
+            n_pr  = table_data['no_pr'].replace('-', pd.NA).dropna().nunique()
+            n_po  = table_data['nomor_po'].dropna().nunique()
+            n_vnd = table_data['vendor_name'].dropna().nunique() if 'vendor_name' in table_data.columns else 0
+            konteks_lines.append(f"- PR unik dalam data ini: {n_pr}")
+            konteks_lines.append(f"- PO unik dalam data ini: {n_po}")
+            konteks_lines.append(f"- Vendor unik: {n_vnd}")
+            if search_term:
+                konteks_lines.append(f"- Kata kunci pencarian aktif: '{search_term}'")
+            konteks_lines.append("")
+
+            # 2. Sampel 20 baris teratas untuk referensi LLM
+            konteks_lines.append("## 2. SAMPEL DATA (20 BARIS TERATAS)")
+            cols_for_ai = [c for c in ['no_pr', 'department_code', 'material_no', 'pr_description',
+                                        'nomor_po', 'vendor_name', 'total_amount_local_curr',
+                                        'lead_time_process_po', 'status_pengiriman', 'on_time_delivery']
+                           if c in table_data.columns]
+            konteks_lines.append(table_data[cols_for_ai].head(20).to_markdown(index=False))
+            konteks_lines.append("")
+        else:
+            konteks_lines.append("Tidak ada data yang cocok dengan filter yang dipilih.\n")
+
+        # Gabungkan konteks lokal dengan konteks global lintas sistem
+        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Detailed PR-PO Data)\n" + "\n".join(konteks_lines)
+        konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
+
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Detailed PR-PO Data"
+        )

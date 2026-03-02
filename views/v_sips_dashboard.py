@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils import format_idr, format_idr_short, format_number, render_chat_analyst
+from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ def section_header(title, subtitle=""):
 # RENDER
 # ─────────────────────────────────────────────────────────────────────────────
 
-def render(load_data, date_from, date_to, selected_nama, **kwargs):
+def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
 
     info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
@@ -170,15 +170,10 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
     st.markdown("---")
 
     # ── WHERE clause ──────────────────────────────────────────────────────────
-    where_parts = ["1=1"]
-    if date_from:
-        where_parts.append(f"requisition_date >= '{date_from}'")
-    if date_to:
-        where_parts.append(f"requisition_date <= '{date_to}'")
-    if selected_nama and 'All' not in selected_nama:
-        names_sql = ", ".join(f"'{n}'" for n in selected_nama)
-        where_parts.append(f"nama IN ({names_sql})")
-    where = " AND ".join(where_parts)
+    where = build_sips_where(
+        date_from=date_from, date_to=date_to,
+        selected_nama=selected_nama, selected_bagian=selected_bagian
+    )
 
     # ── Query KPI ─────────────────────────────────────────────────────────────
     kpi_query = f"""
@@ -207,7 +202,8 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
             COALESCE(nilai_sla, 0)                                      AS nilai_sla,
             CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END AS is_po,
             COALESCE(oe_pr, 0)                                          AS oe_pr,
-            COALESCE(nilai_item_po, 0)                                  AS nilai_item_po
+            COALESCE(nilai_item_po, 0)                                  AS nilai_item_po, 
+            outline_agreement
         FROM vw_sips
         WHERE {where}
     """
@@ -220,473 +216,488 @@ def render(load_data, date_from, date_to, selected_nama, **kwargs):
             st.error(f"Gagal memuat data: {e}")
             return
 
-    if df_kpi.empty or df_kpi.iloc[0].isnull().all():
+    no_data = df_kpi.empty or df_kpi.iloc[0].isnull().all()
+    if no_data:
         st.info("Tidak ada data untuk filter yang dipilih.")
-        return
-
-    r = df_kpi.iloc[0]
-
-    # ── Kalkulasi KPI ─────────────────────────────────────────────────────────
-    total_pr      = int(r['total_pr']       or 0)
-    total_po      = int(r['total_po']       or 0)
-    avg_pr_po     = float(r['avg_pr_po']    or 0)
-    sla_ontime    = float(r['sla_ontime']   or 0)
-    oe_proses     = float(r['oe_proses']    or 0)
-    oe_closed     = float(r['oe_closed']    or 0)
-    po_proses     = float(r['po_proses']    or 0)
-    po_closed     = float(r['po_closed']    or 0)
-    on_budget_cnt = int(r['on_budget_count']or 0)
-
-    po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
-    pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
-    oe_total      = oe_proses + oe_closed
-    po_total      = po_proses + po_closed
-    efisiensi_pct = (1 - po_total / oe_total) * 100 if oe_total > 0 else 0.0
-    efisiensi_rp  = oe_total - po_total
-    pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
-
-    # ── KPI_DASH: definisi 15 KPI dengan formula masing-masing ──────────────
-    KPI_DASH = [
-        # ── Baris 1: PR / PO / PO-PR ─────────────────────────────────────────
-        {
-            "key":      "sips_kpi_total_pr",
-            "icon":     "file-text",
-            "label":    "Total PR",
-            "value":    f"{format_number(total_pr)}",
-            "delta":    "Semua status",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**Total PR**: Jumlah baris Purchase Requisition dalam periode filter (semua status).
-
-**Formula Excel:**
-```
-=COUNTIF(SIPS!B:B, nama)
-```
-Menghitung baris di kolom B (Nama) yang sesuai dengan nama karyawan.
-
-**Kalkulasi SQL (dashboard):**
-```sql
-COUNT(*) AS total_pr
-FROM vw_sips WHERE requisition_date BETWEEN :from AND :to
-```
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_total_po",
-            "icon":     "bag",
-            "label":    "Total PO",
-            "value":    f"{format_number(total_po)}",
-            "delta":    "Closed + Proses PO",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**Total PO**: Jumlah PR yang sudah memiliki PO, yaitu yang berstatus *Closed* atau *Proses PO*.
-
-**Formula Excel:**
-```
-=COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Closed")
- + COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Proses PO")
-```
-
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
-```
-
-| Status | Termasuk PO? |
-|---|---|
-| Closed | ✅ Ya |
-| Proses PO | ✅ Ya |
-| Open | ❌ Tidak |
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_po_pr",
-            "icon":     "percent",
-            "label":    "PO/PR",
-            "value":    f"{format_number(po_pr_pct)}%",
-            "delta":    f"{format_number(total_po)} dari {format_number(total_pr)} PR",
-            "dtype":    "positive" if po_pr_pct >= 80 else ("negative" if po_pr_pct < 60 else "neutral"),
-            "formula":  f"""\
-**PO/PR**: Persentase PR yang sudah dikonversi menjadi PO.
-
-**Kalkulasi:**
-```
-PO/PR = Total PO / Total PR × 100%
-      = {total_po:,} / {total_pr:,} × 100%
-      = {po_pr_pct:.1f}%
-```
-
-| % | Interpretasi |
-|---|---|
-| ≥ 80% | 🟢 Baik |
-| 60–79% | 🟡 Perlu perhatian |
-| < 60% | 🔴 Banyak PR belum jadi PO |
-
-**Target:** -""",
-        },
-        # ── Baris 2: PR-PO / SLA On Time / % On Time ─────────────────────────
-        {
-            "key":      "sips_kpi_avg_pr_po",
-            "icon":     "clock",
-            "label":    "Rata-rata PR-PO",
-            "value":    f"{format_number(avg_pr_po, decimals=2)} hari",
-            "delta":    "Waktu PR → PO",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
-
-⚠️ Kolom N (PR-PO) **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
-
-**Formula Excel:**
-```
-=AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
-```
-Kolom N = PR-PO (hari kalender: Disposisi Buyer → Tanggal PO).
-
-**Kalkulasi SQL:**
-```sql
-ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
-AS avg_pr_po
-```
-
-Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
-Untuk waktu end-to-end dari Requisition Date → PO, lihat halaman **Analisis Waktu Proses SIPS**.
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_sla_ontime",
-            "icon":     "check-circle",
-            "label":    "SLA On Time",
-            "value":    f"{format_number(int(sla_ontime))}",
-            "delta":    f"dari {format_number(total_po)} PO",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**SLA On Time**: Jumlah PO yang diselesaikan dalam batas SLA standar.
-
-**Formula Excel:**
-```
-=SUMIFS(SIPS!U:U, SIPS!B:B, nama)
-```
-Kolom U = Nilai SLA (1 = on-time, 0 = terlambat).
-
-**Kalkulasi SQL:**
-```sql
-COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
-              THEN nilai_sla END), 0) AS sla_ontime
-```
-
-Nilai ini adalah **penjumlahan** kolom Nilai SLA, bukan COUNT sesuai rumus SUMIFS di Excel.
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_pct_ontime",
-            "icon":     "award",
-            "label":    "% On Time",
-            "value":    f"{format_number(pct_ontime, decimals=2)}%",
-            "delta":    f"{format_number(int(sla_ontime))} / {format_number(total_po)} PO",
-            "dtype":    "positive" if pct_ontime >= 80 else ("negative" if pct_ontime < 60 else "neutral"),
-            "formula":  f"""\
-**% On Time**: Persentase PO yang diselesaikan tepat waktu.
-
-**Kalkulasi:**
-```
-% On Time = SLA On Time / Total PO × 100%
-          = {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
-          = {format_number(pct_ontime)}%
-```
-
-| % | Interpretasi |
-|---|---|
-| ≥ 80% | 🟢 Baik |
-| 60–79% | 🟡 Perlu perhatian |
-| < 60% | 🔴 Banyak yang terlambat |
-
-**Target:** -""",
-        },
-        # ── Baris 3: OE ───────────────────────────────────────────────────────
-        {
-            "key":      "sips_kpi_oe_proses",
-            "icon":     "currency-exchange",
-            "label":    "OE Proses PO",
-            "value":    f"Rp {format_idr(oe_proses)}",
-            "delta":    "Nilai OE status Proses PO",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO*.
-
-**Formula Excel:**
-```
-=SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
-```
-Kolom X = OE PR (Rp). Dibagi 1 miliar untuk satuan Miliar Rp.
-
-**Kalkulasi SQL:**
-```sql
-SUM(CASE WHEN status='Proses PO' THEN oe_pr END) / 1e9
-AS oe_proses_po_b
-```
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_oe_closed",
-            "icon":     "currency-exchange",
-            "label":    "OE Closed",
-            "value":    f"Rp {format_idr(oe_closed)}",
-            "delta":    "Nilai OE status Closed",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed*.
-
-**Formula Excel:**
-```
-=SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
-```
-Kolom X = OE PR (Rp).
-
-**Kalkulasi SQL:**
-```sql
-SUM(CASE WHEN status='Closed' THEN oe_pr END) / 1e9
-AS oe_closed_b
-```
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_oe_total",
-            "icon":     "currency-exchange",
-            "label":    "Total OE",
-            "value":    f"Rp {format_idr(oe_total)}",
-            "delta":    "OE Proses PO + OE Closed",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**Total OE**: Gabungan OE untuk status *Proses PO* dan *Closed*.
-
-**Kalkulasi:**
-```
-Total OE = OE Proses PO + OE Closed
-         = Rp {format_idr(oe_proses)} + Rp {format_idr(oe_closed)}
-         = Rp {format_idr(oe_total)}
-```
-
-Dipakai sebagai pembagi dalam rumus Efisiensi.
-
-**Target:** -""",
-        },
-        # ── Baris 4: Nilai PO ─────────────────────────────────────────────────
-        {
-            "key":      "sips_kpi_po_proses",
-            "icon":     "budget",
-            "label":    "PO Proses PO",
-            "value":    f"Rp {format_idr(po_proses)}",
-            "delta":    "Nilai PO status Proses PO",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO*.
-
-**Formula Excel:**
-```
-=SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
-```
-Kolom Y = Nilai Item PO (Rp).
-
-**Kalkulasi SQL:**
-```sql
-SUM(CASE WHEN status='Proses PO' THEN nilai_item_po END) / 1e9
-AS po_proses_po_b
-```
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_po_closed",
-            "icon":     "budget",
-            "label":    "PO Closed",
-            "value":    f"Rp {format_idr(po_closed)}",
-            "delta":    "Nilai PO status Closed",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed*.
-
-**Formula Excel:**
-```
-=SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
-```
-Kolom Y = Nilai Item PO (Rp).
-
-**Kalkulasi SQL:**
-```sql
-SUM(CASE WHEN status='Closed' THEN nilai_item_po END) / 1e9
-AS po_closed_b
-```
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_po_total",
-            "icon":     "budget",
-            "label":    "Total PO",
-            "value":    f"Rp {format_idr(po_total)}",
-            "delta":    "PO Proses PO + PO Closed",
-            "dtype":    "neutral",
-            "formula":  f"""\
-**Total PO (Nilai)**: Gabungan realisasi nilai PO untuk status *Proses PO* dan *Closed*.
-
-**Kalkulasi:**
-```
-Total PO = PO Proses PO + PO Closed
-         = Rp {format_idr(po_proses)} + Rp {format_idr(po_closed)}
-         = Rp {format_idr(po_total)}
-```
-
-Dipakai sebagai pembilang dalam rumus Efisiensi.
-
-**Target:** -""",
-        },
-        # ── Baris 5: Efisiensi & On Budget ───────────────────────────────────
-        {
-            "key":      "sips_kpi_efisiensi_pct",
-            "icon":     "graph-up",
-            "label":    "Efisiensi %",
-            "value":    f"{format_number(efisiensi_pct, decimals=2)}%",
-            "delta":    "1 − (PO Total / OE Total)",
-            "dtype":    "positive" if efisiensi_pct > 0 else "negative",
-            "formula":  f"""\
-**Efisiensi %**: Persentase penghematan dari selisih OE dengan realisasi nilai PO.
-
-**Formula Excel:**
-```
-= 1 - (PO Proses PO + PO Closed) / (OE Proses PO + OE Closed)
-```
-
-**Kalkulasi:**
-```
-Efisiensi % = 1 - (Total PO / Total OE) × 100%
-            = 1 - (Rp {format_idr(po_total)} / Rp {format_idr(oe_total)}) × 100%
-            = {efisiensi_pct:.2f}%
-```
-
-| % | Interpretasi |
-|---|---|
-| > 0% | 🟢 Ada penghematan |
-| = 0% | 🟡 Tepat anggaran |
-| < 0% | 🔴 Over budget |
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_efisiensi_rp",
-            "icon":     "piggy-bank",
-            "label":    "Efisiensi Rp",
-            "value":    f"Rp {format_idr(efisiensi_rp)}",
-            "delta":    "OE Total − PO Total",
-            "dtype":    "positive" if efisiensi_rp > 0 else "negative",
-            "formula":  f"""\
-**Efisiensi Rp**: Nominal penghematan dalam Rupiah.
-
-**Formula Excel:**
-```
-= (OE Proses PO + OE Closed) - (PO Proses PO + PO Closed)
-```
-
-**Kalkulasi:**
-```
-Efisiensi Rp = Total OE - Total PO
-             = Rp {format_idr(oe_total)} - Rp {format_idr(po_total)}
-             = Rp {format_idr(efisiensi_rp)}
-```
-
-Nilai positif berarti realisasi PO lebih rendah dari anggaran OE.
-
-**Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_on_budget",
-            "icon":     "check-circle",
-            "label":    "% On Budget",
-            "value":    f"{format_number(pct_on_budget)}%",
-            "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
-            "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
-            "formula":  f"""\
-**% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
-
-**Formula Excel:**
-```
-= (COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Closed")
- + COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Proses PO"))
- / Total PO
-```
-Kolom Z = Persentase PO/SR atau PO/MR.
-
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN persen_po_sr_mr <= 1.0
-            AND status IN ('Closed','Proses PO') THEN 1 END)
-/ COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) * 100
-```
-
-| % | Interpretasi |
-|---|---|
-| ≥ 80% | 🟢 Baik |
-| 60–79% | 🟡 Perlu perhatian |
-| < 60% | 🔴 Banyak over budget |
-
-**Target:** -""",
-        },
-    ]
-
-    # ── Session state untuk setiap toggle ────────────────────────────────────
-    for kpi in KPI_DASH:
-        if kpi["key"] not in st.session_state:
-            st.session_state[kpi["key"]] = False
-
-    # ── FUNGSI TOGGLE YANG HILANG ────────────────────────────────────────────
-    def toggle_state(state_key):
-        st.session_state[state_key] = not st.session_state[state_key]
-
-    # ── Helper: render satu baris (max 3 KPI) dengan tombol formula ──────────
-    def render_kpi_row(items):
-        cols = st.columns(3)
-        for i, col in enumerate(cols):
-            with col:
-                if i >= len(items):
-                    continue
-                kpi     = items[i]
-                is_open = st.session_state[kpi["key"]]
-
-                card_html = kpi_card(kpi["icon"], kpi["label"],
-                                     kpi["value"], kpi["delta"], kpi["dtype"])
-
-                c_card, c_btn = st.columns([10, 2])
-                with c_card:
-                    st.markdown(card_html, unsafe_allow_html=True)
-                with c_btn:
-                    st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                    tooltip  = "Hide Formula" if is_open else "Show Formula"
-                    btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
-                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-
-    # ── Render 5 baris × 3 KPI ───────────────────────────────────────────────
-    for row_start in range(0, len(KPI_DASH), 3):
-        row_items = KPI_DASH[row_start:row_start + 3]
-        render_kpi_row(row_items)
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        # Formula info muncul tepat di bawah baris yang aktif
-        for kpi in row_items:
-            if st.session_state[kpi["key"]]:
-                st.info(kpi["formula"])
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # CHARTS
-    # ─────────────────────────────────────────────────────────────────────────
-
-    if df_chart.empty:
-        return
+
+    if not no_data:
+        r = df_kpi.iloc[0]
+
+        # ── Kalkulasi KPI ─────────────────────────────────────────────────────────
+        total_pr      = int(r['total_pr']       or 0)
+        total_po      = int(r['total_po']       or 0)
+        avg_pr_po     = float(r['avg_pr_po']    or 0)
+        sla_ontime    = float(r['sla_ontime']   or 0)
+        oe_proses     = float(r['oe_proses']    or 0)
+        oe_closed     = float(r['oe_closed']    or 0)
+        po_proses     = float(r['po_proses']    or 0)
+        po_closed     = float(r['po_closed']    or 0)
+        on_budget_cnt = int(r['on_budget_count']or 0)
+
+        po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
+        pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
+        oe_total      = oe_proses + oe_closed
+        po_total      = po_proses + po_closed
+        efisiensi_pct = (1 - po_total / oe_total) * 100 if oe_total > 0 else 0.0
+        efisiensi_rp  = oe_total - po_total
+        pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
+
+        # ── KPI_DASH: definisi 15 KPI dengan formula masing-masing ──────────────
+        KPI_DASH = [
+            # ── Baris 1: PR / PO / PO-PR ─────────────────────────────────────────
+            {
+                "key":      "sips_kpi_total_pr",
+                "icon":     "file-text",
+                "label":    "Total PR",
+                "value":    f"{format_number(total_pr)}",
+                "delta":    "Semua status",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **Total PR**: Jumlah baris Purchase Requisition dalam periode filter (semua status).
+
+    **Formula Excel:**
+    ```
+    =COUNTIF(SIPS!B:B, nama)
+    ```
+    Menghitung baris di kolom B (Nama) yang sesuai dengan nama karyawan.
+
+    **Kalkulasi SQL (dashboard):**
+    ```sql
+    COUNT(*) AS total_pr
+    FROM vw_sips WHERE requisition_date BETWEEN :from AND :to
+    ```
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_total_po",
+                "icon":     "bag",
+                "label":    "Total PO",
+                "value":    f"{format_number(total_po)}",
+                "delta":    "Closed + Proses PO",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **Total PO**: Jumlah PR yang sudah memiliki PO, yaitu yang berstatus *Closed* atau *Proses PO*.
+
+    **Formula Excel:**
+    ```
+    =COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Closed")
+     + COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Proses PO")
+    ```
+
+    **Kalkulasi SQL:**
+    ```sql
+    COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
+    ```
+
+    | Status | Termasuk PO? |
+    |---|---|
+    | Closed | ✅ Ya |
+    | Proses PO | ✅ Ya |
+    | Open | ❌ Tidak |
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_po_pr",
+                "icon":     "percent",
+                "label":    "PO/PR",
+                "value":    f"{format_number(po_pr_pct)}%",
+                "delta":    f"{format_number(total_po)} dari {format_number(total_pr)} PR",
+                "dtype":    "positive" if po_pr_pct >= 80 else ("negative" if po_pr_pct < 60 else "neutral"),
+                "formula":  f"""\
+    **PO/PR**: Persentase PR yang sudah dikonversi menjadi PO.
+
+    **Kalkulasi:**
+    ```
+    PO/PR = Total PO / Total PR × 100%
+          = {total_po:,} / {total_pr:,} × 100%
+          = {po_pr_pct:.1f}%
+    ```
+
+    | % | Interpretasi |
+    |---|---|
+    | ≥ 80% | 🟢 Baik |
+    | 60–79% | 🟡 Perlu perhatian |
+    | < 60% | 🔴 Banyak PR belum jadi PO |
+
+    **Target:** -""",
+            },
+            # ── Baris 2: PR-PO / SLA On Time / % On Time ─────────────────────────
+            {
+                "key":      "sips_kpi_avg_pr_po",
+                "icon":     "clock",
+                "label":    "Rata-rata PR-PO",
+                "value":    f"{format_number(avg_pr_po, decimals=2)} hari",
+                "delta":    "Waktu PR → PO",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+
+    ⚠️ Kolom N (PR-PO) **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
+
+    **Formula Excel:**
+    ```
+    =AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
+    ```
+    Kolom N = PR-PO (hari kalender: Disposisi Buyer → Tanggal PO).
+
+    **Kalkulasi SQL:**
+    ```sql
+    ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
+    AS avg_pr_po
+    ```
+
+    Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
+    Untuk waktu end-to-end dari Requisition Date → PO, lihat halaman **Analisis Waktu Proses SIPS**.
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_sla_ontime",
+                "icon":     "check-circle",
+                "label":    "SLA On Time",
+                "value":    f"{format_number(int(sla_ontime))}",
+                "delta":    f"dari {format_number(total_po)} PO",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **SLA On Time**: Jumlah PO yang diselesaikan dalam batas SLA standar.
+
+    **Formula Excel:**
+    ```
+    =SUMIFS(SIPS!U:U, SIPS!B:B, nama)
+    ```
+    Kolom U = Nilai SLA (1 = on-time, 0 = terlambat).
+
+    **Kalkulasi SQL:**
+    ```sql
+    COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
+                  THEN nilai_sla END), 0) AS sla_ontime
+    ```
+
+    Nilai ini adalah **penjumlahan** kolom Nilai SLA, bukan COUNT sesuai rumus SUMIFS di Excel.
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_pct_ontime",
+                "icon":     "award",
+                "label":    "% On Time",
+                "value":    f"{format_number(pct_ontime, decimals=2)}%",
+                "delta":    f"{format_number(int(sla_ontime))} / {format_number(total_po)} PO",
+                "dtype":    "positive" if pct_ontime >= 80 else ("negative" if pct_ontime < 60 else "neutral"),
+                "formula":  f"""\
+    **% On Time**: Persentase PO yang diselesaikan tepat waktu.
+
+    **Kalkulasi:**
+    ```
+    % On Time = SLA On Time / Total PO × 100%
+              = {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
+              = {format_number(pct_ontime)}%
+    ```
+
+    | % | Interpretasi |
+    |---|---|
+    | ≥ 80% | 🟢 Baik |
+    | 60–79% | 🟡 Perlu perhatian |
+    | < 60% | 🔴 Banyak yang terlambat |
+
+    **Target:** -""",
+            },
+            # ── Baris 3: OE ───────────────────────────────────────────────────────
+            {
+                "key":      "sips_kpi_oe_proses",
+                "icon":     "currency-exchange",
+                "label":    "OE Proses PO",
+                "value":    f"Rp {format_idr(oe_proses)}",
+                "delta":    "Nilai OE status Proses PO",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO*.
+
+    **Formula Excel:**
+    ```
+    =SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
+    ```
+    Kolom X = OE PR (Rp). Dibagi 1 miliar untuk satuan Miliar Rp.
+
+    **Kalkulasi SQL:**
+    ```sql
+    SUM(CASE WHEN status='Proses PO' THEN oe_pr END) / 1e9
+    AS oe_proses_po_b
+    ```
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_oe_closed",
+                "icon":     "currency-exchange",
+                "label":    "OE Closed",
+                "value":    f"Rp {format_idr(oe_closed)}",
+                "delta":    "Nilai OE status Closed",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed*.
+
+    **Formula Excel:**
+    ```
+    =SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
+    ```
+    Kolom X = OE PR (Rp).
+
+    **Kalkulasi SQL:**
+    ```sql
+    SUM(CASE WHEN status='Closed' THEN oe_pr END) / 1e9
+    AS oe_closed_b
+    ```
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_oe_total",
+                "icon":     "currency-exchange",
+                "label":    "Total OE",
+                "value":    f"Rp {format_idr(oe_total)}",
+                "delta":    "OE Proses PO + OE Closed",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **Total OE**: Gabungan OE untuk status *Proses PO* dan *Closed*.
+
+    **Kalkulasi:**
+    ```
+    Total OE = OE Proses PO + OE Closed
+             = Rp {format_idr(oe_proses)} + Rp {format_idr(oe_closed)}
+             = Rp {format_idr(oe_total)}
+    ```
+
+    Dipakai sebagai pembagi dalam rumus Efisiensi.
+
+    **Target:** -""",
+            },
+            # ── Baris 4: Nilai PO ─────────────────────────────────────────────────
+            {
+                "key":      "sips_kpi_po_proses",
+                "icon":     "budget",
+                "label":    "PO Proses PO",
+                "value":    f"Rp {format_idr(po_proses)}",
+                "delta":    "Nilai PO status Proses PO",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO*.
+
+    **Formula Excel:**
+    ```
+    =SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
+    ```
+    Kolom Y = Nilai Item PO (Rp).
+
+    **Kalkulasi SQL:**
+    ```sql
+    SUM(CASE WHEN status='Proses PO' THEN nilai_item_po END) / 1e9
+    AS po_proses_po_b
+    ```
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_po_closed",
+                "icon":     "budget",
+                "label":    "PO Closed",
+                "value":    f"Rp {format_idr(po_closed)}",
+                "delta":    "Nilai PO status Closed",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed*.
+
+    **Formula Excel:**
+    ```
+    =SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
+    ```
+    Kolom Y = Nilai Item PO (Rp).
+
+    **Kalkulasi SQL:**
+    ```sql
+    SUM(CASE WHEN status='Closed' THEN nilai_item_po END) / 1e9
+    AS po_closed_b
+    ```
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_po_total",
+                "icon":     "budget",
+                "label":    "Total PO",
+                "value":    f"Rp {format_idr(po_total)}",
+                "delta":    "PO Proses PO + PO Closed",
+                "dtype":    "neutral",
+                "formula":  f"""\
+    **Total PO (Nilai)**: Gabungan realisasi nilai PO untuk status *Proses PO* dan *Closed*.
+
+    **Kalkulasi:**
+    ```
+    Total PO = PO Proses PO + PO Closed
+             = Rp {format_idr(po_proses)} + Rp {format_idr(po_closed)}
+             = Rp {format_idr(po_total)}
+    ```
+
+    Dipakai sebagai pembilang dalam rumus Efisiensi.
+
+    **Target:** -""",
+            },
+            # ── Baris 5: Efisiensi & On Budget ───────────────────────────────────
+            {
+                "key":      "sips_kpi_efisiensi_pct",
+                "icon":     "graph-up",
+                "label":    "Efisiensi %",
+                "value":    f"{format_number(efisiensi_pct, decimals=2)}%",
+                "delta":    "1 − (PO Total / OE Total)",
+                "dtype":    "positive" if efisiensi_pct > 0 else "negative",
+                "formula":  f"""\
+    **Efisiensi %**: Persentase penghematan dari selisih OE dengan realisasi nilai PO.
+
+    **Formula Excel:**
+    ```
+    = 1 - (PO Proses PO + PO Closed) / (OE Proses PO + OE Closed)
+    ```
+
+    **Kalkulasi:**
+    ```
+    Efisiensi % = 1 - (Total PO / Total OE) × 100%
+                = 1 - (Rp {format_idr(po_total)} / Rp {format_idr(oe_total)}) × 100%
+                = {efisiensi_pct:.2f}%
+    ```
+
+    | % | Interpretasi |
+    |---|---|
+    | > 0% | 🟢 Ada penghematan |
+    | = 0% | 🟡 Tepat anggaran |
+    | < 0% | 🔴 Over budget |
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_efisiensi_rp",
+                "icon":     "piggy-bank",
+                "label":    "Efisiensi Rp",
+                "value":    f"Rp {format_idr(efisiensi_rp)}",
+                "delta":    "OE Total − PO Total",
+                "dtype":    "positive" if efisiensi_rp > 0 else "negative",
+                "formula":  f"""\
+    **Efisiensi Rp**: Nominal penghematan dalam Rupiah.
+
+    **Formula Excel:**
+    ```
+    = (OE Proses PO + OE Closed) - (PO Proses PO + PO Closed)
+    ```
+
+    **Kalkulasi:**
+    ```
+    Efisiensi Rp = Total OE - Total PO
+                 = Rp {format_idr(oe_total)} - Rp {format_idr(po_total)}
+                 = Rp {format_idr(efisiensi_rp)}
+    ```
+
+    Nilai positif berarti realisasi PO lebih rendah dari anggaran OE.
+
+    **Target:** -""",
+            },
+            {
+                "key":      "sips_kpi_on_budget",
+                "icon":     "check-circle",
+                "label":    "% On Budget",
+                "value":    f"{format_number(pct_on_budget)}%",
+                "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
+                "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
+                "formula":  f"""\
+    **% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
+
+    **Formula Excel:**
+    ```
+    = (COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Closed")
+     + COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Proses PO"))
+     / Total PO
+    ```
+    Kolom Z = Persentase PO/SR atau PO/MR.
+
+    **Kalkulasi SQL:**
+    ```sql
+    COUNT(CASE WHEN persen_po_sr_mr <= 1.0
+                AND status IN ('Closed','Proses PO') THEN 1 END)
+    / COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) * 100
+    ```
+
+    | % | Interpretasi |
+    |---|---|
+    | ≥ 80% | 🟢 Baik |
+    | 60–79% | 🟡 Perlu perhatian |
+    | < 60% | 🔴 Banyak over budget |
+
+    **Target:** -""",
+            },
+        ]
+
+        # ── Session state untuk setiap toggle ────────────────────────────────────
+        for kpi in KPI_DASH:
+            if kpi["key"] not in st.session_state:
+                st.session_state[kpi["key"]] = False
+
+        # ── FUNGSI TOGGLE YANG HILANG ────────────────────────────────────────────
+        def toggle_state(state_key):
+            st.session_state[state_key] = not st.session_state[state_key]
+
+        # ── Helper: render satu baris (max 3 KPI) dengan tombol formula ──────────
+        def render_kpi_row(items):
+            cols = st.columns(3)
+            for i, col in enumerate(cols):
+                with col:
+                    if i >= len(items):
+                        continue
+                    kpi     = items[i]
+                    is_open = st.session_state[kpi["key"]]
+
+                    card_html = kpi_card(kpi["icon"], kpi["label"],
+                                         kpi["value"], kpi["delta"], kpi["dtype"])
+
+                    c_card, c_btn = st.columns([10, 2])
+                    with c_card:
+                        st.markdown(card_html, unsafe_allow_html=True)
+                    with c_btn:
+                        st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
+                        tooltip  = "Hide Formula" if is_open else "Show Formula"
+                        btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                        st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
+                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+
+        # ── Render 5 baris × 3 KPI ───────────────────────────────────────────────
+        for row_start in range(0, len(KPI_DASH), 3):
+            row_items = KPI_DASH[row_start:row_start + 3]
+            render_kpi_row(row_items)
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            # Formula info muncul tepat di bawah baris yang aktif
+            for kpi in row_items:
+                if st.session_state[kpi["key"]]:
+                    st.info(kpi["formula"])
+
+        # ─────────────────────────────────────────────────────────────────────────
+        # CHARTS
+        # ─────────────────────────────────────────────────────────────────────────
+
+    if df_chart.empty or no_data:
+        # Tampilkan judul chart saja dengan pesan info
+        _empty_charts = [
+            "Pipeline & Trend PR-PO SIPS",
+            "Distribusi Status PR SIPS",
+            "Performa Ketepatan Waktu (SLA) per Karyawan",
+            "Distribusi Lead Time PR-PO (Hari)",
+            "Beban Kerja per Karyawan",
+            "PO Kontrak vs Non-Kontrak per Karyawan",
+            "Perbandingan Nilai OE vs PO per Karyawan",
+        ]
+        st.markdown("---")
+        for _ch in _empty_charts:
+            st.markdown(f"<h3 style='font-size:22px; margin-bottom:4px'>{_ch}</h3>",
+                        unsafe_allow_html=True)
+            st.info("Tidak ada data untuk filter yang dipilih.")
 
     COLORS = {
         "Open":      "#6c8ebf",
@@ -981,7 +992,153 @@ GROUP BY status
             )
             st.plotly_chart(fig_hist, use_container_width=True)
 
-    # ── ROW 3: Efisiensi Nilai (OE vs PO) ───────────────────────────────────
+# ── ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ────────────────────
+    st.markdown("---")
+
+    title_col, btn_col = st.columns([19, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-lines-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 6s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H1zM11 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm.5 2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1h-4zm2 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2zm0 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2z"/>
+                </svg>
+                Beban Kerja (Volume Dokumen) per Karyawan
+            </h1>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_sips_vol = "show_formula_sips_vol"
+        if key_sips_vol not in st.session_state:
+            st.session_state[key_sips_vol] = False
+        is_open = st.session_state[key_sips_vol]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_sips_vol}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_vol})
+
+    if st.session_state.get(key_sips_vol, False):
+        st.info("""\
+    **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
+
+    **Kalkulasi SQL:**
+    Mengelompokkan (`GROUP BY`) data berdasarkan `nama` (atau NIK) dan menghitung jumlah barisnya.
+    ```sql
+    SELECT nama,
+           COUNT(*) AS Total_PR,
+           SUM(CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END) AS Total_PO
+    FROM vw_sips
+    GROUP BY nama
+    ```
+    Di Excel: `=COUNTIF(kolom_nama, nama_karyawan)`
+    """)
+        
+    st.caption("Perbandingan total dokumen PR yang ditugaskan dan diselesaikan (PO) oleh masing-masing karyawan.")
+
+    if 'nama' in df_chart.columns:
+        vol = (df_chart.groupby('nama')
+               .agg(Total_PR=('nama', 'count'), Total_PO=('is_po', 'sum'))
+               .reset_index())
+        
+        vol = vol.sort_values('Total_PR', ascending=True)
+
+        fig_vol = go.Figure()
+        fig_vol.add_bar(y=vol['nama'], x=vol['Total_PR'], name='Total PR', text=vol['Total_PR'],
+                        orientation='h', marker_color='#6c8ebf', opacity=0.85)
+        fig_vol.add_bar(y=vol['nama'], x=vol['Total_PO'], name='Total PO', text=vol['Total_PO'],
+                        orientation='h', marker_color='#f0a500', opacity=0.85)
+        
+        fig_vol.update_traces(textposition='outside')
+        fig_vol.update_layout(
+            barmode='group',
+            height=max(250, len(vol) * 48),
+            margin=dict(t=10, b=10, l=10, r=40), 
+            legend=dict(orientation='h', yanchor='bottom', y=1.01),
+            xaxis=dict(title='Jumlah Dokumen', gridcolor='rgba(128,128,128,0.15)'), 
+            yaxis=dict(title=''),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='gray',
+            separators=",."
+        )
+        st.plotly_chart(fig_vol, use_container_width=True)
+
+    # ── ROW 4: Proporsi PO Kontrak vs Non-Kontrak ────────────────────────────
+    st.markdown("---")
+
+    title_col_k, btn_col_k = st.columns([19, 1])
+    with title_col_k:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-file-earmark-check-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zm1.354 4.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 9.793l2.646-2.647a.5.5 0 0 1 .708.708z"/>
+                </svg>
+                Proporsi PO Kontrak vs Non-Kontrak per Karyawan
+            </h1>
+        """, unsafe_allow_html=True)
+    with btn_col_k:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_sips_kontrak = "show_formula_sips_kontrak"
+        if key_sips_kontrak not in st.session_state:
+            st.session_state[key_sips_kontrak] = False
+        is_open = st.session_state[key_sips_kontrak]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_sips_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_kontrak})
+
+    if st.session_state.get(key_sips_kontrak, False):
+        st.info("""\
+**Proporsi PO Kontrak vs Non-Kontrak**: Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (*Outline Agreement*) dibandingkan yang tidak.
+
+**Kalkulasi Logika:**
+- **Total PO**: Status dokumen adalah `Closed` atau `Proses PO`.
+- **PO Kontrak**: Kolom `outline_agreement` memiliki nilai (tidak kosong/null).
+- **PO Non-Kontrak**: Kolom `outline_agreement` kosong.
+
+Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien karena tidak perlu melakukan proses lelang atau negosiasi berulang.
+""")
+
+    st.caption("Jumlah item PO yang diterbitkan dengan dasar Outline Agreement (Kontrak) per karyawan.")
+
+    if 'nama' in df_chart.columns and 'outline_agreement' in df_chart.columns:
+        # Filter hanya data yang sudah menjadi PO
+        df_po = df_chart[df_chart['is_po'] == 1].copy()
+        
+        # Tandai jika ada outline agreement (1 = ya, 0 = tidak)
+        df_po['is_kontrak'] = (df_po['outline_agreement'].notna() & (df_po['outline_agreement'].astype(str).str.strip() != '')).astype(int)
+        
+        kontrak_df = (df_po.groupby('nama')
+                      .agg(Total_PO=('is_po', 'sum'),
+                           PO_Kontrak=('is_kontrak', 'sum'))
+                      .reset_index())
+        
+        # Hitung PO Non-Kontrak
+        kontrak_df['PO_Non_Kontrak'] = kontrak_df['Total_PO'] - kontrak_df['PO_Kontrak']
+        
+        # Sortir dari yang total PO-nya paling besar ke kecil (ascending karena ini horizontal bar)
+        kontrak_df = kontrak_df.sort_values('Total_PO', ascending=True)
+
+        fig_kontrak = go.Figure()
+        fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Non_Kontrak'], name='PO Non-Kontrak', 
+                            orientation='h', marker_color='#6c8ebf', 
+                            text=kontrak_df['PO_Non_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
+        fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Kontrak'], name='PO Kontrak', 
+                            orientation='h', marker_color='#09ab3b', 
+                            text=kontrak_df['PO_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
+
+        fig_kontrak.update_traces(textposition='inside', textfont=dict(color='white'))
+        fig_kontrak.update_layout(
+            barmode='stack',
+            height=max(250, len(kontrak_df) * 48),
+            margin=dict(t=10, b=10, l=10, r=40), 
+            legend=dict(orientation='h', yanchor='bottom', y=1.01),
+            xaxis=dict(title='Jumlah Item PO', gridcolor='rgba(128,128,128,0.15)'), 
+            yaxis=dict(title=''),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color='gray'
+        )
+        st.plotly_chart(fig_kontrak, use_container_width=True)
+
+    # ── ROW 5: Efisiensi Nilai (OE vs PO) ───────────────────────────────────
     st.markdown("---")
 
     title_col, btn_col = st.columns([19, 1])
@@ -1051,56 +1208,46 @@ GROUP BY status
         st.plotly_chart(fig_eff, use_container_width=True)
 
     # =====================================================================
-    # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+    # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
     # =====================================================================
-    
-    konteks_lines = []
-    
-    # 0. Rangkuman Filter
-    konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
-    konteks_lines.append(info_filter)
-    konteks_lines.append("\n")
 
-    # 1. Rangkuman KPI SIPS Global
-    konteks_lines.append("## 1. RINGKASAN KPI SIPS GLOBAL")
-    konteks_lines.append(f"- Total PR SIPS: {total_pr} dokumen")
-    konteks_lines.append(f"- Total PO SIPS: {total_po} dokumen (Konversi: {po_pr_pct:.1f}%)")
-    konteks_lines.append(f"- Rata-rata Lead Time PR-PO SIPS: {avg_pr_po:.2f} hari")
-    konteks_lines.append(f"- SLA On-Time: {int(sla_ontime)} PO dari total PO ({pct_ontime:.1f}%)")
-    konteks_lines.append(f"- Total OE Keseluruhan: Rp {format_idr(oe_total)}")
-    konteks_lines.append(f"- Total PO Keseluruhan: Rp {format_idr(po_total)}")
-    konteks_lines.append(f"- Efisiensi Anggaran: {efisiensi_pct:.2f}% (Rp {format_idr(efisiensi_rp)})\n")
+    # Ambil konteks global (SIPS default + SAP aktif) yang sudah dibangun di app.py
+    global_context = kwargs.get("global_context", "")
 
-    # 2. Distribusi Status Dokumen
+    # Tambahkan detail chart halaman ini sebagai suplemen konteks lokal
+    suplemen_lines = [
+        "# SUPLEMEN — DETAIL CHART HALAMAN INI (SIPS Dashboard)",
+    ]
+
     if 'status_counts' in locals() and not status_counts.empty:
-        konteks_lines.append("## 2. DISTRIBUSI STATUS DOKUMEN")
-        konteks_lines.append(status_counts.to_markdown(index=False))
-        konteks_lines.append("\n")
+        suplemen_lines.append("## DISTRIBUSI STATUS DOKUMEN")
+        suplemen_lines.append(status_counts.to_markdown(index=False))
+        suplemen_lines.append("")
 
-    # 3. Performa SLA Karyawan
+    if 'vol' in locals() and not vol.empty:
+        suplemen_lines.append("## BEBAN KERJA (VOLUME PR & PO) PER KARYAWAN")
+        df_vol_simple = vol.sort_values('Total_PR', ascending=False)
+        suplemen_lines.append(df_vol_simple.to_markdown(index=False))
+        suplemen_lines.append("")
+
     if 'perf' in locals() and not perf.empty:
-        konteks_lines.append("## 3. PERFORMA KETEPATAN WAKTU (SLA) PER KARYAWAN")
+        suplemen_lines.append("## PERFORMA KETEPATAN WAKTU (SLA) PER KARYAWAN")
         df_perf_simple = perf[['nama', 'total_po', 'sla_ok', 'pct_ontime']].sort_values('pct_ontime', ascending=False)
-        konteks_lines.append(df_perf_simple.to_markdown(index=False))
-        konteks_lines.append("\n")
+        suplemen_lines.append(df_perf_simple.to_markdown(index=False))
+        suplemen_lines.append("")
 
-    # 4. Efisiensi per Karyawan
     if 'eff' in locals() and not eff.empty:
-        konteks_lines.append("## 4. EFISIENSI (OE VS PO) PER KARYAWAN")
-        # Menghitung selisih dan persentase efisiensi per orang untuk disajikan ke AI
+        suplemen_lines.append("## EFISIENSI (OE VS PO) PER KARYAWAN")
         eff_ai = eff.copy()
-        eff_ai['efisiensi_rp'] = eff_ai['oe'] - eff_ai['po']
+        eff_ai['efisiensi_rp']  = eff_ai['oe'] - eff_ai['po']
         eff_ai['efisiensi_pct'] = ((eff_ai['efisiensi_rp'] / eff_ai['oe']) * 100).round(1).fillna(0)
-        
         df_eff_simple = eff_ai[['nama', 'oe', 'po', 'efisiensi_rp', 'efisiensi_pct']].sort_values('efisiensi_rp', ascending=False)
-        konteks_lines.append(df_eff_simple.to_markdown(index=False))
-        konteks_lines.append("\n")
+        suplemen_lines.append(df_eff_simple.to_markdown(index=False))
+        suplemen_lines.append("")
 
-    # Gabungkan teks
-    gabungan_konteks = "\n".join(konteks_lines)
+    konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)
 
-    # Panggil fungsi chat
     render_chat_analyst(
-        konteks_data_teks=gabungan_konteks, 
+        konteks_data_teks=konteks_final,
         nama_halaman="Dashboard SIPS"
     )

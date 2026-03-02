@@ -324,11 +324,13 @@ END AS umur_po
         else:
             konteks_lines.append("## 3. RINGKASAN AGING PO\nTidak ada data aging PO.\n")
 
-        # Gabungkan konteks
-        gabungan_konteks = "\n".join(konteks_lines)
+        # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
+        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)
+        konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
+
 
         # Render chat di bawah halaman Alert
         render_chat_analyst(
-            konteks_data_teks=gabungan_konteks, 
+            konteks_data_teks=konteks_final,
             nama_halaman="Halaman Alert (Warning & Action Required)"
         )

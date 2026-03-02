@@ -58,13 +58,21 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 THEN no_pr || '-' || line_item_pr::text END)              AS pr_without_po,
             COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)                      AS total_estimasi,
             COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS total_po_amount,
-            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END -
-                        CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END), 0) AS total_savings,
-            COALESCE(AVG(CASE
-                    WHEN total_amount_local_curr IS NOT NULL AND oe IS NOT NULL AND oe > 0
-                    AND {bagian_pr_cond} AND {bagian_po_cond}
-                    THEN (oe - total_amount_local_curr) / oe * 100
-                    END), 0)                                                              AS avg_savings_pct,
+            COALESCE(
+                SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END)
+                - SUM(CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END),
+            0)                                                                               AS total_savings,
+            -- FIX: weighted savings % = (SUM_oe - SUM_realisasi) / SUM_oe * 100
+            -- Sebelumnya AVG per baris bisa bias karena baris kecil dgn % besar terlalu berpengaruh
+            CASE
+                WHEN COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND oe > 0 THEN oe END), 0) > 0
+                THEN ROUND((
+                    (COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
+                     - COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN total_amount_local_curr END), 0))
+                    / NULLIF(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
+                ) * 100, 2)
+                ELSE 0
+            END                                                                              AS avg_savings_pct,
             ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                 THEN lead_time_process_po END)::numeric, 2)                              AS avg_lead_time,
             COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
@@ -79,17 +87,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
         """
-
-        with st.spinner("Memuat KPI..."):
-            kpi_data = load_data(kpi_query)
-
-        total_pr     = int(kpi_data['total_pr'][0] or 0)
-        total_po     = int(kpi_data['total_po'][0] or 0)
-        pr_with_po   = int(kpi_data['pr_with_po'][0] or 0)
-        pr_without   = int(kpi_data['pr_without_po'][0] or 0)
-        estimasi     = float(kpi_data['total_estimasi'][0] or 0)
-        savings      = float(kpi_data['total_savings'][0] or 0)
-        savings_pct  = float(kpi_data['avg_savings_pct'][0] or 0)
 
         with st.spinner("Memuat KPI..."):
             kpi_data = load_data(kpi_query)
@@ -196,8 +193,10 @@ COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
 
 **Kalkulasi SQL:**
 ```sql
-SUM(oe_pr) - SUM(total_amount_po) AS total_savings
-AVG((oe - realisasi) / oe * 100)  AS avg_savings_pct
+SUM(oe) - SUM(total_amount_local_curr) AS total_savings
+
+-- % Savings: weighted (bukan rata-rata per baris)
+(SUM(oe) - SUM(total_amount_local_curr)) / SUM(oe) * 100 AS avg_savings_pct
 ```
 
 | Kondisi | Artinya |
@@ -1087,50 +1086,82 @@ ORDER BY abc_indicator
                 st.info("No material data available.")
 
         # =====================================================================
-        # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
+        # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
         # =====================================================================
-        
-        # Merakit teks konteks dari dataframe yang sudah di-load di atas
-        konteks_lines = []
 
-        # 0. Rangkuman Filter yang Sedang Aktif
-        konteks_lines.append("## 0. FILTER YANG SEDANG DITERAPKAN USER")
-        konteks_lines.append(info_filter)
-        konteks_lines.append("\n")
-        
-        # 1. Rangkuman KPI Utama
-        konteks_lines.append("## 1. RINGKASAN KPI UTAMA")
-        konteks_lines.append(f"- Total PR: {total_pr} (PR dengan PO: {pr_with_po}, PR Pending: {pr_without})")
-        konteks_lines.append(f"- Total PO: {total_po}")
-        konteks_lines.append(f"- Total Savings: {format_idr(savings)} (Rata-rata {savings_pct}%)")
-        konteks_lines.append(f"- Kecepatan Rata-rata Proses PO: {avg_lt_val} Hari")
-        konteks_lines.append(f"- Ketepatan Pengiriman Barang: {ketepatan_pct}%\n")
+        # Ambil konteks global (SAP default + SIPS aktif) yang sudah dibangun di app.py
+        global_context = kwargs.get("global_context", "")
 
-        # 2. Data Top Vendor (Jika ada)
+        # Tambahkan detail chart halaman ini sebagai suplemen konteks lokal
+        suplemen_lines = [
+            "# SUPLEMEN — DETAIL CHART HALAMAN INI (PR-PO SAP Dashboard)",
+        ]
+
+        # 0. Filter aktif
+        suplemen_lines.append("## 0. FILTER AKTIF")
+        suplemen_lines.append(info_filter)
+        suplemen_lines.append("")
+
+        # 1. KPI Utama (selalu tersedia karena diambil di awal render)
+        suplemen_lines.append("## 1. KPI UTAMA DASHBOARD")
+        suplemen_lines.append(f"- Total PR: {format_number(total_pr)} | PR dengan PO: {format_number(pr_with_po)} | PR Pending: {format_number(pr_without)}")
+        suplemen_lines.append(f"- Total PO (baris): {format_number(total_po)} | Total PO Unik: {format_number(total_po_dist)}")
+        suplemen_lines.append(f"- Produktivitas PR→PO: {format_number(produktivitas, decimals=2)}%")
+        suplemen_lines.append(f"- Total Estimasi (OE): {format_idr(estimasi)}")
+        suplemen_lines.append(f"- Total Savings: {format_idr(savings)} ({format_number(savings_pct, decimals=1)}%)")
+        suplemen_lines.append(f"- Avg Lead Time Proses PO: {format_number(avg_lt_val, decimals=1)} hari")
+        suplemen_lines.append(f"- % Pengiriman Selesai: {format_number(pct_pengiriman, decimals=1)}% ({format_number(po_delivered)} GR / {format_number(total_po_dist)} PO)")
+        suplemen_lines.append(f"- % Ketepatan Pengiriman: {format_number(ketepatan_pct, decimals=1)}% ({format_number(po_ontime)} tepat / {format_number(po_del_tot)} selesai)")
+        suplemen_lines.append("")
+
+        # 2. Top 10 Vendor
         if 'vendor_data' in locals() and not vendor_data.empty:
-            konteks_lines.append("## 2. TOP 10 VENDOR (Berdasarkan Nilai PO)")
-            konteks_lines.append(vendor_data.to_markdown(index=False))
-            konteks_lines.append("\n")
+            suplemen_lines.append("## 2. TOP 10 VENDOR (Berdasarkan Nilai PO)")
+            suplemen_lines.append(vendor_data.to_markdown(index=False))
+            suplemen_lines.append("")
 
-        # 3. Data PR Pending (Jika ada)
+        # 3. Top PR Pending Tertua
         if 'pr_without_po' in locals() and not pr_without_po.empty:
-            konteks_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
-            # Kita tidak perlu mengirim semua kolom ke LLM, cukup ambil inti
+            suplemen_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
             df_pending_simple = pr_without_po[['no_pr', 'department', 'total_estimasi']]
-            konteks_lines.append(df_pending_simple.to_markdown(index=False))
-            konteks_lines.append("\n")
-            
-        # 4. Status Pengiriman (Jika ada)
+            suplemen_lines.append(df_pending_simple.to_markdown(index=False))
+            suplemen_lines.append("")
+
+        # 4. Status Pengiriman
         if 'delivery_data' in locals() and not delivery_data.empty:
-            konteks_lines.append("## 4. STATUS PENGIRIMAN PO")
-            konteks_lines.append(delivery_data.to_markdown(index=False))
-            konteks_lines.append("\n")
+            suplemen_lines.append("## 4. STATUS PENGIRIMAN PO")
+            suplemen_lines.append(delivery_data.to_markdown(index=False))
+            suplemen_lines.append("")
 
-        # Gabungkan semua baris menjadi satu teks besar
-        gabungan_konteks = "\n".join(konteks_lines)
+        # 5. Tren PR-PO per Bulan
+        if 'trend_data' in locals() and not trend_data.empty:
+            suplemen_lines.append("## 5. TREN PEMBUATAN PR & PO PER BULAN")
+            df_trend_simple = trend_data.copy()
+            df_trend_simple['month'] = df_trend_simple['month'].astype(str).str[:7]
+            suplemen_lines.append(df_trend_simple.to_markdown(index=False))
+            suplemen_lines.append("")
 
-        # Render kolom chat di bawah dashboard
+        # 6. Distribusi Lead Time
+        if 'leadtime_data' in locals() and not leadtime_data.empty:
+            suplemen_lines.append("## 6. DISTRIBUSI LEAD TIME PROSES PO")
+            suplemen_lines.append(leadtime_data[['lead_time_range', 'count']].to_markdown(index=False))
+            suplemen_lines.append("")
+
+        # 7. Distribusi PR per Department
+        if 'dept_data' in locals() and not dept_data.empty:
+            suplemen_lines.append("## 7. DISTRIBUSI PR PER DEPARTMENT (TOP 10)")
+            suplemen_lines.append(dept_data.head(10).to_markdown(index=False))
+            suplemen_lines.append("")
+
+        # 8. Kategori Material ABC
+        if 'material_data' in locals() and not material_data.empty:
+            suplemen_lines.append("## 8. TOTAL NILAI PO PER KATEGORI MATERIAL (ABC)")
+            suplemen_lines.append(material_data[['abc_indicator', 'total_value']].to_markdown(index=False))
+            suplemen_lines.append("")
+
+        konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)
+
         render_chat_analyst(
-            konteks_data_teks=gabungan_konteks, 
+            konteks_data_teks=konteks_final,
             nama_halaman="PR-PO Monitoring Dashboard"
         )
