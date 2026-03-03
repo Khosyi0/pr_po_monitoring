@@ -1,5 +1,5 @@
 """
-v_dashboard.py - Halaman Dashboard Monitoring
+v_dashboard.py - Halaman Dashboard Monitoring SAP
 """
 import streamlit as st
 import pandas as pd
@@ -22,7 +22,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     <path d="M10 .5a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5.5.5 0 0 1-.5.5.5.5 0 0 0-.5.5V2a.5.5 0 0 0 .5.5h5A.5.5 0 0 0 11 2v-.5a.5.5 0 0 0-.5-.5.5.5 0 0 1-.5-.5"/>
                     <path d="M4.085 1H3.5A1.5 1.5 0 0 0 2 2.5v12A1.5 1.5 0 0 0 3.5 16h9a1.5 1.5 0 0 0 1.5-1.5v-12A1.5 1.5 0 0 0 12.5 1h-.585q.084.236.085.5V2a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 4 2v-.5q.001-.264.085-.5M10 7a1 1 0 1 1 2 0v5a1 1 0 1 1-2 0zm-6 4a1 1 0 1 1 2 0v1a1 1 0 1 1-2 0zm4-3a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V9a1 1 0 0 1 1-1"/>
                 </svg>
-                PR-PO Monitoring Dashboard
+                PR-PO SAP Monitoring Dashboard
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("""
@@ -117,7 +117,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "value": f"{format_number(total_pr)}",
                 "delta": f"{format_number(pr_with_po)} with PO",
                 "formula": """\
-**Total PR**: Jumlah baris Purchase Requisition unik dalam periode filter.
+**Total PR**: Jumlah Purchase Requisition unik dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -142,7 +142,7 @@ END) AS total_pr
                 "value": f"{format_number(total_po)}",
                 "delta": f"{format_number(pr_without)} PR pending",
                 "formula": """\
-**Total PO**: Jumlah baris Purchase Order dalam periode filter.
+**Total PO**: Jumlah Purchase Order dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -214,7 +214,7 @@ SUM(oe) - SUM(total_amount_local_curr) AS total_savings
                 "value": format_idr(estimasi),
                 "delta": "Owner's Estimate (OE)",
                 "formula": """\
-**Total Estimasi PR (OE)**: Total nilai Owner's Estimate dari semua PR.
+**Total Estimasi PR (OE)**: Total nilai OE dari semua PR.
 
 **Kalkulasi SQL:**
 ```sql
@@ -1007,7 +1007,7 @@ Di Excel: `=IF(tgl_gr="","IN PROGRESS",IF(tgl_gr<=del_date_po,"TEPAT WAKTU","TER
                 fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0), separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No delivery data available.")
+                st.info("Tidak ada data yang tersedia.")
 
         with col_chart2:
             title_col, btn_col = st.columns([9, 1])
@@ -1083,7 +1083,7 @@ ORDER BY abc_indicator
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("No material data available.")
+                st.info("Tidak ada data yang tersedia.")
 
         # =====================================================================
         # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
@@ -1094,7 +1094,7 @@ ORDER BY abc_indicator
 
         # Tambahkan detail chart halaman ini sebagai suplemen konteks lokal
         suplemen_lines = [
-            "# SUPLEMEN — DETAIL CHART HALAMAN INI (PR-PO SAP Dashboard)",
+            "# SUPLEMEN - DETAIL CHART HALAMAN INI (PR-PO SAP Dashboard)",
         ]
 
         # 0. Filter aktif

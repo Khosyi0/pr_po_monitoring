@@ -1,5 +1,5 @@
 """
-v_detail.py - Halaman Detailed PR-PO Data
+v_detail.py - Halaman Detailed PR-PO SAP Data
 """
 import streamlit as st
 import pandas as pd
@@ -16,7 +16,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
                     <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
                 </svg>
-                Detailed PR-PO Data
+                Detailed PR-PO SAP Data
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("---")
@@ -82,7 +82,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 mime="text/csv"
             )
         else:
-            st.info("No data found matching your filters")
+            st.info("Tidak ada data yang cocok dengan filter yang dipilih.")
 
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
@@ -124,7 +124,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             konteks_lines.append("Tidak ada data yang cocok dengan filter yang dipilih.\n")
 
         # Gabungkan konteks lokal dengan konteks global lintas sistem
-        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Detailed PR-PO Data)\n" + "\n".join(konteks_lines)
+        suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Detailed PR-PO Data)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
         render_chat_analyst(

@@ -325,7 +325,7 @@ END AS umur_po
             konteks_lines.append("## 3. RINGKASAN AGING PO\nTidak ada data aging PO.\n")
 
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
-        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)
+        suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
 

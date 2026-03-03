@@ -20,6 +20,10 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "3 Mar 2026", "Versi": "v1.7.1", "Perubahan": """
+    - Update UI halaman Evaluasi Harga Barang, Dashboard Monitoring SIPS, dan Analisis Waktu Proses SIPS ketika tidak ada data untuk filter yang dipilih
+    - Memperbaiki bug infomasi "0" dan iformasi detail per chart di halaman Analisis Waktu Proses SIPS
+    - Menambahkan kamus tentang struktur sistem ke Mia"""},
         {"Tanggal": "2 Mar 2026", "Versi": "v1.7", "Perubahan": """
     - Optimisasi Mia agar dapat membaca keseluruhan data, tidak hanya data yang tampil di halaman tersebut
     - Menambahkan Mia ke halaman Detailed PR-PO Data dan Detailed SIPS Data
@@ -195,5 +199,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7.1"])):
             st.markdown(item["Perubahan"])

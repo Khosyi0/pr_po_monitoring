@@ -253,7 +253,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Semua status",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Total PR**: Jumlah baris Purchase Requisition dalam periode filter (semua status).
+    **Total PR**: Jumlah Purchase Requisition dalam periode filter (semua status).
 
     **Formula Excel:**
     ```
@@ -682,23 +682,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         # CHARTS
         # ─────────────────────────────────────────────────────────────────────────
 
-    if df_chart.empty or no_data:
-        # Tampilkan judul chart saja dengan pesan info
-        _empty_charts = [
-            "Pipeline & Trend PR-PO SIPS",
-            "Distribusi Status PR SIPS",
-            "Performa Ketepatan Waktu (SLA) per Karyawan",
-            "Distribusi Lead Time PR-PO (Hari)",
-            "Beban Kerja per Karyawan",
-            "PO Kontrak vs Non-Kontrak per Karyawan",
-            "Perbandingan Nilai OE vs PO per Karyawan",
-        ]
-        st.markdown("---")
-        for _ch in _empty_charts:
-            st.markdown(f"<h3 style='font-size:22px; margin-bottom:4px'>{_ch}</h3>",
-                        unsafe_allow_html=True)
-            st.info("Tidak ada data untuk filter yang dipilih.")
-
     COLORS = {
         "Open":      "#6c8ebf",
         "Proses PO": "#f0a500",
@@ -792,7 +775,8 @@ Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan
                 separators=",."
             )
             st.plotly_chart(fig_trend, use_container_width=True)
-
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
 
     # ── KANAN: PIE CHART DISTRIBUSI STATUS ──
     with col2:
@@ -829,39 +813,27 @@ GROUP BY status
 """)
         st.caption("Distribusi status PR SIPS.")
 
-        status_counts = df_chart['status'].value_counts().reset_index()
-        status_counts.columns = ['Status', 'Jumlah']
-        
-        fig_donut = px.pie(
-            status_counts, names='Status', values='Jumlah',
-            hole=0.4,
-            color='Status',
-            color_discrete_map=COLORS,
-        )
-        
-        fig_donut.update_traces(
-            textposition='inside',
-            textinfo='percent',
-            hovertemplate='<b>%{label}</b><br>Jumlah: %{value}<br>Persorsi: %{percent}<extra></extra>'
-        )
-        
-        fig_donut.update_layout(
-            showlegend=True,
-            legend=dict(
-                orientation="v",
-                yanchor="middle",
-                y=0.5,
-                xanchor="left",
-                x=1.05
-            ),
-            margin=dict(t=20, b=20, l=20, r=0), 
-            height=300,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color='gray',
-            separators=",."
-        )
-        st.plotly_chart(fig_donut, use_container_width=True)
+        if df_chart.empty:
+            st.info("Tidak ada data untuk filter yang dipilih.")
+        else:
+            status_counts = df_chart['status'].value_counts().reset_index()
+            status_counts.columns = ['Status', 'Jumlah']
+            fig_donut = px.pie(
+                status_counts, names='Status', values='Jumlah',
+                hole=0.4, color='Status', color_discrete_map=COLORS,
+            )
+            fig_donut.update_traces(
+                textposition='inside', textinfo='percent',
+                hovertemplate='<b>%{label}</b><br>Jumlah: %{value}<br>Persorsi: %{percent}<extra></extra>'
+            )
+            fig_donut.update_layout(
+                showlegend=True,
+                legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05),
+                margin=dict(t=20, b=20, l=20, r=0), height=300,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                font_color='gray', separators=",."
+            )
+            st.plotly_chart(fig_donut, use_container_width=True)
 
     # ── ROW 2: Performa SLA & Histori Lead Time ─────────────────────────────
     st.markdown("---")
@@ -911,30 +883,35 @@ GROUP BY status
                     .agg(total_po=('is_po', 'sum'),
                         sla_ok=('nilai_sla', 'sum'))
                     .reset_index())
-            perf['pct_ontime'] = (perf['sla_ok'] / perf['total_po'] * 100).round(1)
-            perf = perf.sort_values('pct_ontime', ascending=True)
+            if not perf.empty:
+                perf['pct_ontime'] = (perf['sla_ok'] / perf['total_po'] * 100).round(1)
+                perf = perf.sort_values('pct_ontime', ascending=True)
 
-            fig_ontime = px.bar(
-                perf, y='nama', x='pct_ontime', orientation='h',
-                text=perf['pct_ontime'].apply(lambda x: f"{format_number(x, decimals=1)}%"),
-                color='pct_ontime',
-                color_continuous_scale=[[0, '#e03c3c'], [0.6, '#f0a500'], [1, '#09ab3b']],
-                range_color=[0, 100],
-            )
-            fig_ontime.update_traces(textposition='outside')
-            fig_ontime.update_coloraxes(showscale=False)
-            fig_ontime.update_layout(
-                height=max(250, len(perf) * 38),
-                margin=dict(t=10, b=10, l=10, r=60),
-                xaxis=dict(title='% On Time', range=[0, 115],
-                        gridcolor='rgba(128,128,128,0.15)'),
-                yaxis=dict(title=''),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color='gray',
-                separators=",."
-            )
-            st.plotly_chart(fig_ontime, use_container_width=True)
+                fig_ontime = px.bar(
+                    perf, y='nama', x='pct_ontime', orientation='h',
+                    text=perf['pct_ontime'].apply(lambda x: f"{format_number(x, decimals=1)}%"),
+                    color='pct_ontime',
+                    color_continuous_scale=[[0, '#e03c3c'], [0.6, '#f0a500'], [1, '#09ab3b']],
+                    range_color=[0, 100],
+                )
+                fig_ontime.update_traces(textposition='outside')
+                fig_ontime.update_coloraxes(showscale=False)
+                fig_ontime.update_layout(
+                    height=max(250, len(perf) * 38),
+                    margin=dict(t=10, b=10, l=10, r=60),
+                    xaxis=dict(title='% On Time', range=[0, 115],
+                            gridcolor='rgba(128,128,128,0.15)'),
+                    yaxis=dict(title=''),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='gray',
+                    separators=",."
+                )
+                st.plotly_chart(fig_ontime, use_container_width=True)
+            else:
+                st.info("Tidak ada data untuk filter yang dipilih.")
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
 
     # ── KANAN: HISTOGRAM PR-PO DAYS ──
     with col_r:
@@ -991,6 +968,8 @@ GROUP BY status
                 separators=",."
             )
             st.plotly_chart(fig_hist, use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
 
 # ── ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ────────────────────
     st.markdown("---")
@@ -1020,7 +999,7 @@ GROUP BY status
     **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
 
     **Kalkulasi SQL:**
-    Mengelompokkan (`GROUP BY`) data berdasarkan `nama` (atau NIK) dan menghitung jumlah barisnya.
+    Mengelompokkan (`GROUP BY`) data berdasarkan `nama` (atau NIK) dan menghitung jumlah ya.
     ```sql
     SELECT nama,
            COUNT(*) AS Total_PR,
@@ -1038,28 +1017,33 @@ GROUP BY status
                .agg(Total_PR=('nama', 'count'), Total_PO=('is_po', 'sum'))
                .reset_index())
         
-        vol = vol.sort_values('Total_PR', ascending=True)
+        if not vol.empty:
+            vol = vol.sort_values('Total_PR', ascending=True)
 
-        fig_vol = go.Figure()
-        fig_vol.add_bar(y=vol['nama'], x=vol['Total_PR'], name='Total PR', text=vol['Total_PR'],
-                        orientation='h', marker_color='#6c8ebf', opacity=0.85)
-        fig_vol.add_bar(y=vol['nama'], x=vol['Total_PO'], name='Total PO', text=vol['Total_PO'],
-                        orientation='h', marker_color='#f0a500', opacity=0.85)
-        
-        fig_vol.update_traces(textposition='outside')
-        fig_vol.update_layout(
-            barmode='group',
-            height=max(250, len(vol) * 48),
-            margin=dict(t=10, b=10, l=10, r=40), 
-            legend=dict(orientation='h', yanchor='bottom', y=1.01),
-            xaxis=dict(title='Jumlah Dokumen', gridcolor='rgba(128,128,128,0.15)'), 
-            yaxis=dict(title=''),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color='gray',
-            separators=",."
-        )
-        st.plotly_chart(fig_vol, use_container_width=True)
+            fig_vol = go.Figure()
+            fig_vol.add_bar(y=vol['nama'], x=vol['Total_PR'], name='Total PR', text=vol['Total_PR'],
+                            orientation='h', marker_color='#6c8ebf', opacity=0.85)
+            fig_vol.add_bar(y=vol['nama'], x=vol['Total_PO'], name='Total PO', text=vol['Total_PO'],
+                            orientation='h', marker_color='#f0a500', opacity=0.85)
+            
+            fig_vol.update_traces(textposition='outside')
+            fig_vol.update_layout(
+                barmode='group',
+                height=max(250, len(vol) * 48),
+                margin=dict(t=10, b=10, l=10, r=40), 
+                legend=dict(orientation='h', yanchor='bottom', y=1.01),
+                xaxis=dict(title='Jumlah Dokumen', gridcolor='rgba(128,128,128,0.15)'), 
+                yaxis=dict(title=''),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='gray',
+                separators=",."
+            )
+            st.plotly_chart(fig_vol, use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
+    else:
+        st.info("Tidak ada data untuk filter yang dipilih.")
 
     # ── ROW 4: Proporsi PO Kontrak vs Non-Kontrak ────────────────────────────
     st.markdown("---")
@@ -1110,33 +1094,38 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
                            PO_Kontrak=('is_kontrak', 'sum'))
                       .reset_index())
         
-        # Hitung PO Non-Kontrak
-        kontrak_df['PO_Non_Kontrak'] = kontrak_df['Total_PO'] - kontrak_df['PO_Kontrak']
-        
-        # Sortir dari yang total PO-nya paling besar ke kecil (ascending karena ini horizontal bar)
-        kontrak_df = kontrak_df.sort_values('Total_PO', ascending=True)
+        if not kontrak_df.empty:
+            # Hitung PO Non-Kontrak
+            kontrak_df['PO_Non_Kontrak'] = kontrak_df['Total_PO'] - kontrak_df['PO_Kontrak']
+            
+            # Sortir dari yang total PO-nya paling besar ke kecil (ascending karena ini horizontal bar)
+            kontrak_df = kontrak_df.sort_values('Total_PO', ascending=True)
 
-        fig_kontrak = go.Figure()
-        fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Non_Kontrak'], name='PO Non-Kontrak', 
-                            orientation='h', marker_color='#6c8ebf', 
-                            text=kontrak_df['PO_Non_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
-        fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Kontrak'], name='PO Kontrak', 
-                            orientation='h', marker_color='#09ab3b', 
-                            text=kontrak_df['PO_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
+            fig_kontrak = go.Figure()
+            fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Non_Kontrak'], name='PO Non-Kontrak', 
+                                orientation='h', marker_color='#6c8ebf', 
+                                text=kontrak_df['PO_Non_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
+            fig_kontrak.add_bar(y=kontrak_df['nama'], x=kontrak_df['PO_Kontrak'], name='PO Kontrak', 
+                                orientation='h', marker_color='#09ab3b', 
+                                text=kontrak_df['PO_Kontrak'].apply(lambda x: str(x) if x > 0 else ''))
 
-        fig_kontrak.update_traces(textposition='inside', textfont=dict(color='white'))
-        fig_kontrak.update_layout(
-            barmode='stack',
-            height=max(250, len(kontrak_df) * 48),
-            margin=dict(t=10, b=10, l=10, r=40), 
-            legend=dict(orientation='h', yanchor='bottom', y=1.01),
-            xaxis=dict(title='Jumlah Item PO', gridcolor='rgba(128,128,128,0.15)'), 
-            yaxis=dict(title=''),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color='gray'
-        )
-        st.plotly_chart(fig_kontrak, use_container_width=True)
+            fig_kontrak.update_traces(textposition='inside', textfont=dict(color='white'))
+            fig_kontrak.update_layout(
+                barmode='stack',
+                height=max(250, len(kontrak_df) * 48),
+                margin=dict(t=10, b=10, l=10, r=40), 
+                legend=dict(orientation='h', yanchor='bottom', y=1.01),
+                xaxis=dict(title='Jumlah Item PO', gridcolor='rgba(128,128,128,0.15)'), 
+                yaxis=dict(title=''),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='gray'
+            )
+            st.plotly_chart(fig_kontrak, use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
+    else:
+        st.info("Tidak ada data untuk filter yang dipilih.")
 
     # ── ROW 5: Efisiensi Nilai (OE vs PO) ───────────────────────────────────
     st.markdown("---")
@@ -1180,32 +1169,37 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             .groupby('nama')
             .agg(oe=('oe_pr', 'sum'), po=('nilai_item_po', 'sum'))
             .reset_index())
+        
+        if not kontrak_df.empty:
+            eff = eff.sort_values('oe', ascending=True)
             
-        eff = eff.sort_values('oe', ascending=True)
-        
-        eff['oe_text'] = eff['oe'].apply(format_idr_short)
-        eff['po_text'] = eff['po'].apply(format_idr_short)
+            eff['oe_text'] = eff['oe'].apply(format_idr_short)
+            eff['po_text'] = eff['po'].apply(format_idr_short)
 
-        fig_eff = go.Figure()
-        fig_eff.add_bar(y=eff['nama'], x=eff['oe'], name='OE PR', text=eff['oe_text'],
-                        orientation='h', marker_color='#6c8ebf', opacity=0.85)
-        fig_eff.add_bar(y=eff['nama'], x=eff['po'], name='Nilai PO', text=eff['po_text'],
-                        orientation='h', marker_color='#09ab3b', opacity=0.85)
-        
-        fig_eff.update_traces(textposition='outside')
-        fig_eff.update_layout(
-            barmode='group',
-            height=max(250, len(eff) * 48),
-            margin=dict(t=10, b=10, l=10, r=60), 
-            legend=dict(orientation='h', yanchor='bottom', y=1.01),
-            xaxis=dict(title='Total Nilai (IDR)', gridcolor='rgba(128,128,128,0.15)'), 
-            yaxis=dict(title=''),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color='gray',
-            separators=",."
-        )
-        st.plotly_chart(fig_eff, use_container_width=True)
+            fig_eff = go.Figure()
+            fig_eff.add_bar(y=eff['nama'], x=eff['oe'], name='OE PR', text=eff['oe_text'],
+                            orientation='h', marker_color='#6c8ebf', opacity=0.85)
+            fig_eff.add_bar(y=eff['nama'], x=eff['po'], name='Nilai PO', text=eff['po_text'],
+                            orientation='h', marker_color='#09ab3b', opacity=0.85)
+            
+            fig_eff.update_traces(textposition='outside')
+            fig_eff.update_layout(
+                barmode='group',
+                height=max(250, len(eff) * 48),
+                margin=dict(t=10, b=10, l=10, r=60), 
+                legend=dict(orientation='h', yanchor='bottom', y=1.01),
+                xaxis=dict(title='Total Nilai (IDR)', gridcolor='rgba(128,128,128,0.15)'), 
+                yaxis=dict(title=''),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color='gray',
+                separators=",."
+            )
+            st.plotly_chart(fig_eff, use_container_width=True)
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
+    else:
+        st.info("Tidak ada data untuk filter yang dipilih.")
 
     # =====================================================================
     # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
@@ -1216,7 +1210,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
 
     # Tambahkan detail chart halaman ini sebagai suplemen konteks lokal
     suplemen_lines = [
-        "# SUPLEMEN — DETAIL CHART HALAMAN INI (SIPS Dashboard)",
+        "# SUPLEMEN - DETAIL CHART HALAMAN INI (SIPS Dashboard)",
     ]
 
     if 'status_counts' in locals() and not status_counts.empty:

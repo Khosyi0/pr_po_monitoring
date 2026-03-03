@@ -1,11 +1,11 @@
 """
-context_builder.py — Pengumpul konteks global untuk Mia (AI Analyst)
+context_builder.py - Pengumpul konteks global untuk Mia (AI Analyst)
 
 Logika lintas sistem:
   • Saat berada di halaman SAP  → konteks SAP pakai filter AKTIF, konteks SIPS pakai filter DEFAULT
   • Saat berada di halaman SIPS → konteks SIPS pakai filter AKTIF, konteks SAP pakai filter DEFAULT
 
-Hanya query AGREGAT (KPI ringkasan) yang dijalankan — tidak ada raw data ribuan baris.
+Hanya query AGREGAT (KPI ringkasan) yang dijalankan, tidak ada raw data ribuan baris.
 Hasil disimpan di st.session_state["global_context"] dan di-refresh saat filter berubah.
 """
 
@@ -15,7 +15,7 @@ from utils import format_idr, format_number
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FINGERPRINT FILTER  — untuk mendeteksi perubahan filter
+# FINGERPRINT FILTER: untuk mendeteksi perubahan filter
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fingerprint_sap(date_from, date_to, selected_department,
@@ -31,7 +31,7 @@ def _fingerprint_sips(date_from, date_to, selected_nama, selected_bagian) -> str
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# QUERY KPI SAP  — hanya agregat
+# QUERY KPI SAP: hanya agregat
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_sap_context(load_data, filter_conditions,
@@ -136,7 +136,7 @@ def _fetch_sap_context(load_data, filter_conditions,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# QUERY KPI SIPS  — hanya agregat
+# QUERY KPI SIPS: hanya agregat
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_sips_context(load_data, date_from, date_to,
@@ -228,7 +228,7 @@ def _fetch_sips_context(load_data, date_from, date_to,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FUNGSI UTAMA  — dipanggil dari app.py setiap render
+# FUNGSI UTAMA: dipanggil dari app.py setiap render
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_global_context(
@@ -273,7 +273,7 @@ def build_global_context(
         ctx_sap = _fetch_sap_context(
             load_data, default_filter_conditions,
             default_bagian_pr_cond, default_bagian_po_cond,
-            default_teks_filter_sap + " *(filter default — halaman SIPS sedang aktif)*"
+            default_teks_filter_sap + " *(filter default - halaman SIPS sedang aktif)*"
         )
     else:
         # Halaman SAP aktif → SAP pakai filter AKTIF, SIPS pakai filter DEFAULT (DIPERBAIKI)
@@ -285,7 +285,7 @@ def build_global_context(
         ctx_sips = _fetch_sips_context(
             load_data, default_sips_date_from, default_sips_date_to,
             default_sips_selected_nama, default_sips_selected_bagian,
-            default_teks_filter_sips + " *(filter default — halaman SAP sedang aktif)*"
+            default_teks_filter_sips + " *(filter default - halaman SAP sedang aktif)*"
         )
 
     header = (
@@ -293,9 +293,9 @@ def build_global_context(
         f"Diambil pada: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         f"Halaman aktif: {'SIPS' if is_sips else 'PR-PO SAP'}\n\n"
         "---\n"
-        "# BAGIAN 1 — DATA PR-PO SAP\n"
+        "# BAGIAN 1 - DATA PR-PO SAP\n"
     )
-    separator = "\n---\n# BAGIAN 2 — DATA SIPS\n"
+    separator = "\n---\n# BAGIAN 2 - DATA SIPS\n"
 
     full_context = header + ctx_sap + separator + ctx_sips
 

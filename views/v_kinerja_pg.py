@@ -116,7 +116,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             lt_delta   = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
 
             KPI_PG = [
-                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{format_number(t_item_pr)}"),   "metric_kwargs": {"delta": f"{format_number(konversi_pct, decimals=1)}% sudah PO"},          "formula": """**Total Item PR**: Jumlah baris item Purchase Requisition unik dalam periode filter.
+                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{format_number(t_item_pr)}"),   "metric_kwargs": {"delta": f"{format_number(konversi_pct, decimals=1)}% sudah PO"},          "formula": """**Total Item PR**: Jumlah item Purchase Requisition unik dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -127,7 +127,7 @@ END) AS total_item_pr
 ```
 
 **% sudah PO** = `pr_with_po / total_item_pr × 100` - persentase item PR yang sudah berhasil dikonversi menjadi PO."""},
-                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{format_number(t_item_po)}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah baris item Purchase Order dalam periode filter.
+                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{format_number(t_item_po)}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah item Purchase Order dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -135,7 +135,7 @@ COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_item_po
 ```
 
 Menghitung semua baris PO per line item, bukan COUNT DISTINCT nomor PO. Satu nomor PO bisa memiliki banyak baris item material yang berbeda."""},
-                {"key": "kpi_pg_oe",        "metric_args": ("Total OE", format_idr(t_oe)),        "metric_kwargs": {},                                                   "formula": """**Total OE (Owner's Estimate)**: Total nilai anggaran estimasi dari semua PR dalam periode filter.
+                {"key": "kpi_pg_oe",        "metric_args": ("Total OE", format_idr(t_oe)),        "metric_kwargs": {},                                                   "formula": """**Total OE**: Total nilai anggaran estimasi dari semua PR dalam periode filter.
 
 **Kalkulasi SQL:**
 ```sql
@@ -1199,7 +1199,7 @@ COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END) AS jml_late
 
                 if st.session_state.get(key_dist_lt, False):
                     st.info("""\
-**Distribusi Lead Time Overall**: Bar chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
+**Distribusi Lead Time Overall**: Pie chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
 
 **Bucket klasifikasi SQL:**
 ```sql
@@ -1396,7 +1396,7 @@ Average bisa terdistorsi oleh satu outlier ekstrem (misal: satu PO terlupakan 50
 
                 if st.session_state.get(key_trend_lt, False):
                     st.info("""\
-**Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak..
+**Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
 
 **Kalkulasi SQL:**
 ```sql
@@ -1558,7 +1558,7 @@ ORDER BY bulan
             konteks_lines.append("\n")
 
         # Gabungkan konteks lokal dengan konteks global lintas sistem
-        suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Kinerja Purchasing Group)\n" + "\n".join(konteks_lines)
+        suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Kinerja Purchasing Group)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
         # Render chat di bawah semua tab

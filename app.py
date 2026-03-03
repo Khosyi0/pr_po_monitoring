@@ -81,8 +81,8 @@ def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_
 pg = st.navigation(
     {
         "PR-PO SAP": [
-            st.Page(_render_dashboard, title="Dashboard Monitoring",     icon=":material/dashboard:"),
-            st.Page(_render_detail,    title="Detailed PR-PO Data",      icon=":material/unknown_document:"),
+            st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
+            st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
             st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
             st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
             st.Page(_render_alert,     title="Halaman Alert",            icon=":material/assignment_late:"),
@@ -664,7 +664,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.7 | "
+        f"Monitoring Dashboard - {system_label} | v1.7.1 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

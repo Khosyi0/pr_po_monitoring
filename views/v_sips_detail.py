@@ -209,7 +209,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     konteks_lines.append("")
 
     # Gabungkan konteks lokal dengan konteks global lintas sistem
-    suplemen = "\n# SUPLEMEN — DETAIL HALAMAN INI (Detailed SIPS Data)\n" + "\n".join(konteks_lines)
+    suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Detailed SIPS Data)\n" + "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
     render_chat_analyst(

@@ -203,10 +203,10 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
     st.markdown(f"""
         <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4; margin-bottom: 5px;'>
             {icon_html}
-            Tanya ke Mia (Asisten Pengadaan Barang)
+            Tanya ke Mia (Asisten Monitoring & Reporting Pengadaan Barang)
         </h1>
     """, unsafe_allow_html=True)
-    st.caption(f"Tanyakan *insight* atau kesimpulan dari data yang sedang tampil di halaman **{nama_halaman}**.")
+    st.caption(f"Tanyakan *insight* atau kesimpulan dari data di sistem Monitoring & Reporting Pengadaan Barang.")
 
     # 1. Inisialisasi API
     try:
@@ -231,7 +231,12 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
             st.info("Ketik pertanyaan Anda di bawah untuk memulai analisis data.")
             
         for msg in st.session_state.chat_memory:
-            with st.chat_message(msg["role"]):
+            if msg["role"] == "assistant":
+                avatar_img = "assets/Mia_icon.png"
+            else:
+                avatar_img = None
+
+            with st.chat_message(msg["role"], avatar=avatar_img):
                 st.markdown(msg["content"])
 
     # =========================================================
@@ -267,17 +272,143 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
             with st.chat_message("assistant", avatar="assets/Mia_icon.png"):
                 with st.spinner("Tunggu, Mia sedang menganalisis data..."):
                     try:
+                        # -------------------------------------------------------------
+                        # PETA SISTEM (Nama Chart + Caption Singkat)
+                        # -------------------------------------------------------------
+                        peta_sistem = """
+                        INFORMASI STRUKTUR HALAMAN APLIKASI (PETA SISTEM):
+                        Kamu mengetahui seluruh daftar halaman dan chart di sistem ini beserta deskripsi singkatnya.
+                        
+                        KATEGORI 1: PR-PO SAP
+                        1. Halaman Dashboard Monitoring SAP: 
+                            - Menampilkan ringkasan KPI utama:
+                                - "Total PR": Jumlah Purchase Requisition unik dalam periode filter.
+                                - "Total PO": Jumlah baris Purchase Order dalam periode filter.
+                                - "Produktivitas PR-PO": Persentase item PR yang berhasil dikonversi menjadi PO.
+                                - "Total Savings": Selisih OE dengan realisasi PO.
+                                - "Total Estimasi PR (OE)": Total nilai OE dari semua PR.
+                                - "Pengelolaan Anggaran Operasional": Belum ada info lebih lanjut.
+                                - "Sinergi PI Group": Belum ada info lebih lanjut.
+                                - "Kecepatan Proses PO": Rata-rata hari dari PR dibuat hingga PO diterbitkan.
+                                - "% Pengiriman Barang (GR/PO)": Persentase PO yang sudah diterima barangnya.
+                                - "Ketepatan Pengiriman Barang": Persentase PO diterima tepat waktu dari total yang sudah dikirim.
+                                - "Pemenuhan SLA OTOBOS": Belum ada info lebih lanjut.
+                                - "Efisiensi Pengadaan (PO/OE)": Rata-rata persentase penghematan dari nilai OE per item PO.
+                                - "Pemenuhan Izin Impor": Belum ada info lebih lanjut.
+                                - "Pemenuhan SLA Pembebasan Barang": Belum ada info lebih lanjut.
+                            - Menampilkan chart "PR Status by Department": Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
+                            - Menampilkan chart "Top 10 Vendors by PO Value": Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
+                            - Menampilkan chart "PR-PO Creation Trend": Line chart jumlah PR dan PO yang dibuat per bulan.
+                            - Menampilkan chart "Lead Time Distribution": Pie chart distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).
+                            - Menampilkan tabel "Top 10 PR Without PO (Pending)": Tabel 10 PR tertua yang belum diproses menjadi PO. 
+                            - Menampilkan chart "Delivery Performance": Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
+                            - Menampilkan chart "Material Category Value": Bar chart total nilai PO per kategori ABC material.
+                        2. Detailed PR-PO SAP Data: Menampilkan tabel "Data mentah (raw data) SAP secara lengkap yang bisa di-filter".
+                        3. Evaluasi Harga Barang:
+                            - Menampilkan ringkasan KPI utama:
+                                - "Total Material Unik": Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
+                                - "Total OE": Total nilai anggaran estimasi untuk semua material yang sudah masuk PO.
+                                - "Total Realisasi PO": Total nilai aktual yang dibayarkan dalam Purchase Order.
+                                - "Selisih OE vs Realisasi": Perbedaan antara total OE (anggaran) dan total realisasi PO.
+                                - "Item PO Melebihi OE": Jumlah item PO yang nilai realisasinya melebihi OE.
+                                - "Item PO Di Bawah / Sesuai OE": Jumlah item PO yang nilai realisasinya sama atau lebih murah dari OE.
+                            - Menampilkan chart "OE vs Realisasi Harga PO (per Material)": Scatter chart perbandingan nilai estimasi vs realisasi PO per material.
+                            - Menampilkan chart "Top 10 Material: Overspend Terbesar": Bar chart 10 material dengan selisih (realisasi - OE) terbesar.
+                            - Menampilkan chart "Variasi Harga Antar Vendor (Top 10 Material)": Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
+                            - Menampilkan chart "Tren Harga Historis per Material": Line chart pergerakan harga satuan PO per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar dan melihat konsistensi vendor.
+                            - Menampilkan chart "Perbandingan Vendor": Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
+                            - Menampilkan tabel "Detail Evaluasi Harga per Material": Ringkasan perbandingan OE vs realisasi per material.
+                        4. Kinerja Purchasing Group: 
+                            - Menampilkan ringkasan KPI utama:
+                                - "Total Item PR": Jumlah item Purchase Requisition unik dalam periode filter.
+                                - "Total Item PO": Jumlah item Purchase Order dalam periode filter.
+                                - "Total OE": Total nilai anggaran estimasi dari semua PR dalam periode filter.
+                                - "Efisiensi": Selisih antara total OE dan total realisasi PO.
+                                - "Avg Lead Time": Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+                            - Menampilkan Tab Overview per Purchasing Group:
+                                - Menampilkan Tabel "Ringkasan per Purchasing Group"
+                                - Menampilkan chart "Perbandingan Nilai OE vs Realisasi PO": Grouped bar chart perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group.
+                                - Menampilkan chart "% Efisiensi per Purchasing Group": Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
+                                - Menampilkan chart "Rata-rata Lead Time per Purchasing Group": Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
+                                - Menampilkan chart "% Konversi PR → PO per Purchasing Group": Bar chart horizontal persentase PR yang berhasil dikonversi menjadi PO.
+                            - Menampilkan Tab Breakdown per Metode Tender
+                                - Menampilkan chart "Kontrak vs Non-Kontrak per Purchasing Group": Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
+                                - Menampilkan chart "Distribusi Turn Around per Purchasing Group": Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
+                                - Menampilkan tabel "Detail per Purchasing Group × Turn Around"
+                                - Menampilkan chart "Lead Time: Kontrak vs Non-Kontrak per Purchasing Group": Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
+                            - Menampilkan Tab Kecepatan Proses
+                                - Menampilkan informasi "Median Lead Time": Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
+                                - Menampilkan informasi "Rentang Lead Time": Selisih antara lead time terpendek dan terpanjang dalam periode filter.
+                                - Menampilkan informasi "On-Time (≤55 Hari)": Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.
+                                - Menampilkan informasi "Terlambat (>55 Hari)": Jumlah PO yang melebihi batas SLA 55 hari.
+                                - Menampilkan chart "Distribusi Lead Time Overall": Pie chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
+                                - Menampilkan chart "Lead Time: Tender Normal vs PR-PO Kontrak": Grouped bar chart perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group., dilengkapi statistik median dan % on-time.
+                                - Menampilkan chart "Tren Lead Time per Bulan": Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
+                                - Menampilkan tabel "Ringkasan Kecepatan per Purchasing Group x Jenis Tender"
+                        5. Halaman Alert:
+                            - Menampilkan tabel "PR Pending Mendekati Kadaluarsa (> 30 Hari)": Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
+                            - Menampilkan tabel "PO Overdue (Melewati Delivery Date)": Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
+                            - Menampilkan chart "Rekap Aging PO (Belum Dikirim)": Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
+                        
+                        KATEGORI 2: SIPS
+                        6. Dashboard Monitoring SIPS:
+                            - Menampilkan ringkasan KPI utama:
+                                - "Total PR": Jumlah Purchase Requisition dalam periode filter (semua status).
+                                - "Total PO": Jumlah PR yang sudah memiliki PO, yaitu yang berstatus Closed atau Proses PO.
+                                - "PO/PR": Persentase PR yang sudah dikonversi menjadi PO.
+                                - "Rata-rata PR-PO": Rata-rata jumlah hari dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
+                                - "SLA On Time": Jumlah PO yang diselesaikan dalam batas SLA standar.
+                                - "% On Time": Persentase PO yang diselesaikan tepat waktu.
+                                - "OE Proses PO": Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus Proses PO.
+                                - "OE Closed": Total nilai Owner's Estimate untuk PR yang sudah berstatus Closed.
+                                - "Total OE": Gabungan OE untuk status Proses PO dan Closed.
+                                - "PO Proses PO": Total nilai realisasi PO untuk yang berstatus Proses PO.
+                                - "PO Closed": Total nilai realisasi PO untuk yang berstatus Closed.
+                                - "Total PO (Nilai)": Gabungan realisasi nilai PO untuk status Proses PO dan Closed.
+                                - "Efisiensi %": Persentase penghematan dari selisih OE dengan realisasi nilai PO.
+                                - "Efisiensi Rp": Nominal penghematan dalam Rupiah.
+                                - "% On Budget": Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
+                            - Menampilkan chart "Pipeline & Trend PR-PO SIPS": Line chart jumlah PR dan PO yang dibuat per bulan.
+                            - Menampilkan chart "Distribusi Status PR SIPS": Pie chart persentase jumlah dokumen berdasarkan status akhirnya.
+                            - Menampilkan chart "Performa SLA per Karyawan": Bar chart persentase pencapaian SLA tepat waktu untuk setiap karyawan.
+                            - Menampilkan chart "Distribusi Waktu PR → PO": Histogram persebaran jumlah PR berdasarkan lama proses pembuatannya (dalam satuan hari).
+                            - Menampilkan chart "Beban Kerja per Karyawan": Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
+                            - Menampilkan chart "Proporsi PO Kontrak vs Non-Kontrak": Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (Outline Agreement) dibandingkan yang tidak.
+                            - Menampilkan chart "Perbandingan Nilai OE vs PO per Karyawan": Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.
+                        7. Detailed SIPS Data: Menampilkan tabel "Data mentah dokumen SIPS".
+                        8. Analisis Waktu Proses SIPS:
+                            - Menampilkan Ringkasan Waktu:
+                                - "Rata-rata PR-PO": Rata-rata jumlah hari dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan (hari kerja).
+                                - "Rata-rata Realisasi SLA": Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam hari kerja.
+                                - "Waktu Pra-Disposisi": Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
+                                - "Rata-rata End-to-End": Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
+                                - "Rata-rata SLA Headroom": Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
+                                - "% On Time SLA": Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
+                            - Menampilkan chart "Dekomposisi Waktu per Nama": Stacked bar chart Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan.
+                            - Menampilkan chart "Standard SLA per jenis pengadaan": Bar Chart % On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak.
+                            - Menampilkan chart "SLA Headroom per Nama": Horizontal Bar Chart Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan.
+                            - Menampilkan chart "Tren Waktu per Bulan": Combo Chart Perubahan kecepatan proses dari bulan ke bulan.
+                            - Menampilkan chart "Distribusi Waktu": Bar Chart Sebaran PR-PO dan Realisasi SLA untuk mendeteksi outlier.
+                            - Menampilkan chart "Waktu per Prioritas": Bar Chart Rata-rata PR-PO & Realisasi SLA per Prioritas dan % On Time per Prioritas.
+                            - Menampilkan chart "Waktu Realisasi SLA per Purchasing Group": Bar Chart Perbandingan rata-rata waktu penyelesaian berdasarkan Purchasing Group.
+                        """
+
                         # Rakit Prompt Rahasia
                         system_prompt = f"""
                         Kamu adalah asisten AI bernama Mia, seorang analis data perempuan yang ceria, sangat teliti, dan bersikap layaknya "detektif" andal yang sedang menyelidiki data sistem perusahaan.
                         
                         Tugas dan Aturan Ketat Mia:
-                        1. IDENTITAS & GAYA BAHASA: Namamu adalah Mia, detektif data pengadaan. HANYA perkenalkan dirimu secara penuh jika user SECARA EKSPLISIT bertanya "siapa kamu", "kamu siapa", "perkenalkan dirimu", atau sejenisnya. Jika user hanya menyapa ("halo", "hai", dll.) atau langsung mengajukan pertanyaan data, JANGAN memperkenalkan diri — langsung jawab pertanyaannya saja dengan gaya yang ceria dan to the point. Gunakan gaya bahasa yang ceria, ramah, sedikit playful (gunakan kata "aku" dan "kamu"), tapi tetap SANGAT OBJEKTIF dan tajam saat menganalisis angka.
+                        1. IDENTITAS & GAYA BAHASA: Namamu adalah Mia, detektif data pengadaan. HANYA perkenalkan dirimu secara penuh jika user SECARA EKSPLISIT bertanya "siapa kamu", "kamu siapa", "perkenalkan dirimu", atau sejenisnya. Jika user hanya menyapa ("halo", "hai", dll.) atau langsung mengajukan pertanyaan data, JANGAN memperkenalkan diri, langsung jawab pertanyaannya saja dengan gaya yang ceria dan to the point. Gunakan gaya bahasa yang ceria, ramah, sedikit playful (gunakan kata "aku" dan "kamu"), tapi tetap SANGAT OBJEKTIF dan tajam saat menganalisis angka.
                         2. FAKTUAL & OBJEKTIF: Jawab HANYA berdasarkan data di bawah. JIKA DATA TIDAK ADA, katakan dengan nada detektif: "Hmm, sepertinya jejak data itu tidak kutemukan di layar saat ini 🔍."
                         3. NO HALLUCINATION: Sebagai detektif, kamu pantang mengarang bukti! JANGAN PERNAH mengarang angka, nama vendor, atau metrik yang tidak ada di data.
-                        4. BATASAN DOMAIN: Kamu hanya menyelidiki kasus transaksi, anggaran, vendor, dan dashboard ini. Tolak dengan sopan dan lucu jika diajak bahas resep masakan, coding, atau hal di luar kasus.
-                        5. FORMAT: Berikan analisis yang terstruktur, tebalkan angka penting, pastikan format angka menggunakan standar Rupiah yang rapi, dan tambahkan sedikit emoji (seperti 📉, 💡, 🚨) agar laporannya tidak membosankan.
+                        4. ATURAN PENOLAKAN RUMUS/KALKULASI: Kamu HANYA tahu deskripsi singkat chart. JIKA user bertanya tentang RUMUS, FORMULA, CARA MENGHITUNG, atau KALKULASI spesifik dari suatu chart, kamu WAJIB menjawab dengan template kalimat ini (sesuaikan nama halaman dan chart-nya):
+                           "Maaf, Mia masih belum bisa memperoleh informasi tersebut. Kamu bisa mengetahui informasinya dengan cara pergi ke Halaman [Judul Halaman], di chart/tabel [Nama Chart/Nama Tabel], lalu klik tombol 'Show Formula' berbentuk mata 😭."
+                        5. BATASAN DOMAIN: Tolak dengan sopan hal di luar pengadaan, dashboard, atau data yang diberikan.
+                        6. FORMAT: Berikan analisis terstruktur, tebalkan angka penting, gunakan bullet points, dan sedikit emoji.
+                        7. ATURAN FILTER LINTAS SISTEM (PENTING!): Pada 'BUKTI DATA' di bawah, tertera informasi 'Halaman aktif' saat ini. JIKA user bertanya tentang data/angka dari sistem yang BERBEDA dengan halaman aktif saat ini (misalnya: kita sedang di halaman SIPS, tapi user menanyakan data SAP, atau sebaliknya), kamu WAJIB menyebutkan "Kondisi Filter" yang sedang berlaku pada data tersebut sebelum memberikan jawabannya. Ambil informasi filter ini dari teks di bawah tulisan [SAP] FILTER AKTIF atau [SIPS] FILTER AKTIF.
                         
+                        {peta_sistem}
+
                         Berikut adalah BUKTI-BUKTI DATA yang sedang tayang di layar saat ini:
                         --- MULAI BUKTI DATA ---
                         {konteks_data_teks}
