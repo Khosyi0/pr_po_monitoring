@@ -154,9 +154,11 @@ COUNT DISTINCT dimana `nomor_po IS NOT NULL`
 
 **Contoh Formula Excel:**
 
-PR dibuat di bulan Januari
+PR dibuat di bulan Januari 2026
 ```
-=SUMPRODUCT((MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=1) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))<>"") * (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0))<>"X") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0))<>"U") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))<>"1000076"))
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=1) * (YEAR(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=2026) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))<>"") * (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0))<>"X") * (LEFT(INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0)), 1)<>"U") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))<>"1000076")
+)
 ```
 PR dibuat di bulan Januari dengan Filter Department **INV**
 ```
@@ -1121,9 +1123,10 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
 ```
 =SUMPRODUCT(
   (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (YEAR(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 2026) *
   (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
   (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
   (INDEX($A$2:$ZZ$21000, 0, MATCH("Delivery Completed", $A$1:$ZZ$1, 0)) <> "X")
 )
 ```
