@@ -36,75 +36,86 @@ def _fingerprint_sips(date_from, date_to, selected_nama, selected_bagian) -> str
 
 def _fetch_sap_context(load_data, filter_conditions,
                        bagian_pr_cond, bagian_po_cond,
-                       teks_filter: str) -> str:
+                       teks_filter: str,
+                       date_from=None, date_to=None) -> str:
     """Jalankan query KPI ringkasan SAP dan kembalikan string konteks."""
     try:
-        kpi_q = f"""
+        bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
+
+        # Fallback: jika date_from/date_to tidak tersedia, ambil dari filter_conditions
+        if not date_from or not date_to:
+            import re
+            m_from = re.search(r"tgl_create_pr >= '([^']+)'", filter_conditions)
+            m_to   = re.search(r"tgl_create_pr <= '([^']+)'", filter_conditions)
+            date_from = m_from.group(1) if m_from else '2026-01-01'
+            date_to   = m_to.group(1)   if m_to   else '2026-12-31'
+
+
+        # PR query — filter by tgl_create_pr
+        pr_q = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
                 THEN no_pr || '-' || line_item_pr::text END)              AS total_pr,
-            COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END)           AS total_po,
             COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
                 THEN no_pr || '-' || line_item_pr::text END)              AS pr_with_po,
             COUNT(DISTINCT CASE WHEN nomor_po IS NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
                 THEN no_pr || '-' || line_item_pr::text END)              AS pr_without_po,
-            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)                      AS total_estimasi,
-            COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS total_po_amount,
-            COALESCE(
-                SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END)
-                - SUM(CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END),
-            0)                                                                               AS total_savings,
-            -- FIX: weighted savings % = (SUM_oe - SUM_realisasi) / SUM_oe * 100
-            CASE
-                WHEN COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0) > 0
-                THEN ROUND((
-                    (COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
-                     - COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN total_amount_local_curr END), 0))
-                    / NULLIF(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
-                ) * 100, 2)
-                ELSE 0
-            END                                                                              AS avg_savings_pct,
-            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                THEN lead_time_process_po END)::numeric, 2)               AS avg_lead_time,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                THEN nomor_po END)                                         AS total_po_distinct,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND status_pengiriman = 'SELESAI' THEN nomor_po END)      AS po_delivered,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND on_time_delivery = 'TEPAT WAKTU' THEN nomor_po END)   AS po_ontime,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
-                THEN nomor_po END)                                         AS po_delivered_total
+            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_estimasi
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
         """
 
+        # PO query — filter by date_ordered
+        po_q = f"""
+        SELECT
+            COUNT(poi.nomor_po)                                           AS total_po,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS total_po_amount,
+            ROUND(AVG(gr.lead_time_process_po)::numeric, 2)               AS avg_lead_time,
+            COUNT(DISTINCT poh.nomor_po)                                  AS total_po_distinct,
+            COUNT(DISTINCT CASE WHEN poi.status_pengiriman = 'SELESAI'
+                THEN poh.nomor_po END)                                    AS po_delivered,
+            COUNT(DISTINCT CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU'
+                THEN poh.nomor_po END)                                    AS po_ontime,
+            COUNT(DISTINCT CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
+                THEN poh.nomor_po END)                                    AS po_delivered_total
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND {bagian_po_poi}
+        """
+
         vendor_q = f"""
-        SELECT vendor_name, COUNT(DISTINCT nomor_po) AS total_po,
-               SUM(total_amount_local_curr) AS total_value
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND vendor_name IS NOT NULL
+        SELECT vendor_name, COUNT(DISTINCT poi.nomor_po) AS total_po,
+               SUM(poi.total_amount_local_curr) AS total_value
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND {bagian_po_poi} AND v.vendor_name IS NOT NULL
         GROUP BY vendor_name ORDER BY total_value DESC LIMIT 5
         """
 
-        kpi  = load_data(kpi_q)
-        vend = load_data(vendor_q)
+        pr_kpi = load_data(pr_q)
+        po_kpi = load_data(po_q)
+        vend   = load_data(vendor_q)
 
-        r = kpi.iloc[0]
-        total_pr      = int(r["total_pr"]       or 0)
-        total_po      = int(r["total_po"]       or 0)
-        pr_with_po    = int(r["pr_with_po"]     or 0)
-        pr_without    = int(r["pr_without_po"]  or 0)
-        estimasi      = float(r["total_estimasi"]  or 0)
-        po_amount     = float(r["total_po_amount"] or 0)
-        savings       = float(r["total_savings"]   or 0)
-        savings_pct   = float(r["avg_savings_pct"] or 0)
-        _alt          = r["avg_lead_time"]
+        pr_r = pr_kpi.iloc[0]
+        po_r = po_kpi.iloc[0]
+        total_pr      = int(pr_r["total_pr"]       or 0)
+        total_po      = int(po_r["total_po"]       or 0)
+        pr_with_po    = int(pr_r["pr_with_po"]     or 0)
+        pr_without    = int(pr_r["pr_without_po"]  or 0)
+        estimasi      = float(pr_r["total_estimasi"]  or 0)
+        po_amount     = float(po_r["total_po_amount"] or 0)
+        savings       = estimasi - po_amount
+        savings_pct   = ((savings / estimasi) * 100) if estimasi > 0 else 0.0
+        _alt          = po_r["avg_lead_time"]
         avg_lt        = float(_alt) if _alt is not None else 0.0
-        po_dist       = int(r["total_po_distinct"]  or 0)
-        po_delivered  = int(r["po_delivered"]       or 0)
-        po_ontime     = int(r["po_ontime"]          or 0)
-        po_del_tot    = int(r["po_delivered_total"] or 0)
+        po_dist       = int(po_r["total_po_distinct"]  or 0)
+        po_delivered  = int(po_r["po_delivered"]       or 0)
+        po_ontime     = int(po_r["po_ontime"]          or 0)
+        po_del_tot    = int(po_r["po_delivered_total"] or 0)
         produktivitas = (pr_with_po / total_pr  * 100) if total_pr  > 0 else 0.0
         pct_kirim     = (po_delivered / po_dist * 100) if po_dist   > 0 else 0.0
         ketepatan     = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
@@ -244,6 +255,8 @@ def build_global_context(
     # SIPS default params (dipakai saat halaman SAP aktif)
     default_sips_date_from, default_sips_date_to,
     default_sips_selected_nama, default_sips_selected_bagian, default_teks_filter_sips,
+    # Tanggal aktif SAP (untuk query PO by date_ordered)
+    date_from=None, date_to=None,
 ):
     """
     Kumpulkan konteks gabungan SAP + SIPS.
@@ -253,7 +266,7 @@ def build_global_context(
     """
 
     # ── Hitung fingerprint kondisi saat ini ──────────────────────────────────
-    fp_sap_active   = filter_conditions + bagian_pr_cond + bagian_po_cond
+    fp_sap_active   = filter_conditions + bagian_pr_cond + bagian_po_cond + str(date_from) + str(date_to)
     fp_sips_active  = _fingerprint_sips(sips_date_from, sips_date_to, sips_selected_nama, sips_selected_bagian)
     fp_now = f"{is_sips}|{fp_sap_active}|{fp_sips_active}"
 
@@ -273,14 +286,16 @@ def build_global_context(
         ctx_sap = _fetch_sap_context(
             load_data, default_filter_conditions,
             default_bagian_pr_cond, default_bagian_po_cond,
-            default_teks_filter_sap + " *(filter default - halaman SIPS sedang aktif)*"
+            default_teks_filter_sap + " *(filter default - halaman SIPS sedang aktif)*",
+            date_from=date_from, date_to=date_to
         )
     else:
         # Halaman SAP aktif → SAP pakai filter AKTIF, SIPS pakai filter DEFAULT (DIPERBAIKI)
         ctx_sap = _fetch_sap_context(
             load_data, filter_conditions,
             bagian_pr_cond, bagian_po_cond,
-            teks_filter_sap + " *(filter aktif dari sidebar)*"
+            teks_filter_sap + " *(filter aktif dari sidebar)*",
+            date_from=date_from, date_to=date_to
         )
         ctx_sips = _fetch_sips_context(
             load_data, default_sips_date_from, default_sips_date_to,

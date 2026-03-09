@@ -981,7 +981,7 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
     if 'decomp' in locals() and not decomp.empty:
         konteks_lines.append("## 2. DEKOMPOSISI WAKTU PER KARYAWAN")
         # Menggunakan df decomp yang sudah dihitung sebelumnya
-        konteks_lines.append(decomp.to_markdown(index=False))
+        konteks_lines.append(decomp.to_csv(index=False))
         konteks_lines.append("\n")
 
     # 3. SLA Berdasarkan Jenis Standard SLA
@@ -989,14 +989,14 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
         konteks_lines.append("## 3. PEMENUHAN SLA BERDASARKAN STANDARD SLA")
         # Pilih kolom penting
         df_sla_simple = sla_g[['standar_sla', 'total', 'ontime', 'avg_r', 'pct']]
-        konteks_lines.append(df_sla_simple.to_markdown(index=False))
+        konteks_lines.append(df_sla_simple.to_csv(index=False))
         konteks_lines.append("\n")
 
     # 4. Waktu per Prioritas Dokumen
     if 'prio' in locals() and not prio.empty:
         konteks_lines.append("## 4. WAKTU PROSES BERDASARKAN PRIORITAS")
         df_prio_simple = prio[['prioritas', 'avg_pr_po', 'avg_real', 'pct']]
-        konteks_lines.append(df_prio_simple.to_markdown(index=False))
+        konteks_lines.append(df_prio_simple.to_csv(index=False))
         konteks_lines.append("\n")
 
             
@@ -1005,7 +1005,7 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
         konteks_lines.append("## 5. RATA-RATA REALISASI SLA PER PURCHASING GROUP")
         df_pg_simple = pg_df[['purchasing_group', 'avg_realisasi', 'jumlah_pr']].sort_values('avg_realisasi', ascending=False)
         df_pg_simple['avg_realisasi'] = df_pg_simple['avg_realisasi'].round(1)
-        konteks_lines.append(df_pg_simple.to_markdown(index=False))
+        konteks_lines.append(df_pg_simple.to_csv(index=False))
         konteks_lines.append("\n")
 
 

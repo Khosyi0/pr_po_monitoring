@@ -205,7 +205,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                                 'Tgl PO', 'PR-PO (hari)', 'SLA Standar', 'SLA Realisasi',
                                 'SLA Nilai', 'Prioritas', 'OE PR (Rp)', 'Nilai PO (Rp)']
                    if c in df.columns]
-    konteks_lines.append(df[cols_for_ai].head(20).to_markdown(index=False))
+    konteks_lines.append(df[cols_for_ai].head(20).to_csv(index=False))
     konteks_lines.append("")
 
     # Gabungkan konteks lokal dengan konteks global lintas sistem

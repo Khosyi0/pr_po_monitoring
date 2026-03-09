@@ -1165,12 +1165,17 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
     st.caption("Perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.")
 
     if 'nama' in df_chart.columns:
+
+        df_chart['oe_pr'] = pd.to_numeric(df_chart['oe_pr'], errors='coerce').fillna(0).astype(float)
+        df_chart['nilai_item_po'] = pd.to_numeric(df_chart['nilai_item_po'], errors='coerce').fillna(0).astype(float)
+        df_chart['is_po'] = pd.to_numeric(df_chart['is_po'], errors='coerce').fillna(0).astype(int)
+        
         eff = (df_chart[df_chart['is_po'] == 1]
             .groupby('nama')
             .agg(oe=('oe_pr', 'sum'), po=('nilai_item_po', 'sum'))
             .reset_index())
         
-        if not kontrak_df.empty:
+        if not eff.empty:
             eff = eff.sort_values('oe', ascending=True)
             
             eff['oe_text'] = eff['oe'].apply(format_idr_short)
@@ -1215,19 +1220,19 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
 
     if 'status_counts' in locals() and not status_counts.empty:
         suplemen_lines.append("## DISTRIBUSI STATUS DOKUMEN")
-        suplemen_lines.append(status_counts.to_markdown(index=False))
+        suplemen_lines.append(status_counts.to_csv(index=False))
         suplemen_lines.append("")
 
     if 'vol' in locals() and not vol.empty:
         suplemen_lines.append("## BEBAN KERJA (VOLUME PR & PO) PER KARYAWAN")
         df_vol_simple = vol.sort_values('Total_PR', ascending=False)
-        suplemen_lines.append(df_vol_simple.to_markdown(index=False))
+        suplemen_lines.append(df_vol_simple.to_csv(index=False))
         suplemen_lines.append("")
 
     if 'perf' in locals() and not perf.empty:
         suplemen_lines.append("## PERFORMA KETEPATAN WAKTU (SLA) PER KARYAWAN")
         df_perf_simple = perf[['nama', 'total_po', 'sla_ok', 'pct_ontime']].sort_values('pct_ontime', ascending=False)
-        suplemen_lines.append(df_perf_simple.to_markdown(index=False))
+        suplemen_lines.append(df_perf_simple.to_csv(index=False))
         suplemen_lines.append("")
 
     if 'eff' in locals() and not eff.empty:
@@ -1236,7 +1241,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         eff_ai['efisiensi_rp']  = eff_ai['oe'] - eff_ai['po']
         eff_ai['efisiensi_pct'] = ((eff_ai['efisiensi_rp'] / eff_ai['oe']) * 100).round(1).fillna(0)
         df_eff_simple = eff_ai[['nama', 'oe', 'po', 'efisiensi_rp', 'efisiensi_pct']].sort_values('efisiensi_rp', ascending=False)
-        suplemen_lines.append(df_eff_simple.to_markdown(index=False))
+        suplemen_lines.append(df_eff_simple.to_csv(index=False))
         suplemen_lines.append("")
 
     konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)

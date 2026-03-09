@@ -80,6 +80,54 @@ def format_idr_short(x) -> str:
     return f"{formatted} {suffix}"
 
 
+def idr_axis(max_val, n_ticks=6) -> dict:
+    """
+    Hasilkan dict konfigurasi axis Plotly dengan tickvals & ticktext format IDR Indonesia.
+    Gunakan sebagai: fig.update_layout(xaxis=idr_axis(max_val), yaxis=idr_axis(max_val))
+    atau: fig.update_xaxes(**idr_axis(max_val))
+
+    Contoh output ticktext: '0', '20 Jt', '40 Jt', '1,5 M', '2 M', dsb.
+    """
+    import numpy as np
+
+    if max_val is None or max_val <= 0:
+        return {}
+
+    step = max_val / (n_ticks - 1)
+    tickvals = [round(step * i) for i in range(n_ticks)]
+
+    def _fmt(v):
+        abs_v = abs(v)
+        if abs_v >= 1e12:
+            val = v / 1e12
+            s = "T"
+        elif abs_v >= 1e9:
+            val = v / 1e9
+            s = "M"
+        elif abs_v >= 1e6:
+            val = v / 1e6
+            s = "Jt"
+        elif abs_v >= 1e3:
+            val = v / 1e3
+            s = "Rb"
+        else:
+            return str(int(v))
+
+        # Hilangkan desimal jika bulat
+        txt = f"{val:,.1f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        if txt.endswith(',0'):
+            txt = txt[:-2]
+        return f"{txt} {s}"
+
+    ticktext = [_fmt(v) for v in tickvals]
+
+    return dict(
+        tickvals=tickvals,
+        ticktext=ticktext,
+        range=[0, max_val],
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CUSTOM CSS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,6 +182,17 @@ def build_filter_conditions(
             conditions.append(f"purchasing_group IN ('{pg_list}')")
 
     return " AND ".join(conditions)
+
+
+def build_po_filter_conditions(date_from, date_to, bagian_po_cond='1=1') -> str:
+    """Bangun WHERE clause untuk query PO langsung dari tabel po_items + purchase_orders.
+    Filter tanggal berdasarkan date_ordered (bukan tgl_create_pr).
+    Dipakai untuk metrik PO di semua halaman agar konsisten dengan v_dashboard.
+    """
+    return (
+        f"poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}' "
+        f"AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}"
+    )
 
 
 def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
@@ -319,12 +378,6 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                             - Menampilkan chart "Perbandingan Vendor": Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
                             - Menampilkan tabel "Detail Evaluasi Harga per Material": Ringkasan perbandingan OE vs realisasi per material.
                         4. Kinerja Purchasing Group: 
-                            - Menampilkan ringkasan KPI utama:
-                                - "Total Item PR": Jumlah item Purchase Requisition unik dalam periode filter.
-                                - "Total Item PO": Jumlah item Purchase Order dalam periode filter.
-                                - "Total OE": Total nilai anggaran estimasi dari semua PR dalam periode filter.
-                                - "Efisiensi": Selisih antara total OE dan total realisasi PO.
-                                - "Avg Lead Time": Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
                             - Menampilkan Tab Overview per Purchasing Group:
                                 - Menampilkan Tabel "Ringkasan per Purchasing Group"
                                 - Menampilkan chart "Perbandingan Nilai OE vs Realisasi PO": Grouped bar chart perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group.
@@ -337,6 +390,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                                 - Menampilkan tabel "Detail per Purchasing Group × Turn Around"
                                 - Menampilkan chart "Lead Time: Kontrak vs Non-Kontrak per Purchasing Group": Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
                             - Menampilkan Tab Kecepatan Proses
+                                - Menampilkan informasi "Avg Lead Time": Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
                                 - Menampilkan informasi "Median Lead Time": Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
                                 - Menampilkan informasi "Rentang Lead Time": Selisih antara lead time terpendek dan terpanjang dalam periode filter.
                                 - Menampilkan informasi "On-Time (≤55 Hari)": Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.

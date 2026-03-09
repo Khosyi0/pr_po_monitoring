@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst
+from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, idr_axis
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -38,173 +38,292 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         """, unsafe_allow_html=True)
         st.markdown("---")
 
-        # ── KPI HARGA ─────────────────────────────────────
-        # Kolom oe sudah tersedia di vw_pr_po_complete (= estimasi_pr × quantity_pr)
+# ── KPI HARGA ─────────────────────────────────────
+        date_from = kwargs.get('date_from')
+        date_to   = kwargs.get('date_to')
+        bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
+
+        # OE metrics
+        harga_pr_query = f"""
+        SELECT
+            COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr), 0) AS total_oe
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+        AND poi.estimasi_pr IS NOT NULL
+        AND poi.quantity_pr IS NOT NULL
+        AND poi.total_amount_local_curr IS NOT NULL
+        AND {bagian_po_poi}
+        """
+        # PO metrics
         harga_kpi_query = f"""
         SELECT
-            COUNT(DISTINCT material_no)                                                  AS total_material,
-            COUNT(DISTINCT nomor_po)                                                     AS total_po,
-            COALESCE(SUM(oe), 0)                                                         AS total_oe,
-            COALESCE(SUM(total_amount_local_curr), 0)                                    AS total_realisasi,
-            COALESCE(SUM(oe) - SUM(total_amount_local_curr), 0)                          AS total_efisiensi,
-            COUNT(CASE WHEN total_amount_local_curr > oe AND oe > 0 THEN 1 END)          AS po_melebihi_oe,
-            COUNT(CASE WHEN total_amount_local_curr <= oe AND oe > 0 THEN 1 END)         AS po_dibawah_oe
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions}
-        AND nomor_po IS NOT NULL
-        AND oe IS NOT NULL
-        AND ({bagian_po_cond})
+            COUNT(DISTINCT poi.material_no)                                              AS total_material,
+            COUNT(DISTINCT poi.nomor_po)                                                 AS total_po,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                                AS total_realisasi,
+            COUNT(CASE WHEN poi.total_amount_local_curr > (poi.estimasi_pr * poi.quantity_pr)
+                AND (poi.estimasi_pr * poi.quantity_pr) > 0 THEN 1 END)                  AS po_melebihi_oe,
+            COUNT(CASE WHEN poi.total_amount_local_curr <= (poi.estimasi_pr * poi.quantity_pr)
+                AND (poi.estimasi_pr * poi.quantity_pr) > 0 THEN 1 END)                  AS po_dibawah_oe
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN vw_pr_po_complete v ON poi.nomor_po = v.nomor_po AND poi.item_po = v.item_po
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND {bagian_po_poi}
+          AND poi.total_amount_local_curr IS NOT NULL
         """
         with st.spinner("Memuat KPI harga..."):
+            harga_pr  = load_data(harga_pr_query)
             harga_kpi = load_data(harga_kpi_query)
 
-        col1, col2, col3, col4 = st.columns(4)
-        total_oe_val   = float(harga_kpi['total_oe'][0] or 0)
+        total_oe_val   = float(harga_pr['total_oe'][0] or 0)
         total_real_val = float(harga_kpi['total_realisasi'][0] or 0)
-        total_efis_val = float(harga_kpi['total_efisiensi'][0] or 0)
+        total_efis_val = total_oe_val - total_real_val
         po_over        = int(harga_kpi['po_melebihi_oe'][0] or 0)
         po_under       = int(harga_kpi['po_dibawah_oe'][0] or 0)
+        total_mat      = int(harga_kpi['total_material'][0] or 0)
+        delta_label    = "efisien" if total_efis_val >= 0 else "melebihi OE"
 
-        # ── Definisi KPI: urutan kiri→kanan ───────────────────────────────────
-        delta_label = "efisien" if total_efis_val >= 0 else "melebihi OE"
-        KPI_EVAL = [
+        # ── DEFINISI KPI DENGAN DOKUMENTASI LENGKAP ──
+        KPI_EVAL_CARDS = [
             {
                 "key": "kpi_eval_material",
-                "metric_args": ("Total Material Unik", f"{format_number(int(harga_kpi['total_material'][0] or 0))}"),
-                "metric_kwargs": {},
-                "formula": """\
-**Total Material Unik**: Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
+                "icon_path": "M2 1a1 1 0 0 0-1 1v4.586a1 1 0 0 0 .293.707l7 7a1 1 0 0 0 1.414 0l4.586-4.586a1 1 0 0 0 0-1.414l-7-7A1 1 0 0 0 6.586 1zm4 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0",
+                "label": "Total Material Unik",
+                "value": f"{format_number(total_mat)}",
+                "delta": "Item dalam PO",
+                "formula": """**Total Material Unik:** Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
 
 **Kalkulasi SQL:**
 ```sql
 COUNT(DISTINCT material_no) AS total_material
 ```
-Filter: `nomor_po IS NOT NULL AND oe IS NOT NULL` - hanya material yang sudah masuk PO dan memiliki data OE untuk perbandingan harga.\
-""",
+Filter: `nomor_po IS NOT NULL AND oe IS NOT NULL` - hanya material yang sudah masuk PO dan memiliki data OE untuk perbandingan harga.
+
+**Contoh Formula Excel:** bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
+  IFERROR(1 / COUNTIFS(
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)), ">="&DATE(2026,1,1),
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)), "<="&DATE(2026,1,31),
+    INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)), "<>L",
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "<>1000076",
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "<>",
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), "<>",
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))
+  ), 0)
+)
+```"""
             },
             {
                 "key": "kpi_eval_oe",
-                "metric_args": ("Total OE", format_idr(total_oe_val)),
-                "metric_kwargs": {},
-                "formula": """\
-**Total OE**: Total nilai anggaran estimasi untuk semua material yang sudah masuk PO.
+                "icon_path": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+                "label": "Total OE",
+                "value": format_idr(total_oe_val),
+                "delta": "Anggaran Estimasi",
+                "formula": f"""**Total OE:** Total nilai anggaran estimasi material yang sudah masuk PO.
+
+**Total OE saat ini:** Rp {total_oe_val:,.2f}
 
 **Kalkulasi SQL:**
 ```sql
 COALESCE(SUM(oe), 0) AS total_oe
 ```
+**Sumber kolom `oe`:** `estimasi_pr × quantity_pr` per baris item PO.
 
-**Sumber kolom `oe`:** Dihitung di view sebagai `estimasi_pr × quantity_pr`.
+**Contoh Formula Excel**: bulan Januari
 
-Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunakan sebagai baseline untuk mengukur apakah realisasi PO lebih mahal atau lebih murah.\
-""",
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
+  IFERROR(
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) *
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)),
+  0)
+)
+```
+Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunakan sebagai baseline untuk mengukur apakah realisasi PO lebih mahal atau lebih murah.
+"""
             },
             {
                 "key": "kpi_eval_realisasi",
-                "metric_args": ("Total Realisasi PO", format_idr(total_real_val)),
-                "metric_kwargs": {},
-                "formula": """\
-**Total Realisasi PO**: Total nilai aktual yang dibayarkan dalam Purchase Order.
+                "icon_path": "M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4 M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z",
+                "label": "Total Realisasi PO",
+                "value": format_idr(total_real_val),
+                "delta": "Nilai Aktual PO",
+                "formula": f"""**Total Realisasi PO**: Total nilai aktual yang dibayarkan dalam Purchase Order.
+
+**Total Realisasi PO saat ini:** Rp {total_real_val:,.2f}
 
 **Kalkulasi SQL:**
 ```sql
 COALESCE(SUM(total_amount_local_curr), 0) AS total_realisasi
 ```
-
-**Sumber kolom `total_amount_local_curr`:** Nilai PO dalam mata uang lokal (IDR), diambil langsung dari tabel `po_items`. Sudah memperhitungkan kurs jika PO aslinya dalam mata uang asing.\
-""",
+**Contoh Formula Excel**: bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
+  IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0)
+)
+```
+**Sumber kolom `total_amount_local_curr`:** Nilai PO dalam mata uang lokal (IDR), diambil langsung dari tabel `po_items`. Sudah memperhitungkan kurs jika PO aslinya dalam mata uang asing.
+"""
             },
             {
                 "key": "kpi_eval_selisih",
-                "metric_args": ("Selisih OE vs Realisasi", format_idr(total_efis_val)),
-                "metric_kwargs": {"delta": delta_label},
-                "formula": """\
-**Selisih OE vs Realisasi**: Perbedaan antara total OE (anggaran) dan total realisasi PO.
+                "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
+                "label": "Selisih OE vs Realisasi",
+                "value": format_idr(total_efis_val),
+                "delta": delta_label,
+                "formula": f"""**Selisih OE vs Realisasi**: Perbedaan antara total OE (anggaran) dan total realisasi PO.
+
+**Total Selisih saat ini:** Rp {total_efis_val:,.2f}
 
 **Kalkulasi SQL:**
-```sql
-COALESCE(SUM(oe) - SUM(total_amount_local_curr), 0) AS total_efisiensi
+```
+total_oe - total_realisasi
+```
+**Formula**
+```
+= Total OE - Total Realisasi PO
 ```
 
 | Kondisi | Interpretasi |
 |---|---|
 | **Positif** (efisien) | Realisasi PO lebih murah dari OE → ada penghematan ✅ |
-| **Negatif** (melebihi OE) | Realisasi PO lebih mahal dari OE → perlu evaluasi ❌ |\
-""",
+| **Negatif** (melebihi OE) | Realisasi PO lebih mahal dari OE → perlu evaluasi ❌ |"""
             },
             {
                 "key": "kpi_eval_over",
-                "metric_args": ("⚠️ Item PO Melebihi OE", f"{format_number(po_over)} item"),
-                "metric_kwargs": {},
-                "formula": """\
-**Item PO Melebihi OE**: Jumlah item PO yang nilai realisasinya melebihi OE.
+                "icon_path": "M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2",
+                "label": "Item PO Melebihi OE",
+                "value": f"{format_number(po_over)} item",
+                "delta": "Perlu Investigasi",
+                "formula": """**Item PO Melebihi OE**: Jumlah item PO yang nilai realisasinya melebihi OE.
 
 **Kalkulasi SQL:**
 ```sql
 COUNT(CASE WHEN total_amount_local_curr > oe AND oe > 0 THEN 1 END) AS po_melebihi_oe
 ```
-
-Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifikasi, kondisi pasar yang lebih mahal dari estimasi, atau kesalahan input OE di awal.\
-""",
+**Contoh Formula Excel:** bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
+  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)), 0) > 0) *
+  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0) > 0) *
+  (IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0) >
+   IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) * INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0))
+)
+```
+Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifikasi, kondisi pasar yang lebih mahal dari estimasi, atau kesalahan input OE di awal.
+"""
             },
             {
                 "key": "kpi_eval_under",
-                "metric_args": ("✅ Item PO Di Bawah / Sesuai OE", f"{format_number(po_under)} item"),
-                "metric_kwargs": {},
-                "formula": """\
-**Item PO Di Bawah / Sesuai OE**: Jumlah item PO yang nilai realisasinya sama atau lebih murah dari OE.
+                "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+                "label": "Item Sesuai/Di Bawah OE",
+                "value": f"{format_number(po_under)} item",
+                "delta": "Aman/Hemat",
+                "formula": """**Item PO Di Bawah / Sesuai OE**: Jumlah item PO yang nilai realisasinya sama atau lebih murah dari OE.
 
-**Kalkulasi SQL:**
-```sql
+**Kalkulasi SQL:**   
+```
 COUNT(CASE WHEN total_amount_local_curr <= oe AND oe > 0 THEN 1 END) AS po_dibawah_oe
 ```
-
-Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik performa pengadaan dalam hal kepatuhan anggaran.\
-""",
+**Contoh Formula Excel:** bulan Januari    
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
+  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)), 0) > 0) *
+  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0) > 0) *
+  (IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0) <=
+   IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) * INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0))
+)
+```
+Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik performa pengadaan dalam hal kepatuhan anggaran.         
+"""
             },
         ]
 
-        # ── Inisialisasi session state ─────────────────────────────────────────
-        for kpi in KPI_EVAL:
+        # ── CSS CARDS ──
+        st.markdown("""
+        <style>
+        .kpi-card {
+            display: flex; align-items: center; background: var(--secondary-background-color);
+            border-radius: 10px; padding: 16px 14px; gap: 12px; height: 100%;
+        }
+        .kpi-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .kpi-body { flex: 1; min-width: 0; }
+        .kpi-label { font-size: 13px; opacity: 0.9; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .kpi-value { font-size: 1.8rem !important; font-weight: 600 !important; margin: 0 !important; line-height: 1.1 !important; display: block !important; }
+        .kpi-delta { font-size: 12px; color: #09ab3b; margin: 0; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        for kpi in KPI_EVAL_CARDS:
             if kpi["key"] not in st.session_state:
                 st.session_state[kpi["key"]] = False
 
-        # ── Baris 1: 4 metric utama ────────────────────────────────────────────
-        row1_kpis = KPI_EVAL[:4]
-        row1_cols = st.columns(4)
-        for col, kpi in zip(row1_cols, row1_kpis):
-            with col:
-                m_col, btn_col = st.columns([5, 1])
-                with m_col:
-                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
-                with btn_col:
-                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                    is_open = st.session_state[kpi["key"]]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
-                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-
-        # ── Baris 2: 2 metric tambahan (kiri saja) ────────────────────────────
-        row2_kpis = KPI_EVAL[4:]
-        row2_all_cols = st.columns([1, 1, 2])
-        for col, kpi in zip(row2_all_cols[:2], row2_kpis):
-            with col:
-                m_col, btn_col = st.columns([5, 1])
-                with m_col:
-                    st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
-                with btn_col:
-                    st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                    is_open = st.session_state[kpi["key"]]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
-                              on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-
-        # ── Info boxes full-width, berurutan kiri→kanan ───────────────────────
-        for kpi in KPI_EVAL:
-            if st.session_state[kpi["key"]]:
-                st.info(kpi["formula"])
+        # ── RENDERING 3 COLUMNS PER ROW ──
+        for row in range(0, len(KPI_EVAL_CARDS), 3):
+            current_row_items = KPI_EVAL_CARDS[row:row + 3]
+            cols = st.columns(3)
+            for i, col in enumerate(cols):
+                with col:
+                    if i < len(current_row_items):
+                        kpi = current_row_items[i]
+                        is_open = st.session_state[kpi["key"]]
+                        
+                        card_html = f"""
+                        <div class="kpi-card">
+                            <div class="kpi-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="{kpi['icon_path']}"/>
+                                </svg>
+                            </div>
+                            <div class="kpi-body">
+                                <p class="kpi-label">{kpi['label']}</p>
+                                <p class="kpi-value">{kpi['value']}</p>
+                                <p class="kpi-delta">{"↑ " if total_efis_val >= 0 else ""}{kpi['delta']}</p>
+                            </div>
+                        </div>"""
+                        
+                        c_card, c_btn = st.columns([10, 2])
+                        with c_card:
+                            st.markdown(card_html, unsafe_allow_html=True)
+                        with c_btn:
+                            st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
+                            tooltip = "Hide Formula" if is_open else "Show Formula"
+                            btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                            st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
+                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+            
+            # Show formula info exactly under the relevant row
+            for kpi in current_row_items:
+                if st.session_state[kpi["key"]]:
+                    st.info(kpi["formula"])
 
         st.markdown("---")
 
@@ -239,12 +358,13 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
 **Kalkulasi SQL:**
 | Kolom | Formula |
 |---|---|
-| OE (sumbu X) | `SUM(estimasi_pr × quantity_pr)` per material |
-| Realisasi (sumbu Y) | `SUM(total_amount_local_curr)` per material |
+| OE (sumbu X) | `AVG(estimasi_pr × quantity_pr)` dari tabel `po_items` (sumber: **PO SAP**) |
+| Realisasi (sumbu Y) | `AVG(total_amount_local_curr)` dari tabel `po_items` |
 | Warna titik | 🔴 Merah = `realisasi > OE` (overspend) · 🟢 Hijau = `realisasi ≤ OE` (efisien) |
 
-**Formula Excel:**
-- Kolom **OE**: `= Estimasi_PR × Qty_PR`
+**Formula Excel:** (gunakan file PO SAP)
+- Filter sesuai **Material No** terlebih dahulu jika ingin mencari barangnya
+- Kolom **OE**: `= Estimasi_PR × Qty_PR` (kolom "Estimasi PR" dan "Quantity PR" di PO SAP)
 - Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
 - Nilai **negatif** di kolom Efisiensi = overspend
 
@@ -255,19 +375,21 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
             scatter_query = f"""
             SELECT
-                v.material_no,
-                COALESCE(m.description, v.pr_description, 'Unknown') AS nama_material,
-                ROUND(AVG(v.oe)::numeric, 2)                           AS avg_oe,
-                ROUND(AVG(v.total_amount_local_curr)::numeric, 2)      AS avg_realisasi,
-                COUNT(DISTINCT v.nomor_po)                             AS jumlah_po
-            FROM vw_pr_po_complete v
-            LEFT JOIN materials m USING (material_no)
-            WHERE {filter_conditions}
-            AND v.nomor_po IS NOT NULL
-            AND v.oe IS NOT NULL AND v.oe > 0
-            AND v.total_amount_local_curr > 0
-            AND ({bagian_po_cond})
-            GROUP BY v.material_no, m.description, v.pr_description
+                poi.material_no,
+                COALESCE(m.description, poi.description, 'Unknown')              AS nama_material,
+                ROUND(AVG(poi.estimasi_pr * poi.quantity_pr)::numeric, 2)        AS avg_oe,
+                ROUND(AVG(poi.total_amount_local_curr)::numeric, 2)              AS avg_realisasi,
+                COUNT(DISTINCT poi.nomor_po)                                     AS jumlah_po
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN materials m ON poi.material_no = m.material_no
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+            AND poi.nomor_po IS NOT NULL
+            AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
+            AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
+            AND poi.total_amount_local_curr > 0
+            AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+            GROUP BY poi.material_no, m.description, poi.description
             ORDER BY jumlah_po DESC
             LIMIT 50
             """
@@ -279,6 +401,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     lambda r: 'Melebihi OE' if r['avg_realisasi'] > r['avg_oe'] else 'Di Bawah / Sesuai OE',
                     axis=1
                 )
+                scatter_data['selisih'] = scatter_data['avg_oe'] - scatter_data['avg_realisasi']
                 max_val = max(scatter_data['avg_oe'].max(), scatter_data['avg_realisasi'].max()) * 1.1
                 fig = px.scatter(
                     scatter_data,
@@ -287,16 +410,23 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     size='jumlah_po',
                     hover_name='nama_material',
                     hover_data={'material_no': True, 'jumlah_po': True,
-                                'avg_oe': ':,.0f', 'avg_realisasi': ':,.0f'},
+                                'avg_oe': ':,.0f', 'avg_realisasi': ':,.0f', 'selisih': ':,.0f'},
                     color_discrete_map={'Melebihi OE': '#d62728', 'Di Bawah / Sesuai OE': '#2ca02c'},
-                    labels={'avg_oe': 'Rata-rata OE (IDR)', 'avg_realisasi': 'Rata-rata Realisasi PO (IDR)'}
+                    labels={'avg_oe': 'Rata-rata OE (IDR)', 'avg_realisasi': 'Rata-rata Realisasi PO (IDR)', 'selisih': 'Selisih (IDR)'}
                 )
                 fig.add_shape(type='line', x0=0, y0=0, x1=max_val, y1=max_val,
                             line=dict(color='gray', dash='dash', width=1))
                 fig.add_annotation(x=max_val * 0.85, y=max_val * 0.9,
                                     text="Batas OE", showarrow=False,
                                     font=dict(color='gray', size=11))
-                fig.update_layout(height=420, legend=dict(orientation='h', yanchor='bottom', y=1.02), separators=",.")
+                axis_cfg = idr_axis(max_val)
+                fig.update_layout(
+                    height=420,
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                    separators=",.",
+                    xaxis=axis_cfg,
+                    yaxis=axis_cfg,
+                )
                 st.plotly_chart(fig, use_container_width=True)
                 st.caption("Titik di atas garis diagonal = realisasi melebihi OE. Ukuran titik = jumlah PO.")
             else:
@@ -325,7 +455,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
             if st.session_state.get(key_overspend, False):
                 st.info("""\
-**Top 10 Material: Overspend Terbesar**: Bar chart 10 material dengan selisih (realisasi - OE) terbesar.
+**Top 10 Material: Overspend Terbesar**: Bar chart 10 material dengan selisih (OE - realisasi) terbesar.
 
 **Kalkulasi SQL:**
 ```sql
@@ -333,34 +463,38 @@ overspend = SUM(total_amount_local_curr) - SUM(estimasi_pr * quantity_pr)
 ```
 Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif.
 
-**Formula Excel:**
+**Formula Excel:** (gunakan file PO SAP)
+- Filter sesuai **Material No** terlebih dahulu jika ingin mencari barangnya
 - Kolom **OE**: `= Estimasi_PR × Qty_PR`
 - Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
 - Filter baris dengan nilai Efisiensi **negatif** (konvensi Excel: negatif = realisasi lebih mahal dari OE)
 - Urutkan ascending, ambil 10 teratas (nilai paling negatif = paling overspend)
                 """)
 
-            st.caption("Top 10 material dengan selisih (realisasi - OE) terbesar.")
+            st.caption("Top 10 material dengan selisih (OE - realisasi) terbesar.")
 
             overspend_query = f"""
             SELECT
-                v.material_no,
-                COALESCE(m.description, v.pr_description, 'Unknown')          AS nama_material,
-                SUM(v.total_amount_local_curr - v.oe)                          AS total_overspend,
+                poi.material_no,
+                COALESCE(m.description, MIN(poi.description), 'Unknown')         AS nama_material,
+                SUM(poi.total_amount_local_curr - (poi.estimasi_pr * poi.quantity_pr)) AS total_overspend,
                 ROUND(AVG(
-                    CASE WHEN v.oe > 0
-                    THEN ((v.total_amount_local_curr - v.oe) / v.oe * 100)
+                    CASE WHEN (poi.estimasi_pr * poi.quantity_pr) > 0
+                    THEN ((poi.total_amount_local_curr - (poi.estimasi_pr * poi.quantity_pr))
+                          / (poi.estimasi_pr * poi.quantity_pr) * 100)
                     END
-                )::numeric, 1)                                                  AS persen_overspend,
-                COUNT(DISTINCT v.nomor_po)                                      AS jumlah_po
-            FROM vw_pr_po_complete v
-            LEFT JOIN materials m USING (material_no)
-            WHERE {filter_conditions}
-            AND v.nomor_po IS NOT NULL
-            AND v.oe IS NOT NULL AND v.oe > 0
-            AND v.total_amount_local_curr > v.oe
-            AND ({bagian_po_cond})
-            GROUP BY v.material_no, m.description, v.pr_description
+                )::numeric, 1)                                                    AS persen_overspend,
+                COUNT(DISTINCT poi.nomor_po)                                      AS jumlah_po
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN materials m ON poi.material_no = m.material_no
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+            AND poi.nomor_po IS NOT NULL
+            AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
+            AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
+            AND poi.total_amount_local_curr > (poi.estimasi_pr * poi.quantity_pr)
+            AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+            GROUP BY poi.material_no, m.description
             ORDER BY total_overspend DESC
             LIMIT 10
             """
@@ -370,6 +504,9 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
             if not overspend_data.empty:
                 overspend_data['label'] = overspend_data['nama_material'].str[:30]
                 overspend_data['label_text'] = overspend_data['total_overspend'].apply(format_idr_short)
+                overspend_data['hover_overspend'] = overspend_data['total_overspend'].apply(
+                    lambda x: f"Rp {x:,.0f}"
+                )
                 fig = px.bar(
                     overspend_data,
                     x='total_overspend', y='label', orientation='h',
@@ -377,11 +514,26 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
                     color='persen_overspend',
                     color_continuous_scale='Reds',
                     labels={'total_overspend': 'Total Overspend (IDR)',
-                            'label': 'Material', 'persen_overspend': '% di atas OE'}
+                            'label': 'Material', 'persen_overspend': '% di atas OE'},
+                    custom_data=['hover_overspend', 'persen_overspend', 'jumlah_po', 'material_no'],
                 )
-                fig.update_layout(height=420, yaxis={'categoryorder': 'total ascending'},
-                                coloraxis_colorbar=dict(title='% Overspend'))
-                fig.update_traces(textposition='outside')
+                fig.update_traces(
+                    textposition='outside',
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Total Overspend: %{customdata[0]}<br>"
+                        "% di atas OE: %{customdata[1]:.1f}%<br>"
+                        "Jumlah PO: %{customdata[2]}<br>"
+                        "Material No: %{customdata[3]}"
+                        "<extra></extra>"
+                    )
+                )
+                fig.update_layout(
+                    height=420,
+                    yaxis={'categoryorder': 'total ascending'},
+                    coloraxis_colorbar=dict(title='% Overspend'),
+                    xaxis=idr_axis(overspend_data['total_overspend'].max() * 1.15),
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.success("Tidak ada material dengan realisasi melebihi OE pada periode ini.")
@@ -494,7 +646,7 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
     - Rentang harga **lebar** = ada potensi penghematan besar melalui seleksi vendor atau negosiasi
     - Vendor dengan harga terendah konsisten = kandidat utama untuk dijadikan **vendor preferens**
 
-    Di Excel: `=Total_Amount/Qty_PO` per baris PO → buat pivot `Material × Vendor` untuk membandingkan.
+    Di Excel: `= Total Amount in Local Curr / Qty PO`
                 """)
 
             st.caption("Top 10 perbandingan harga satuan dari vendor berbeda untuk material yang sama.")
@@ -514,8 +666,11 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
                         color_continuous_scale='Blues',
                         labels={'vendor_name': 'Vendor', 'harga_satuan_avg': 'Harga Satuan Rata-rata (IDR)'}
                     )
-                    fig.update_layout(height=380, showlegend=False,
-                                    coloraxis_showscale=False, xaxis_tickangle=-30)
+                    fig.update_layout(
+                        height=380, showlegend=False,
+                        coloraxis_showscale=False, xaxis_tickangle=-30,
+                        yaxis=idr_axis(df_mat['harga_satuan_avg'].max() * 1.15),
+                    )
                     fig.update_traces(textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
 
@@ -563,7 +718,7 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
         - **OE di atas realisasi** = estimasi terlalu tinggi atau negosiasi berhasil ✅
         - **OE di bawah realisasi** = harga aktual melebihi estimasi → perlu review anggaran ⚠️
 
-        Di Excel: `=SUMIFS(kolom_amount, kolom_material, kode_x, kolom_bulan, bulan_x) / SUMIFS(kolom_qty, ...)`
+        Di Excel: `= Total Amount in Local Curr / Qty PO`
                     """)
 
                 st.caption("Pergerakan rata-rata harga satuan PO dari waktu ke waktu.")
@@ -634,17 +789,21 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
                                     '<extra></extra>'
                                 )
                             ))
+                        y_max_trend = max(
+                            trend_harga_data['harga_satuan_avg'].max() if 'harga_satuan_avg' in trend_harga_data.columns else 0,
+                            trend_harga_data['oe_satuan_avg'].max() if (oe_valid and 'oe_satuan_avg' in trend_harga_data.columns) else 0
+                        ) * 1.15
                         fig_trend.update_layout(
                             height=400,
                             xaxis_title='Bulan',
                             yaxis_title='Harga Satuan (IDR/unit)',
                             legend=dict(orientation='h', yanchor='bottom', y=1.02),
                             hovermode='x unified',
-                            yaxis=dict(tickformat=',.0f')
+                            yaxis=idr_axis(y_max_trend),
                         )
                         st.plotly_chart(fig_trend, use_container_width=True)
                         if not oe_valid:
-                            st.caption('\u24d8 OE per satuan tidak ditampilkan, data estimasi tidak tersedia atau skalanya tidak sebanding dengan harga realisasi.')
+                            st.caption('\u24d8 OE per satuan tidak ditampilkan, data estimasi tidak tersedia atau skalanya tidak sebanding dengan harga realisasi. Chart ini menampilkan seluruh histori material tanpa dibatasi filter tanggal, agar tren harga dapat terbaca dengan baik.')
                     else:
                         st.info("Tidak ada data historis untuk material ini.")
 
@@ -679,7 +838,7 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
 
 **Kalkulasi Metrik (SQL):**
 - **Harga Satuan**: `SUM(total_amount_local_curr) / NULLIF(SUM(qty_po), 0)`
-- **Lead Time Proses**: `AVG(lead_time_process_po)` (Rata-rata waktu dari PR ke PO)
+- **Lead Time Proses**: `AVG(lead_time_process_po)` (Rata-rata waktu dari **Tgl Create PR** ke **Date Ordered**)
 - **On-Time Delivery**: `(Jumlah pengiriman 'TEPAT WAKTU' / Total pengiriman yang memiliki status) × 100%`
 - **Frekuensi**: `COUNT(DISTINCT nomor_po)` (Berapa kali transaksi PO dengan vendor ini)
 
@@ -808,7 +967,8 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
             ROUND(MAX(v.total_amount_local_curr / NULLIF(v.qty_po, 0))::numeric, 0)   AS harga_satuan_max
         FROM vw_pr_po_complete v
         LEFT JOIN materials m USING (material_no)
-        WHERE {filter_conditions}
+        LEFT JOIN purchase_orders poh ON v.nomor_po = poh.nomor_po
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
         AND v.nomor_po IS NOT NULL
         AND v.oe IS NOT NULL AND v.oe > 0
         AND v.qty_po > 0
@@ -891,14 +1051,14 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
             konteks_lines.append("## 2. TOP 10 MATERIAL OVERSPEND TERBESAR")
             # Ambil kolom penting saja agar hemat token
             df_os_simple = overspend_data[['nama_material', 'total_overspend', 'persen_overspend']]
-            konteks_lines.append(df_os_simple.to_markdown(index=False))
+            konteks_lines.append(df_os_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # 3. Data Detail Harga (Ambil 15 teratas yang paling bermasalah)
         if 'detail_harga_data' in locals() and not detail_harga_data.empty:
             konteks_lines.append("## 3. DETAIL EVALUASI HARGA (15 ITEM DENGAN SELISIH TERBURUK)")
             df_detail_simple = detail_harga_data[['nama_material', 'rata_oe', 'rata_realisasi', 'persen_selisih_avg', 'status']].head(15)
-            konteks_lines.append(df_detail_simple.to_markdown(index=False))
+            konteks_lines.append(df_detail_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem

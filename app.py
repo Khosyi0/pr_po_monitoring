@@ -605,6 +605,8 @@ global_context = build_global_context(
     bagian_pr_cond      = bagian_pr_cond,
     bagian_po_cond      = bagian_po_cond,
     teks_filter_sap     = teks_filter_sap,
+    date_from           = date_from,
+    date_to             = date_to,
     # SIPS aktif
     sips_date_from      = sips_date_from,
     sips_date_to        = sips_date_to,
@@ -631,6 +633,8 @@ st.session_state['_view_args'] = dict(
     load_data         = load_data,
     info_filter       = teks_filter_sap,
     global_context    = global_context,
+    date_from         = date_from,
+    date_to           = date_to,
 )
 
 # SIPS view args

@@ -78,36 +78,60 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         WHERE {filter_conditions}
         """
 
-        # Query lebih sederhana untuk KPI, langsung dari view
+        date_from = kwargs.get('date_from')
+        date_to   = kwargs.get('date_to')
+        bagian_po_poh = bagian_po_cond.replace('bagian_po', 'poh.bagian_po')
+
+        # PR KPI — filter by tgl_create_pr
         pg_kpi_query = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
                 THEN no_pr || '-' || line_item_pr::text END)                         AS total_item_pr,
-            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
-                THEN nomor_po || '-' || item_po::text END)                           AS total_item_po,
             COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
-                THEN no_pr || '-' || line_item_pr::text END)                         AS pr_with_po,
-            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)         AS total_oe,
-            COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                THEN total_amount_local_curr ELSE 0 END), 0)                         AS total_realisasi,
-            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                THEN lead_time_process_po END)::numeric, 1)                          AS avg_lead_time_overall
+                THEN no_pr || '-' || line_item_pr::text END)                         AS pr_with_po
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
         """
 
+        # OE dari po_items langsung (PO SAP), hindari double-count dari join PR-PO di view
+        pg_oe_kpi_query = f"""
+        SELECT
+            COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr), 0) AS total_oe
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
+          AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
+          AND {bagian_po_poh}
+        """
+
+        # PO KPI — filter by date_ordered langsung dari tabel po_items
+        pg_po_kpi_query = f"""
+        SELECT
+            COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)                 AS total_item_po,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                            AS total_realisasi,
+            ROUND(AVG(gr.lead_time_process_po)::numeric, 1)                          AS avg_lead_time_overall
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND {bagian_po_poh}
+        """
+
         with st.spinner("Memuat KPI..."):
-            pg_kpi = load_data(pg_kpi_query)
+            pg_kpi    = load_data(pg_kpi_query)
+            pg_po_kpi = load_data(pg_po_kpi_query)
+            pg_oe_kpi = load_data(pg_oe_kpi_query)
 
         if not pg_kpi.empty:
             t_item_pr    = int(pg_kpi['total_item_pr'][0] or 0)
-            t_item_po    = int(pg_kpi['total_item_po'][0] or 0)
+            t_item_po    = int(pg_po_kpi['total_item_po'][0] or 0)
             pr_with_po   = int(pg_kpi['pr_with_po'][0] or 0)
-            t_oe         = float(pg_kpi['total_oe'][0] or 0)
-            t_real       = float(pg_kpi['total_realisasi'][0] or 0)
+            t_oe         = float(pg_oe_kpi['total_oe'][0] or 0)
+            t_real       = float(pg_po_kpi['total_realisasi'][0] or 0)
             t_efis       = t_oe - t_real
             t_efis_pct   = (t_efis / t_oe * 100) if t_oe > 0 else 0
-            avg_lt        = pg_kpi['avg_lead_time_overall'][0]
+            avg_lt        = pg_po_kpi['avg_lead_time_overall'][0]
         
             # MENGGUNAKAN PR_WITH_PO AGAR SINKRON DENGAN DASHBOARD
             konversi_pct = (pr_with_po / t_item_pr * 100) if t_item_pr > 0 else 0
@@ -115,82 +139,31 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             lt_label   = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
             lt_delta   = "✅ On Target" if (avg_lt and avg_lt <= 55) else "⚠️ Over Target"
 
-            KPI_PG = [
-                {"key": "kpi_pg_item_pr",   "metric_args": ("Total Item PR", f"{format_number(t_item_pr)}"),   "metric_kwargs": {"delta": f"{format_number(konversi_pct, decimals=1)}% sudah PO"},          "formula": """**Total Item PR**: Jumlah item Purchase Requisition unik dalam periode filter.
+            KPI_PG = []
 
-**Kalkulasi SQL:**
-```sql
-COUNT(DISTINCT CASE
-    WHEN no_pr != 'No PR' AND {bagian_pr_cond}
-    THEN no_pr || '-' || line_item_pr::text
-END) AS total_item_pr
-```
+            if KPI_PG:
+                for kpi in KPI_PG:
+                    if kpi["key"] not in st.session_state:
+                        st.session_state[kpi["key"]] = False
 
-**% sudah PO** = `pr_with_po / total_item_pr × 100` - persentase item PR yang sudah berhasil dikonversi menjadi PO."""},
-                {"key": "kpi_pg_item_po",   "metric_args": ("Total Item PO", f"{format_number(t_item_po)}"),   "metric_kwargs": {},                                                   "formula": """**Total Item PO**: Jumlah item Purchase Order dalam periode filter.
+                kpi_cols = st.columns(len(KPI_PG))
+                for col, kpi in zip(kpi_cols, KPI_PG):
+                    with col:
+                        m_col, btn_col = st.columns([5, 1])
+                        with m_col:
+                            st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
+                        with btn_col:
+                            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                            is_open = st.session_state[kpi["key"]]
+                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                            tooltip = "Hide Formula" if is_open else "Show Formula"
+                            st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
+                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_item_po
-```
+                for kpi in KPI_PG:
+                    if st.session_state[kpi["key"]]:
+                        st.info(kpi["formula"])
 
-Menghitung semua baris PO per line item, bukan COUNT DISTINCT nomor PO. Satu nomor PO bisa memiliki banyak baris item material yang berbeda."""},
-                {"key": "kpi_pg_oe",        "metric_args": ("Total OE", format_idr(t_oe)),        "metric_kwargs": {},                                                   "formula": """**Total OE**: Total nilai anggaran estimasi dari semua PR dalam periode filter.
-
-**Kalkulasi SQL:**
-```sql
-COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_oe
-```
-
-**Sumber kolom `oe`:** `estimasi_pr × quantity_pr` - nilai estimasi harga satuan dikali kuantitas yang diminta pemohon PR."""},
-                {"key": "kpi_pg_efisiensi", "metric_args": ("Efisiensi", format_idr(t_efis)),     "metric_kwargs": {"delta": f"{format_number(t_efis_pct, decimals=1)}% {delta_efis}"},         "formula": """**Efisiensi**: Selisih antara total OE dan total realisasi PO.
-
-**Kalkulasi:**
-```
-Efisiensi   = Total OE − Total Realisasi PO
-% Efisiensi = Efisiensi / Total OE × 100
-```
-
-| Kondisi | Interpretasi |
-|---|---|
-| **Positif** | Realisasi lebih murah dari anggaran → penghematan ✅ |
-| **Negatif** | Realisasi melebihi anggaran → perlu evaluasi ❌ |"""},
-                {"key": "kpi_pg_lead_time", "metric_args": ("Avg Lead Time", f"{format_number(avg_lt, decimals=1)} Hari" if pd.notna(avg_lt) else "N/A"), "metric_kwargs": {"delta": lt_delta},                                  "formula": """**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
-
-**Kalkulasi SQL:**
-```sql
-ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-    THEN lead_time_process_po END)::numeric, 1) AS avg_lead_time_overall
-```
-
-**Sumber `lead_time_process_po`:** Selisih hari antara `tgl_create_pr` dan `date_ordered`.
-
-**Target SLA = 55 hari.** Informasi detail per bulan dan per jenis tender tersedia di tab **Kecepatan Proses**."""},
-            ]
-
-            for kpi in KPI_PG:
-                if kpi["key"] not in st.session_state:
-                    st.session_state[kpi["key"]] = False
-
-            kpi_cols = st.columns(len(KPI_PG))
-            for col, kpi in zip(kpi_cols, KPI_PG):
-                with col:
-                    m_col, btn_col = st.columns([5, 1])
-                    with m_col:
-                        st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
-                    with btn_col:
-                        st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                        is_open = st.session_state[kpi["key"]]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
-                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-
-            for kpi in KPI_PG:
-                if st.session_state[kpi["key"]]:
-                    st.info(kpi["formula"])
-
-        st.markdown("---")
 
         # ── TAB: OVERVIEW | TENDER TYPE | KECEPATAN PROSES ───────────────────
         # ── Inject JS: simpan & pulihkan tab aktif via localStorage ─────────
@@ -244,38 +217,41 @@ ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
 
             pg_query = f"""
             SELECT
-                COALESCE(purchasing_group, 'Unassigned')                             AS purchasing_group,
-                COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
-                    THEN no_pr || '-' || line_item_pr::text END)                     AS jml_item_pr,
-                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND {bagian_po_cond}
-                    THEN nomor_po || '-' || item_po::text END)                       AS jml_item_po,
-                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
-                    THEN no_pr || '-' || line_item_pr::text END)                     AS pr_with_po,
-                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)     AS nilai_oe,
-                COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                    THEN total_amount_local_curr ELSE 0 END), 0)                     AS nilai_po,
-                COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)
-                    - COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                    THEN total_amount_local_curr ELSE 0 END), 0)                     AS efisiensi,
+                COALESCE(poh.purchasing_group, 'Unassigned')                         AS purchasing_group,
+                COUNT(DISTINCT v.no_pr || '-' || v.line_item_pr::text)
+                    FILTER (WHERE v.no_pr != 'No PR' AND {bagian_pr_cond})           AS jml_item_pr,
+                COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)             AS jml_item_po,
+                COUNT(DISTINCT v.no_pr || '-' || v.line_item_pr::text)
+                    FILTER (WHERE v.nomor_po IS NOT NULL AND v.no_pr != 'No PR'
+                            AND {bagian_pr_cond})                                    AS pr_with_po,
+                COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
+                    FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0)   AS nilai_oe,
+                COALESCE(SUM(poi.total_amount_local_curr), 0)                        AS nilai_po,
+                COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
+                    FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0)
+                    - COALESCE(SUM(poi.total_amount_local_curr), 0)                  AS efisiensi,
                 CASE
-                    WHEN COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) > 0
+                    WHEN COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
+                        FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0) > 0
                     THEN ROUND(
-                        (COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)
-                         - COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                           THEN total_amount_local_curr ELSE 0 END), 0))
-                        / COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) * 100,
+                        (COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
+                            FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0)
+                         - COALESCE(SUM(poi.total_amount_local_curr), 0))
+                        / COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
+                            FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0) * 100,
                         1)
                     ELSE NULL
                 END                                                                  AS efisiensi_pct,
-                ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                    THEN lead_time_process_po END)::numeric, 1)                      AS avg_lead_time,
-                MIN(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                    THEN lead_time_process_po END)                                   AS min_lead_time,
-                MAX(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                    THEN lead_time_process_po END)                                   AS max_lead_time
-            FROM vw_pr_po_complete
-            WHERE {filter_conditions}
-            GROUP BY COALESCE(purchasing_group, 'Unassigned')
+                ROUND(AVG(gr.lead_time_process_po)::numeric, 1)                      AS avg_lead_time,
+                MIN(gr.lead_time_process_po)                                         AS min_lead_time,
+                MAX(gr.lead_time_process_po)                                         AS max_lead_time
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
+            LEFT JOIN vw_pr_po_complete v ON poi.nomor_po = v.nomor_po AND poi.item_po = v.item_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+            GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
             ORDER BY nilai_oe DESC
             """
 
@@ -672,7 +648,7 @@ Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Ten
                     ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                         THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
                 FROM vw_pr_po_complete
-                WHERE {filter_conditions}
+                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
                   AND nomor_po IS NOT NULL
                 GROUP BY COALESCE(purchasing_group, 'Unassigned'),
                          jenis_tender
@@ -850,7 +826,7 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                     ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
                         THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
                 FROM vw_pr_po_complete
-                WHERE {filter_conditions}
+                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
                   AND nomor_po IS NOT NULL
                 GROUP BY COALESCE(purchasing_group, 'Unassigned'),
                          turn_around_calc
@@ -959,7 +935,7 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)                 AS jml_late,
                 COUNT(lead_time_process_po)                                            AS total_lt
             FROM vw_pr_po_complete
-            WHERE {filter_conditions}
+            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
               AND nomor_po IS NOT NULL
               AND lead_time_process_po IS NOT NULL
               AND {bagian_po_cond}
@@ -989,6 +965,30 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                     d_color = "inverse"  # Biarkan merah bawaan
 
                 SPEED_KPI = [
+                    {
+                        "key": "kpi_speed_avg",
+                        "metric_args": ("Avg Lead Time", f"{format_number(avg_lt, decimals=1)} Hari"),
+                        "metric_kwargs": {"delta": "✅ On Target" if avg_lt <= 55 else "⚠️ Over Target"},
+                        "formula": """\
+**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(lead_time_process_po)::numeric, 1) AS avg_lt_overall
+```
+
+**Sumber `lead_time_process_po`:** Selisih hari antara `tgl_create_pr` dan `date_ordered`.
+
+**Target SLA = 55 hari.**
+
+| Kondisi | Interpretasi |
+|---|---|
+| ≤ 55 hari | ✅ On Target |
+| > 55 hari | ⚠️ Over Target, perlu evaluasi |
+
+Rata-rata lebih sensitif terhadap outlier dibanding median — jika ada PO dengan lead time sangat panjang, nilai ini akan tertarik ke atas. Bandingkan dengan **Median Lead Time** untuk gambaran lebih lengkap.
+"""
+                    },
                     {
                         "key": "kpi_speed_median",
                         "metric_args": ("Median Lead Time", f"{format_number(med_lt, decimals=1)} Hari"),
@@ -1236,7 +1236,7 @@ Di Excel: `=IFS(lt<=14,"≤14",lt<=30,"15-30",lt<=55,"31-55",lt<=90,"56-90",TRUE
                     COUNT(*)               AS jumlah,
                     MIN(lead_time_process_po) AS sort_key
                 FROM vw_pr_po_complete
-                WHERE {filter_conditions}
+                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
                   AND nomor_po IS NOT NULL
                   AND lead_time_process_po IS NOT NULL
                   AND {bagian_po_cond}
@@ -1328,7 +1328,7 @@ Average bisa terdistorsi oleh satu outlier ekstrem (misal: satu PO terlupakan 50
                     COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END)       AS jml_ontime,
                     COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)        AS jml_late
                 FROM vw_pr_po_complete
-                WHERE {filter_conditions}
+                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
                   AND nomor_po IS NOT NULL
                   AND lead_time_process_po IS NOT NULL
                   AND {bagian_po_cond}
@@ -1424,7 +1424,7 @@ ORDER BY bulan
                     ROUND(AVG(lead_time_process_po)::numeric, 1)                     AS avg_lt,
                     COUNT(*)                                                          AS jml_po
                 FROM vw_pr_po_complete
-                WHERE {filter_conditions}
+                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
                   AND nomor_po IS NOT NULL
                   AND date_ordered IS NOT NULL
                   AND lead_time_process_po IS NOT NULL
@@ -1540,21 +1540,21 @@ ORDER BY bulan
         if 'df_table' in locals() and not df_table.empty:
             konteks_lines.append("## 2. KINERJA PER PURCHASING GROUP (OVERVIEW)")
             df_pg_simple = df_table[['purchasing_group', 'nilai_po', 'efisiensi_pct', 'avg_lead_time']]
-            konteks_lines.append(df_pg_simple.to_markdown(index=False))
+            konteks_lines.append(df_pg_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # 3. Rangkuman Tab 2: Breakdown Kontrak vs Non-Kontrak
         if 'kontrak_data' in locals() and not kontrak_data.empty:
             konteks_lines.append("## 3. BREAKDOWN JENIS TENDER (KONTRAK VS NORMAL) PER PG")
             df_kontrak_simple = kontrak_data[['purchasing_group', 'jenis_kontrak', 'total_realisasi', 'avg_lead_time']]
-            konteks_lines.append(df_kontrak_simple.to_markdown(index=False))
+            konteks_lines.append(df_kontrak_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # 4. Rangkuman Tab 3: Detail Kecepatan
         if 'lt_tender_data' in locals() and not lt_tender_data.empty:
             konteks_lines.append("## 4. DETAIL KETEPATAN WAKTU (ON-TIME VS LATE) PER PG")
             df_speed_simple = lt_tender_data[['purchasing_group', 'jml_ontime', 'jml_late', 'ontime_pct']]
-            konteks_lines.append(df_speed_simple.to_markdown(index=False))
+            konteks_lines.append(df_speed_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # Gabungkan konteks lokal dengan konteks global lintas sistem

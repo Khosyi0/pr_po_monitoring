@@ -47,63 +47,83 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             </h1>
         """, unsafe_allow_html=True)
 
-        kpi_query = f"""
+        date_from = kwargs.get('date_from')
+        date_to   = kwargs.get('date_to')
+
+        # ── Query PR: filter by tgl_create_pr (perilaku asli) ─────────────────
+        pr_kpi_query = f"""
+        WITH unique_pr AS (
+            SELECT 
+                no_pr, 
+                line_item_pr,
+                MAX(CASE WHEN nomor_po IS NOT NULL THEN 1 ELSE 0 END) AS has_po,
+                MAX(estimasi_pr) AS oe_val
+            FROM vw_pr_po_complete
+            WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
+            GROUP BY no_pr, line_item_pr
+        )
         SELECT
-            COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
-                THEN no_pr || '-' || line_item_pr::text END)              AS total_pr,
-            COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END)             AS total_po,
-            COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
-                THEN no_pr || '-' || line_item_pr::text END)              AS pr_with_po,
-            COUNT(DISTINCT CASE WHEN nomor_po IS NULL AND no_pr != 'No PR' AND {bagian_pr_cond}
-                THEN no_pr || '-' || line_item_pr::text END)              AS pr_without_po,
-            COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0)                      AS total_estimasi,
-            COALESCE(SUM(CASE WHEN {bagian_po_cond} THEN total_amount_local_curr ELSE 0 END), 0) AS total_po_amount,
-            COALESCE(
-                SUM(CASE WHEN {bagian_pr_cond} THEN COALESCE(oe, 0) ELSE 0 END)
-                - SUM(CASE WHEN {bagian_po_cond} THEN COALESCE(total_amount_local_curr, 0) ELSE 0 END),
-            0)                                                                               AS total_savings,
-            -- FIX: weighted savings % = (SUM_oe - SUM_realisasi) / SUM_oe * 100
-            -- Sebelumnya AVG per baris bisa bias karena baris kecil dgn % besar terlalu berpengaruh
-            CASE
-                WHEN COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND oe > 0 THEN oe END), 0) > 0
-                THEN ROUND((
-                    (COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
-                     - COALESCE(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN total_amount_local_curr END), 0))
-                    / NULLIF(SUM(CASE WHEN {bagian_pr_cond} AND {bagian_po_cond} AND oe > 0 THEN oe END), 0)
-                ) * 100, 2)
-                ELSE 0
-            END                                                                              AS avg_savings_pct,
-            ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                THEN lead_time_process_po END)::numeric, 2)                              AS avg_lead_time,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                THEN nomor_po END)                                                        AS total_po_distinct,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND status_pengiriman = 'SELESAI' THEN nomor_po END)                     AS po_delivered,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND on_time_delivery = 'TEPAT WAKTU' THEN nomor_po END)                  AS po_ontime,
-            COUNT(DISTINCT CASE WHEN {bagian_po_cond} AND nomor_po IS NOT NULL
-                AND on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
-                THEN nomor_po END)                                                        AS po_delivered_total
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions}
+            COUNT(*) AS total_pr,
+            SUM(has_po) AS pr_with_po,
+            COUNT(*) - SUM(has_po) AS pr_without_po,
+            COALESCE(SUM(oe_val), 0) AS total_estimasi
+        FROM unique_pr
+        """
+
+        # ── Query PO: filter by date_ordered langsung dari tabel po_items ──────
+        bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
+        filter_po = filter_conditions.replace('department_code', 'poi.department_code').replace('plant_code', 'poi.plant_code').replace('tgl_create_pr', 'poh.date_ordered')
+
+        po_kpi_query = f"""
+        SELECT
+            COUNT(poi.nomor_po)                                           AS total_po,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS total_po_amount,
+            
+            -- AMBIL ESTIMASI MURNI DARI PO ITEMS (APPLE-TO-APPLE)
+            COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0)           AS total_oe_po,
+            
+            ROUND(AVG(gr.lead_time_process_po)::numeric, 2)               AS avg_lead_time,
+            COUNT(DISTINCT poh.nomor_po)                                  AS total_po_distinct,
+            COUNT(DISTINCT CASE WHEN poi.status_pengiriman = 'SELESAI'
+                THEN poh.nomor_po END)                                    AS po_delivered,
+            COUNT(DISTINCT CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU'
+                THEN poh.nomor_po END)                                    AS po_ontime,
+            COUNT(DISTINCT CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
+                THEN poh.nomor_po END)                                    AS po_delivered_total,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS realisasi_po
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND {bagian_po_poi}
+          AND {filter_po}
         """
 
         with st.spinner("Memuat KPI..."):
-            kpi_data = load_data(kpi_query)
+            pr_kpi = load_data(pr_kpi_query)
+            po_kpi = load_data(po_kpi_query)
 
-        total_pr         = int(kpi_data['total_pr'][0] or 0)
-        total_po         = int(kpi_data['total_po'][0] or 0)
-        pr_with_po       = int(kpi_data['pr_with_po'][0] or 0)
-        pr_without       = int(kpi_data['pr_without_po'][0] or 0)
-        estimasi         = float(kpi_data['total_estimasi'][0] or 0)
-        savings          = float(kpi_data['total_savings'][0] or 0)
-        savings_pct      = float(kpi_data['avg_savings_pct'][0] or 0)
-        _alt             = kpi_data['avg_lead_time'][0]
+        total_pr         = int(pr_kpi['total_pr'][0] or 0)
+        total_po         = int(po_kpi['total_po'][0] or 0)
+        pr_with_po       = int(pr_kpi['pr_with_po'][0] or 0)
+        pr_without       = int(pr_kpi['pr_without_po'][0] or 0)
+        
+        # Angka murni PR untuk KPI "Total Estimasi PR"
+        estimasi_pr_all  = float(pr_kpi['total_estimasi'][0] or 0)
+        
+        # Angka Apple-to-Apple untuk KPI "Total Savings"
+        oe_po_val        = float(po_kpi['total_oe_po'][0] or 0)
+        po_amount_val    = float(po_kpi['total_po_amount'][0] or 0)
+        
+        savings          = oe_po_val - po_amount_val
+        savings_pct      = ((savings / oe_po_val) * 100) if oe_po_val > 0 else 0.0
+        
+        _alt             = po_kpi['avg_lead_time'][0]
         avg_lt_val       = float(_alt) if _alt is not None else 0.0
-        total_po_dist    = int(kpi_data['total_po_distinct'][0] or 0)
-        po_delivered     = int(kpi_data['po_delivered'][0] or 0)
-        po_ontime        = int(kpi_data['po_ontime'][0] or 0)
-        po_del_tot       = int(kpi_data['po_delivered_total'][0] or 0)
+        total_po_dist    = int(po_kpi['total_po_distinct'][0] or 0)
+        po_delivered     = int(po_kpi['po_delivered'][0] or 0)
+        po_ontime        = int(po_kpi['po_ontime'][0] or 0)
+        po_del_tot       = int(po_kpi['po_delivered_total'][0] or 0)
         produktivitas    = (pr_with_po / total_pr * 100) if total_pr > 0 else 0.0
         pct_pengiriman   = (po_delivered / total_po_dist * 100) if total_po_dist > 0 else 0.0
         ketepatan_pct    = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
@@ -127,10 +147,32 @@ COUNT(DISTINCT CASE
 END) AS total_pr
 ```
 
-| Sub-metrik | Kalkulasi |
-|---|---|
-| PR with PO | COUNT DISTINCT dimana `nomor_po IS NOT NULL` |
-| PR pending | Total PR − PR with PO |
+**Kalkulasi Sub-metrik PR with PO:**
+```sql
+COUNT DISTINCT dimana `nomor_po IS NOT NULL`
+```
+
+**Contoh Formula Excel:**
+
+PR dibuat di bulan Januari
+```
+=SUMPRODUCT((MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=1) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))<>"") * (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0))<>"X") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0))<>"U") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))<>"1000076"))
+```
+PR dibuat di bulan Januari dengan Filter Department **INV**
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000,0,MATCH("Tgl Create PR",$A$1:$ZZ$1,0)))=1) *
+  (YEAR(INDEX($A$2:$ZZ$21000,0,MATCH("Tgl Create PR",$A$1:$ZZ$1,0)))=2026) *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("PR Deletion Flag",$A$1:$ZZ$1,0))<>"X") *
+  (LEFT(INDEX($A$2:$ZZ$21000,0,MATCH("Account Assignment",$A$1:$ZZ$1,0)),1)<>"U") *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("Material No",$A$1:$ZZ$1,0))<>"1000076") *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("Departement(Requisitioner)",$A$1:$ZZ$1,0))="INV")
+)
+```
+PR dibuat di bulan Januari dan sudah ada PO-nya (tidak harus Januari)
+```
+=SUMPRODUCT((MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) = 1) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> ""))
+```
 
 **Target:** -\
 """,
@@ -150,6 +192,21 @@ COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
 ```
 
 PR pending = jumlah PR yang belum memiliki PO. Semakin kecil = semakin baik.
+```
+= Total_PR - PR_with_PO
+```
+
+**Contoh Formula Excel:**
+
+PO dibuat di bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000,0,MATCH("Date Ordered",$A$1:$ZZ$1,0)))=1) *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("Material No",$A$1:$ZZ$1,0))<>"1000076") *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("PO Deletion Flag",$A$1:$ZZ$1,0))<>"L") *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("No PR",$A$1:$ZZ$1,0))<>"")
+)
+```
 
 **Target:** -\
 """,
@@ -168,7 +225,7 @@ PR pending = jumlah PR yang belum memiliki PO. Semakin kecil = semakin baik.
 COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
 ```
 
-**Formula Excel:**
+**Formula:**
 ```
 = PR_with_PO / Total_PR × 100%
 ```
@@ -188,7 +245,7 @@ COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
                 "label": "Total Savings",
                 "value": format_idr(savings),
                 "delta": f"{format_number(savings_pct, decimals=1)}% avg",
-                "formula": """\
+                "formula": f"""\
 **Total Savings**: Selisih OE dengan realisasi PO.
 
 **Kalkulasi SQL:**
@@ -204,6 +261,28 @@ SUM(oe) - SUM(total_amount_local_curr) AS total_savings
 | Positif | Realisasi < OE → penghematan ✅ |
 | Negatif | Realisasi > OE → over budget ❌ |
 
+**Total Savings saat ini:** Rp {int(savings):,}
+
+**Contoh Formula Excel:** di bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
+  INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)),
+  INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0))
+)
+-
+SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
+  INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0))
+)
+```
+
 **Target:** -\
 """,
             },
@@ -211,17 +290,30 @@ SUM(oe) - SUM(total_amount_local_curr) AS total_savings
                 "key": "kpi_estimasi",
                 "icon_path": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
                 "label": "Total Estimasi PR",
-                "value": format_idr(estimasi),
+                "value": format_idr(estimasi_pr_all),
                 "delta": "Owner's Estimate (OE)",
-                "formula": """\
+                "formula": f"""\
 **Total Estimasi PR (OE)**: Total nilai OE dari semua PR.
+
+**Total Estimasi PR saat ini:** {int(estimasi_pr_all):,}
 
 **Kalkulasi SQL:**
 ```sql
-COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_estimasi
+-- Mengambil estimasi_pr murni, karena di laporan PR SAP nilainya sudah berbentuk harga total (bukan harga satuan)
+SUM(estimasi_pr) AS total_estimasi
 ```
 
-Sumber: `estimasi_pr × quantity_pr`. Anggaran yang disiapkan sebelum proses pengadaan dimulai.
+**Contoh Formula Excel:** di bulan Januari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0)) <> "X") *
+  (LEFT(INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0)), 1) <> "U") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
+  INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0))
+)
+```
 
 **Target:** -\
 """,
@@ -595,10 +687,12 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             dept_query = f"""
             SELECT
                 COALESCE(department_code, 'Unknown') AS department,
-                COUNT(DISTINCT no_pr)                                                AS total_pr,
-                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN no_pr END)        AS pr_with_po
+                -- Ubah dari COUNT(DISTINCT no_pr) menjadi per-item:
+                COUNT(DISTINCT no_pr || '-' || line_item_pr::text) AS total_pr,
+                -- Ubah juga penghitungan With PO-nya:
+                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN no_pr || '-' || line_item_pr::text END) AS pr_with_po
             FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND {bagian_pr_cond}
+            WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
             GROUP BY department_code
             ORDER BY total_pr DESC
             LIMIT 10
@@ -607,12 +701,13 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 dept_data = load_data(dept_query)
 
             if not dept_data.empty:
+                pr_without_po_series = dept_data['total_pr'] - dept_data['pr_with_po']
                 fig = go.Figure(data=[
-                    go.Bar(name='PR with PO',    x=dept_data['department'], y=dept_data['pr_with_po']),
-                    go.Bar(name='PR without PO', x=dept_data['department'],
-                        y=dept_data['total_pr'] - dept_data['pr_with_po'])
+                    go.Bar(name='PR with PO', x=dept_data['department'], y=dept_data['pr_with_po'], marker_color='#1f77b4'),
+                    
+                    go.Bar(name='PR without PO', x=dept_data['department'], y=pr_without_po_series, marker_color='#ff7f0e')
                 ])
-                fig.update_layout(barmode='stack', height=400, separators=",.")
+                fig.update_layout(barmode='group', height=400, separators=",.")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
@@ -653,6 +748,18 @@ Diurutkan descending berdasarkan `total_value`, lalu diambil 10 teratas.
 
 **Sumber kolom:** `total_amount_local_curr` dari tabel `po_items`, di-join ke tabel `vendors`.
 
+
+**Contoh Formula Excel:** untuk bulan Januari dengan Vendor "PETRO JORDAN ABADIPusat, PT."
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000,0,MATCH("Date Ordered",$A$1:$ZZ$1,0)))=1) *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("PO Deletion Flag",$A$1:$ZZ$1,0))<>"L") *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("Material No",$A$1:$ZZ$1,0))<>1000076) *
+  (INDEX($A$2:$ZZ$21000,0,MATCH("Vendor Name",$A$1:$ZZ$1,0))="PETRO JORDAN ABADIPusat, PT.") *
+  INDEX($A$2:$ZZ$21000,0,MATCH("Total Amount in Local Curr",$A$1:$ZZ$1,0))
+)
+```
+
 Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap vendor, urutkan descending, ambil 10 teratas.
                 """)
 
@@ -660,12 +767,15 @@ Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap ven
 
             vendor_query = f"""
             SELECT
-                COALESCE(vendor_name, 'Unknown') AS vendor,
-                COUNT(DISTINCT nomor_po)         AS total_po,
-                SUM(total_amount_local_curr)     AS total_value
-            FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND nomor_po IS NOT NULL AND {bagian_po_cond}
-            GROUP BY vendor_name
+                COALESCE(v.vendor_name, 'Unknown') AS vendor,
+                COUNT(DISTINCT poi.nomor_po)           AS total_po,
+                SUM(poi.total_amount_local_curr)       AS total_value
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND {bagian_po_poi}
+            GROUP BY v.vendor_name
             ORDER BY total_value DESC
             LIMIT 10
             """
@@ -721,7 +831,7 @@ Kedua sumber digabung dengan `FULL OUTER JOIN` agar bulan tanpa PR atau tanpa PO
 
 Mode **Kumulatif**: menggunakan `.cumsum()` di Python setelah data diambil, cocok untuk memantau pencapaian target tahunan.
 
-Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan)` per baris bulan.
+Formula Excel mengikuti KPI **Total PR** dan **Total PO** di atas.
                 """)
 
             st.caption("Jumlah PR dan PO yang dibuat per bulan.")
@@ -738,10 +848,13 @@ Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan
             ),
             po_monthly AS (
                 SELECT
-                    DATE_TRUNC('month', date_ordered) AS month_date,
-                    COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
-                FROM vw_pr_po_complete
-                WHERE date_ordered IS NOT NULL AND {filter_conditions}
+                    DATE_TRUNC('month', poh.date_ordered) AS month_date,
+                    COUNT(poi.nomor_po) AS total_po
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered IS NOT NULL
+                  AND poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND {bagian_po_poi}
                 GROUP BY 1
             )
             SELECT
@@ -822,7 +935,17 @@ END
 
 **Sumber kolom:** `lead_time_process_po` di `vw_pr_po_complete`, dihitung sebagai selisih hari antara `tgl_create_pr` dan `date_ordered` (tanggal PO diterbitkan).
 
-Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)` atau nested `=IF(...)`.
+**Contoh Formula Excel:** lead time `date_ordered - tgl_create_pr` = range 0-7 hari
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") *
+  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) - INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0) *
+  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) - INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) <= 7)
+)
+```
                 """)
 
             st.caption("Distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).")
@@ -839,7 +962,11 @@ Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)
                 COUNT(*) AS count,
                 MIN(lead_time_process_po) AS sort_order
             FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND lead_time_process_po IS NOT NULL AND {bagian_po_cond}
+            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
+            AND lead_time_process_po IS NOT NULL
+            AND lead_time_process_po >= 0
+            AND no_pr != 'No PR'
+            AND {bagian_po_cond}
             GROUP BY 1
             ORDER BY sort_order ASC
             """
@@ -897,17 +1024,17 @@ Di Excel: `=date_ordered - tgl_create_pr`, lalu klasifikasikan dengan `=IFS(...)
 
 **Kalkulasi SQL:**
 ```sql
-SELECT no_pr, tgl_create_pr, department_code, bagian_pr,
-       SUM(oe) AS total_estimasi
+SELECT no_pr, line_item_pr, tgl_create_pr, department_code AS department,
+    bagian_pr AS bagian,
+    COALESCE(oe, 0) AS total_estimasi
 FROM vw_pr_po_complete
-WHERE nomor_po IS NULL
-  AND no_pr != 'No PR'
-GROUP BY no_pr, tgl_create_pr, department_code, bagian_pr
-ORDER BY tgl_create_pr ASC   -- yang paling lama muncul di atas
+WHERE {filter_conditions} AND nomor_po IS NULL
+AND no_pr != 'No PR' AND {bagian_pr_cond}
+ORDER BY tgl_create_pr ASC, no_pr ASC, line_item_pr ASC
 LIMIT 10
 ```
 
-**Kolom `total_estimasi`:** `SUM(oe)`: total nilai estimasi seluruh baris item pada PR tersebut.
+**Kolom `total_estimasi`:** nilai estimasi per baris item PR (`estimasi_pr × quantity_pr`). Tiap baris item PR ditampilkan secara terpisah karena item yang berbeda bisa memiliki department yang berbeda.
 
 Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending → ambil 10 baris teratas.
             """)
@@ -916,15 +1043,16 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
 
         pr_without_po_query = f"""
         SELECT
-            no_pr, tgl_create_pr,
+            no_pr,
+            line_item_pr,
+            tgl_create_pr,
             department_code AS department,
             bagian_pr AS bagian,
-            COALESCE(SUM(oe), 0) AS total_estimasi
+            COALESCE(oe, 0) AS total_estimasi
         FROM vw_pr_po_complete
         WHERE {filter_conditions} AND nomor_po IS NULL
         AND no_pr != 'No PR' AND {bagian_pr_cond}
-        GROUP BY no_pr, tgl_create_pr, department_code, bagian_pr
-        ORDER BY tgl_create_pr ASC
+        ORDER BY tgl_create_pr ASC, no_pr ASC, line_item_pr ASC
         LIMIT 10
         """
         with st.spinner("Memuat PR pending..."):
@@ -977,17 +1105,51 @@ Di Excel: filter kolom *No PO* yang kosong → urutkan *Tgl Create PR* ascending
 | IN PROGRESS | PO sudah terbit, Good Receipt belum masuk |
 | PENDING | Belum ada informasi delivery sama sekali |
 
-Di Excel: `=IF(tgl_gr="","IN PROGRESS",IF(tgl_gr<=del_date_po,"TEPAT WAKTU","TERLAMBAT"))`
+**Contoh Formula Excel:** bulan Januari
+- Tepat Waktu                                   
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Delivery Completed", $A$1:$ZZ$1, 0)) = "X") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Terima Barang", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Terima Barang", $A$1:$ZZ$1, 0)) <= INDEX($A$2:$ZZ$21000, 0, MATCH("Del Date PO", $A$1:$ZZ$1, 0)))
+)
+```
+- In Progress                                   
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Delivery Completed", $A$1:$ZZ$1, 0)) <> "X")
+)
+```
+- Terlambat                                
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Delivery Completed", $A$1:$ZZ$1, 0)) = "X") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Terima Barang", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Terima Barang", $A$1:$ZZ$1, 0)) > INDEX($A$2:$ZZ$21000, 0, MATCH("Del Date PO", $A$1:$ZZ$1, 0)))
+)
+```
                 """)
 
             st.caption("Status pengiriman PO (tepat waktu vs terlambat vs pending).")
                 
             delivery_query = f"""
             SELECT
-                COALESCE(on_time_delivery, 'PENDING') AS status_delivery,
+                COALESCE(poi.on_time_delivery, 'PENDING') AS status_delivery,
                 COUNT(*) AS count
-            FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND {bagian_po_cond} AND nomor_po IS NOT NULL
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND {bagian_po_poi}
             GROUP BY 1
             """
             with st.spinner("Memuat delivery performance..."):
@@ -1051,7 +1213,17 @@ ORDER BY abc_indicator
 | B | ~30% | ~15% - material menengah |
 | C | ~50% | ~5% - material umum, harga rendah |
 
-**Sumber:** Kolom `abc_indicator` dari master material SAP, tersedia di kolom *ABC Ind.* pada data PO SAP.
+**Contoh Formula Excel:** bulan Januari material **A**
+```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("ABC Indicator", $A$1:$ZZ$1, 0)) = "A") *
+  INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0))
+)
+```
                 """)
 
             st.caption("Total nilai PO per kategori ABC material.")
@@ -1061,7 +1233,7 @@ ORDER BY abc_indicator
                 abc_indicator,
                 SUM(total_amount_local_curr) AS total_value
             FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND abc_indicator IS NOT NULL AND {bagian_po_cond}
+            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}' AND abc_indicator IS NOT NULL AND {bagian_po_cond}
             GROUP BY abc_indicator
             ORDER BY abc_indicator
             """
@@ -1107,7 +1279,7 @@ ORDER BY abc_indicator
         suplemen_lines.append(f"- Total PR: {format_number(total_pr)} | PR dengan PO: {format_number(pr_with_po)} | PR Pending: {format_number(pr_without)}")
         suplemen_lines.append(f"- Total PO (baris): {format_number(total_po)} | Total PO Unik: {format_number(total_po_dist)}")
         suplemen_lines.append(f"- Produktivitas PR→PO: {format_number(produktivitas, decimals=2)}%")
-        suplemen_lines.append(f"- Total Estimasi (OE): {format_idr(estimasi)}")
+        suplemen_lines.append(f"- Total Estimasi (OE): {format_idr(estimasi_pr_all)}")
         suplemen_lines.append(f"- Total Savings: {format_idr(savings)} ({format_number(savings_pct, decimals=1)}%)")
         suplemen_lines.append(f"- Avg Lead Time Proses PO: {format_number(avg_lt_val, decimals=1)} hari")
         suplemen_lines.append(f"- % Pengiriman Selesai: {format_number(pct_pengiriman, decimals=1)}% ({format_number(po_delivered)} GR / {format_number(total_po_dist)} PO)")
@@ -1117,20 +1289,20 @@ ORDER BY abc_indicator
         # 2. Top 10 Vendor
         if 'vendor_data' in locals() and not vendor_data.empty:
             suplemen_lines.append("## 2. TOP 10 VENDOR (Berdasarkan Nilai PO)")
-            suplemen_lines.append(vendor_data.to_markdown(index=False))
+            suplemen_lines.append(vendor_data.to_csv(index=False))
             suplemen_lines.append("")
 
         # 3. Top PR Pending Tertua
         if 'pr_without_po' in locals() and not pr_without_po.empty:
             suplemen_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
             df_pending_simple = pr_without_po[['no_pr', 'department', 'total_estimasi']]
-            suplemen_lines.append(df_pending_simple.to_markdown(index=False))
+            suplemen_lines.append(df_pending_simple.to_csv(index=False))
             suplemen_lines.append("")
 
         # 4. Status Pengiriman
         if 'delivery_data' in locals() and not delivery_data.empty:
             suplemen_lines.append("## 4. STATUS PENGIRIMAN PO")
-            suplemen_lines.append(delivery_data.to_markdown(index=False))
+            suplemen_lines.append(delivery_data.to_csv(index=False))
             suplemen_lines.append("")
 
         # 5. Tren PR-PO per Bulan
@@ -1138,25 +1310,25 @@ ORDER BY abc_indicator
             suplemen_lines.append("## 5. TREN PEMBUATAN PR & PO PER BULAN")
             df_trend_simple = trend_data.copy()
             df_trend_simple['month'] = df_trend_simple['month'].astype(str).str[:7]
-            suplemen_lines.append(df_trend_simple.to_markdown(index=False))
+            suplemen_lines.append(df_trend_simple.to_csv(index=False))
             suplemen_lines.append("")
 
         # 6. Distribusi Lead Time
         if 'leadtime_data' in locals() and not leadtime_data.empty:
             suplemen_lines.append("## 6. DISTRIBUSI LEAD TIME PROSES PO")
-            suplemen_lines.append(leadtime_data[['lead_time_range', 'count']].to_markdown(index=False))
+            suplemen_lines.append(leadtime_data[['lead_time_range', 'count']].to_csv(index=False))
             suplemen_lines.append("")
 
         # 7. Distribusi PR per Department
         if 'dept_data' in locals() and not dept_data.empty:
             suplemen_lines.append("## 7. DISTRIBUSI PR PER DEPARTMENT (TOP 10)")
-            suplemen_lines.append(dept_data.head(10).to_markdown(index=False))
+            suplemen_lines.append(dept_data.head(10).to_csv(index=False))
             suplemen_lines.append("")
 
         # 8. Kategori Material ABC
         if 'material_data' in locals() and not material_data.empty:
             suplemen_lines.append("## 8. TOTAL NILAI PO PER KATEGORI MATERIAL (ABC)")
-            suplemen_lines.append(material_data[['abc_indicator', 'total_value']].to_markdown(index=False))
+            suplemen_lines.append(material_data[['abc_indicator', 'total_value']].to_csv(index=False))
             suplemen_lines.append("")
 
         konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)

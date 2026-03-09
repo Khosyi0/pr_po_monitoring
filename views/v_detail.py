@@ -118,7 +118,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                                         'nomor_po', 'vendor_name', 'total_amount_local_curr',
                                         'lead_time_process_po', 'status_pengiriman', 'on_time_delivery']
                            if c in table_data.columns]
-            konteks_lines.append(table_data[cols_for_ai].head(20).to_markdown(index=False))
+            konteks_lines.append(table_data[cols_for_ai].head(20).to_csv(index=False))
             konteks_lines.append("")
         else:
             konteks_lines.append("Tidak ada data yang cocok dengan filter yang dipilih.\n")

@@ -301,7 +301,7 @@ END AS umur_po
             konteks_lines.append(f"## 1. ALERT: PR PENDING > 30 HARI (Total: {len(alert_pr_data)} PR)")
             # Ambil maksimal 15 baris untuk menghemat token
             df_pr_simple = alert_pr_data[['no_pr', 'department', 'umur_hari', 'estimasi_pr']].head(15)
-            konteks_lines.append(df_pr_simple.to_markdown(index=False))
+            konteks_lines.append(df_pr_simple.to_csv(index=False))
             konteks_lines.append("\n")
         else:
             konteks_lines.append("## 1. ALERT: PR PENDING > 30 HARI\nAman. Tidak ada PR pending > 30 hari.\n")
@@ -311,7 +311,7 @@ END AS umur_po
             konteks_lines.append(f"## 2. ALERT: PO OVERDUE / TERLAMBAT (Total: {len(alert_po_data)} PO)")
             # Ambil kolom esensial maksimal 20 baris
             df_po_simple = alert_po_data[['nomor_po', 'vendor_name', 'target_delivery', 'hari_terlambat']].head(20)
-            konteks_lines.append(df_po_simple.to_markdown(index=False))
+            konteks_lines.append(df_po_simple.to_csv(index=False))
             konteks_lines.append("\n")
         else:
             konteks_lines.append("## 2. ALERT: PO OVERDUE\nAman. Tidak ada PO overdue/terlambat pengiriman.\n")
@@ -319,7 +319,7 @@ END AS umur_po
         # 3. Alert Aging PO
         if 'aging_data' in locals() and not aging_data.empty:
             konteks_lines.append("## 3. RINGKASAN AGING PO (BELUM DIKIRIM)")
-            konteks_lines.append(aging_data.to_markdown(index=False))
+            konteks_lines.append(aging_data.to_csv(index=False))
             konteks_lines.append("\n")
         else:
             konteks_lines.append("## 3. RINGKASAN AGING PO\nTidak ada data aging PO.\n")
