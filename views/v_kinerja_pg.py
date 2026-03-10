@@ -191,8 +191,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
             function init() {
                 var tabs = Array.from(window.parent.document.querySelectorAll(SELECTOR));
-                var pgTabs = tabs.slice(0, 3);
-                if (pgTabs.length === 3) {
+                var pgTabs = tabs.slice(0, 2);
+                if (pgTabs.length === 2) {
                     restoreTab(pgTabs);
                 } else {
                     setTimeout(init, 100);
@@ -204,10 +204,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         </script>
         """, height=0)
 
-        tab1, tab2, tab3 = st.tabs([
+        tab1, tab2 = st.tabs([
             ":material/overview: Overview per Purchasing Group",
-            ":material/sell: Breakdown per Metode Tender",
-            ":material/speed: Kecepatan Proses"
+            ":material/sell: Breakdown Metode Tender & Kecepatan",
         ])
 
         # ══════════════════════════════════════════════════════════════════════
@@ -215,15 +214,45 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         # ══════════════════════════════════════════════════════════════════════
         with tab1:
 
+            # ── Query: hitung jml_item_pr & pr_with_po dari pr_items ────────
+            # bagian_pr di pr_items berisi 'BARUM'/'ALPATA'/'BB/BD/BP' (hasil ETL classify_bagian),
+            # BUKAN kode purchasing group (B01, B05, dst).
+            # Oleh karena itu kita TIDAK bisa JOIN pr_items ke purchase_orders via purchasing_group.
+            #
+            # Strategi: gunakan dua sub-query terpisah berdasarkan filter bagian_pr / bagian_po,
+            # lalu gabung di Python via merge pada kolom 'purchasing_group' dari PO.
+            #
+            # jml_item_pr & pr_with_po diambil dari pr_items yang sudah terfilter bagian_pr,
+            # lalu di-GROUP BY purchasing_group yang diambil dari po_items (via no_pr+line_item_pr).
+            # PR yang belum punya PO sama sekali akan tetap terlewat — ini trade-off yang wajar
+            # karena kita tidak tahu purchasing_group-nya jika PR belum di-assign ke PO.
+            bagian_pr_cond_pri = bagian_pr_cond.replace('bagian_pr', 'pri.bagian_pr')
+
+            # Sub-query A: PR stats per purchasing_group (ambil pg dari po_items via link no_pr)
+            pg_pr_query = f"""
+            SELECT
+                COALESCE(poh.purchasing_group, 'Unassigned')                         AS purchasing_group,
+                COUNT(DISTINCT pri.no_pr || '-' || pri.line_item_pr::text)
+                    FILTER (WHERE pri.material_no IS NOT NULL
+                              AND (pri.batal IS NULL OR pri.batal = FALSE))           AS jml_item_pr,
+                COUNT(DISTINCT pri.no_pr || '-' || pri.line_item_pr::text)
+                    FILTER (WHERE pri.material_no IS NOT NULL
+                              AND (pri.batal IS NULL OR pri.batal = FALSE))           AS pr_with_po
+            FROM pr_items pri
+            JOIN po_items poi
+                ON pri.no_pr = poi.no_pr AND pri.line_item_pr = poi.line_item_pr
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE pri.tgl_create_pr >= '{date_from}'
+              AND pri.tgl_create_pr <= '{date_to}'
+              AND ({bagian_pr_cond_pri})
+            GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
+            """
+
+            # Sub-query B: PO stats per purchasing_group (sama seperti sebelumnya)
             pg_query = f"""
             SELECT
                 COALESCE(poh.purchasing_group, 'Unassigned')                         AS purchasing_group,
-                COUNT(DISTINCT v.no_pr || '-' || v.line_item_pr::text)
-                    FILTER (WHERE v.no_pr != 'No PR' AND {bagian_pr_cond})           AS jml_item_pr,
                 COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)             AS jml_item_po,
-                COUNT(DISTINCT v.no_pr || '-' || v.line_item_pr::text)
-                    FILTER (WHERE v.nomor_po IS NOT NULL AND v.no_pr != 'No PR'
-                            AND {bagian_pr_cond})                                    AS pr_with_po,
                 COALESCE(SUM(poi.estimasi_pr * poi.quantity_pr)
                     FILTER (WHERE poi.estimasi_pr > 0 AND poi.quantity_pr > 0), 0)   AS nilai_oe,
                 COALESCE(SUM(poi.total_amount_local_curr), 0)                        AS nilai_po,
@@ -248,7 +277,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             FROM po_items poi
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
             LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
-            LEFT JOIN vw_pr_po_complete v ON poi.nomor_po = v.nomor_po AND poi.item_po = v.item_po
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
             GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
@@ -256,7 +284,24 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             """
 
             with st.spinner("Memuat data per Purchasing Group..."):
-                pg_data = load_data(pg_query)
+                pg_po_data = load_data(pg_query)
+                pg_pr_data = load_data(pg_pr_query)
+
+            # Merge: PO sebagai base, PR di-join untuk kolom konversi
+            if not pg_po_data.empty:
+                if not pg_pr_data.empty:
+                    pg_data = pg_po_data.merge(
+                        pg_pr_data[['purchasing_group', 'jml_item_pr', 'pr_with_po']],
+                        on='purchasing_group', how='left'
+                    )
+                else:
+                    pg_data = pg_po_data.copy()
+                    pg_data['jml_item_pr'] = 0
+                    pg_data['pr_with_po']  = 0
+                pg_data['jml_item_pr'] = pg_data['jml_item_pr'].fillna(0).astype(int)
+                pg_data['pr_with_po']  = pg_data['pr_with_po'].fillna(0).astype(int)
+            else:
+                pg_data = pd.DataFrame()
 
             if not pg_data.empty:
                 # ── Tabel Ringkasan ───────────────────────────────────────────
@@ -278,7 +323,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 df_display = df_table.copy()
                 df_display['jml_item_pr']  = df_display['jml_item_pr'].apply(format_number)
                 df_display['jml_item_po']  = df_display['jml_item_po'].apply(format_number)
-                df_display['nilai_oe']     = df_display['nilai_oe'].apply(format_currency) # Ganti jadi format_currency jika tidak ingin ada T/M/Jt
+                df_display['nilai_oe']     = df_display['nilai_oe'].apply(format_currency)
                 df_display['nilai_po']     = df_display['nilai_po'].apply(format_currency)
                 df_display['efisiensi']    = df_display['efisiensi'].apply(format_currency)
                 df_display['efisiensi_pct']= df_display['efisiensi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
@@ -290,11 +335,21 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     lambda x: f"{format_number(x)} Hari" if pd.notna(x) else "N/A")
                 df_display['konversi_pct'] = df_display['konversi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
 
+                # Susun urutan kolom: Item PO → Item PR → pr_with_po → % PR→PO → sisanya
+                col_order = [
+                    'purchasing_group',
+                    'jml_item_po', 'jml_item_pr', 'pr_with_po', 'konversi_pct',
+                    'nilai_oe', 'nilai_po', 'efisiensi', 'efisiensi_pct',
+                    'avg_lead_time', 'min_lead_time', 'max_lead_time',
+                ]
+                df_display = df_display[[c for c in col_order if c in df_display.columns]]
+
                 st.dataframe(
                     df_display.rename(columns={
                         'purchasing_group': 'Purchasing Group',
-                        'jml_item_pr'     : 'Item PR',
                         'jml_item_po'     : 'Item PO',
+                        'jml_item_pr'     : 'Item PR',
+                        'pr_with_po'      : 'PR dgn PO',
                         'konversi_pct'    : '% PR→PO',
                         'nilai_oe'        : 'Total OE',
                         'nilai_po'        : 'Realisasi PO',
@@ -343,12 +398,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 |---|---|
 | Nilai OE | `SUM(estimasi_pr × quantity_pr)` |
 | Nilai Realisasi | `SUM(total_amount_local_curr)` |
-| Efisiensi | `Nilai OE − Nilai Realisasi` |
 
-**Formula Excel:**
-- Kolom **OE**: `= Estimasi_PR × Qty_PR`
-- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
-- Lalu `=SUMIF(kolom_pg, nama_pg, kolom_oe)` dan `=SUMIF(kolom_pg, nama_pg, kolom_realisasi)`
+**Formula Excel:** (PO SAP)
+- Filter sesuai Purchasing Group yang ingin dicari
+- Kolom **OE**: `= Estimasi PR × Quantity PR`
+- Jumlahkan masing-masing kolom **OE** dan **Total Amount in Local Curr** menggunakan `SUM`
 
 **Cara membaca:** Bar Realisasi (biru) **lebih pendek** dari OE (oranye) = ada penghematan ✅. Lebih panjang = over budget ❌.
                         """)
@@ -404,16 +458,19 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 **% Efisiensi per Purchasing Group**: Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
 
 **Kalkulasi SQL:**
-```sql
-% Efisiensi = (SUM(oe) - SUM(total_amount_local_curr))
-            / NULLIF(SUM(oe), 0) * 100
-```
+| Metrik | Formula |
+|---|---|
+| Nilai OE | `SUM(estimasi_pr × quantity_pr)` |
+| Nilai Realisasi | `SUM(total_amount_local_curr)` |
+| % Efisiensi | `(Nilai OE − Nilai Realisasi) × 100%` |
 
-**Formula Excel (kolom % Efisiensi):**
-```
-= (OE - Total_Amount) / OE
-```
-Format cell sebagai **persentase (%)**.
+**Formula Excel:** (PO SAP)
+- Filter sesuai Purchasing Group yang ingin dicari
+- Kolom OE: = `Estimasi PR × Quantity PR`
+- Kolom Efisiensi: = `OE - Total Amount in Local Curr`
+- Jumlahkan masing-masing kolom **OE** dan **Efisiensi** menggunakan `SUM`
+- % Efisiensi: = `Total Efisiensi / Total OE`
+- Format cell sebagai **persentase (%)**.
 
 **Interpretasi warna:**
 - 🟢 **Positif** = realisasi di bawah anggaran → Purchasing Group berhasil hemat
@@ -476,14 +533,14 @@ Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group terseb
 **Rata-rata Lead Time per Purchasing Group**: Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
 
 **Kalkulasi SQL:**
-```sql
-AVG(lead_time_process_po) per purchasing_group
-```
+| Metrik | Formula |
+|---|---|
+| Lead Time | AVG(`date_ordered - tgl_create_pr`) per purchasing_group |
 
-**Sumber kolom `lead_time_process_po`:**
-Dihitung sebagai selisih hari antara `tgl_create_pr` (PR dibuat di SAP) dan `date_ordered` (tanggal PO diterbitkan).
-
-Di Excel: `= date_ordered - tgl_create_pr` per baris → `=AVERAGEIF(kolom_pg, nama_pg, kolom_lead_time)`.
+**Formula Excel:** (PO SAP) 
+- Filter sesuai Purchasing Group yang ingin dicari
+- Lead Time `= Date Ordered - Tgl Create PR`
+- Lalu **Lead Time** dirata-rata
 
 **Target:** Garis merah putus-putus = **55 hari**. Purchasing Group yang melampaui garis ini perlu evaluasi alur proses pengadaannya.
                         """)
@@ -533,26 +590,35 @@ Di Excel: `= date_ordered - tgl_create_pr` per baris → `=AVERAGEIF(kolom_pg, n
 
                     if st.session_state.get(key_konv, False):
                         st.info("""\
-**% Konversi PR → PO per Purchasing Group**: Bar chart horizontal persentase PR yang berhasil dikonversi menjadi PO.
+**% Konversi PR → PO per Purchasing Group**: Bar chart horizontal persentase item PR yang berhasil dikonversi menjadi PO, per Purchasing Group.
 
 **Kalkulasi SQL:**
 ```sql
-% Konversi = COUNT(DISTINCT no_pr yang memiliki nomor_po)
-           / COUNT(DISTINCT total no_pr)
-           × 100
+-- Item PR: dari tabel pr_items, filter tgl_create_pr sesuai rentang tanggal
+--          JOIN ke po_items via no_pr + line_item_pr untuk mendapatkan purchasing_group
+Item PR     = COUNT(DISTINCT no_pr || '-' || line_item_pr)
+              FROM pr_items
+              WHERE material_no IS NOT NULL AND batal IS NULL/FALSE
+
+-- PR dgn PO: item PR di atas yang sudah memiliki pasangan di po_items
+PR dgn PO   = COUNT(DISTINCT no_pr || '-' || line_item_pr)
+              FROM pr_items JOIN po_items ON no_pr + line_item_pr
+
+% Konversi  = PR dgn PO / Item PR × 100
 ```
 
-PR dianggap "sudah PO" jika setidaknya satu baris di `vw_pr_po_complete` memiliki `nomor_po IS NOT NULL`.
+**Catatan penting:** PR yang **belum punya PO sama sekali** tidak dapat ditampilkan per Purchasing Group karena data purchasing group hanya tersedia setelah PR dikonversi ke PO. Oleh karena itu, `% Konversi` di sini mencerminkan **seberapa besar porsi item PR (yang sudah terhubung ke PO) dibandingkan total item PR yang ada dalam filter tanggal**.
 
-Di Excel:
-```
-= COUNTIFS(kolom_no_pr, no_pr_x, kolom_nomor_po, "<>")
-/ COUNTIF(kolom_no_pr, no_pr_x)
-```
+**Formula Excel:** (PR SAP + PO SAP, digabung via No PR + Line Item PR)
+- Filter Purchasing Group sesuai yang ingin dicari (dari kolom PO SAP)
+- Hitung jumlah unik `No PR + Line Item PR` dari PR SAP = **Item PR**
+- Hitung jumlah unik `No PR + Line Item PR` yang juga ada di PO SAP = **PR dgn PO**
+- `% Konversi = PR dgn PO / Item PR`
 
 **Cara membaca:**
-- % **tinggi** (mendekati 100%) = hampir semua PR sudah diproses menjadi PO ✅
-- % **rendah** = banyak PR tertahan/pending → perlu investigasi penyebab (kekurangan dokumen, anggaran, dll)
+- % **tinggi** (mendekati 100%) = hampir semua PR dalam periode ini sudah terkonversi ke PO ✅
+- % **rendah** = banyak PR yang belum diproses → perlu investigasi (anggaran, kelengkapan dokumen, dll)
+- **0,0%** = tidak ada item PR yang ditemukan dalam rentang tanggal filter untuk Purchasing Group ini
                         """)
                     
                     st.caption("Persentase PR yang berhasil dikonversi menjadi PO.")
@@ -581,11 +647,188 @@ Di Excel:
                 st.info("Tidak ada data kinerja Purchasing Group pada rentang waktu ini.")
 
         # ══════════════════════════════════════════════════════════════════════
-        # TAB 2: BREAKDOWN KONTRAK & TURN AROUND
+        # TAB 2: BREAKDOWN METODE TENDER, TURN AROUND & KECEPATAN PROSES
         # ══════════════════════════════════════════════════════════════════════
         with tab2:
-            st.markdown("Breakdown pengadaan berdasarkan **jenis tender** dan **Turn Around**.")
-            
+            st.markdown("Breakdown pengadaan berdasarkan **jenis tender** dan **Turn Around**, lengkap dengan analisis kecepatan proses dan tren lead time.")
+
+            # ── KPI Kecepatan (pindahan dari tab 3) ──────────────────────────
+            speed_kpi_query = f"""
+            SELECT
+                ROUND(AVG(poi.pr_po_days)::numeric, 1)                               AS avg_lt_overall,
+                ROUND(MIN(poi.pr_po_days)::numeric, 0)                               AS min_lt,
+                ROUND(MAX(poi.pr_po_days)::numeric, 0)                               AS max_lt,
+                ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
+                    (ORDER BY poi.pr_po_days)::numeric, 1)                            AS median_lt,
+                COUNT(CASE WHEN poi.pr_po_days <= 55 THEN 1 END)                     AS jml_ontime,
+                COUNT(CASE WHEN poi.pr_po_days > 55 THEN 1 END)                      AS jml_late,
+                COUNT(poi.pr_po_days)                                                 AS total_lt
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND poi.pr_po_days IS NOT NULL
+              AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+            """
+
+            with st.spinner("Memuat KPI kecepatan..."):
+                speed_kpi = load_data(speed_kpi_query)
+
+            spd_avg_lt = spd_med_lt = spd_min_lt = spd_max_lt = None
+            spd_ontime = spd_late = spd_total = 0
+            spd_ontime_pct = 0
+            spd_d_color = "normal"
+
+            if not speed_kpi.empty and speed_kpi['total_lt'][0]:
+                spd_avg_lt     = float(speed_kpi['avg_lt_overall'][0] or 0)
+                spd_med_lt     = float(speed_kpi['median_lt'][0] or 0)
+                spd_min_lt     = int(speed_kpi['min_lt'][0] or 0)
+                spd_max_lt     = int(speed_kpi['max_lt'][0] or 0)
+                spd_ontime     = int(speed_kpi['jml_ontime'][0] or 0)
+                spd_late       = int(speed_kpi['jml_late'][0] or 0)
+                spd_total      = int(speed_kpi['total_lt'][0] or 1)
+                spd_ontime_pct = spd_ontime / spd_total * 100
+
+                if spd_ontime_pct >= 80:
+                    spd_d_color = "normal"
+                elif 60 <= spd_ontime_pct < 80:
+                    spd_d_color = "off"
+                else:
+                    spd_d_color = "inverse"
+
+                SPEED_KPI = [
+                    {
+                        "key": "kpi_speed_avg",
+                        "label": "Avg Lead Time",
+                        "value": f"{format_number(spd_avg_lt, decimals=1)} Hari",
+                        "delta": "✅ On Target" if spd_avg_lt <= 55 else "⚠️ Over Target",
+                        "formula": """\
+**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+
+**Kalkulasi SQL:**
+```sql
+ROUND(AVG(pr_po_days)::numeric, 1) AS avg_lt_overall
+FROM po_items JOIN purchase_orders ...
+```
+
+**Sumber `pr_po_days`:** Selisih hari `Date Ordered − Tgl Create PR` yang dihitung saat ETL.
+
+**Target SLA = 55 hari.** Rata-rata lebih sensitif terhadap outlier dibanding median — bandingkan keduanya untuk gambaran lengkap.
+"""
+                    },
+                    {
+                        "key": "kpi_speed_median",
+                        "label": "Median Lead Time",
+                        "value": f"{format_number(spd_med_lt, decimals=1)} Hari",
+                        "delta": None,
+                        "formula": """\
+**Median Lead Time**: Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
+
+**Kalkulasi SQL:**
+```sql
+PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pr_po_days) AS median_lt
+```
+
+Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO dengan lead time ekstrem. Gunakan median sebagai ukuran "kecepatan tipikal".
+"""
+                    },
+                    {
+                        "key": "kpi_speed_rentang",
+                        "label": "Rentang Lead Time",
+                        "value": f"{format_number(spd_min_lt)} - {format_number(spd_max_lt)} Hari",
+                        "delta": None,
+                        "formula": """\
+**Rentang Lead Time**: Selisih antara lead time terpendek dan terpanjang dalam periode filter.
+
+**Rentang sempit** = proses konsisten. **Rentang lebar** = variabilitas tinggi, perlu investigasi outlier.
+"""
+                    },
+                    {
+                        "key": "kpi_speed_ontime",
+                        "label": "On-Time (≤55 Hari)",
+                        "value": f"{format_number(spd_ontime)}",
+                        "delta": f"{format_number(spd_ontime_pct, decimals=1)}% dari total",
+                        "formula": """\
+**On-Time (≤55 Hari)**: Jumlah PO yang diproses dalam batas SLA 55 hari.
+
+| % On-Time | Status |
+|---|---|
+| ≥ 80% | 🟢 Proses berjalan baik |
+| 60–79% | 🟡 Perlu perhatian |
+| < 60% | 🔴 Kritis |
+"""
+                    },
+                    {
+                        "key": "kpi_speed_late",
+                        "label": "Terlambat (>55 Hari)",
+                        "value": f"{format_number(spd_late)}",
+                        "delta": f"{format_number(100 - spd_ontime_pct, decimals=1)}% dari total",
+                        "formula": """\
+**Terlambat (>55 Hari)**: Jumlah PO yang melebihi batas SLA 55 hari.
+
+Drill-down ke tabel **Ringkasan Kecepatan per PG** di bawah untuk identifikasi PG dengan % terlambat tertinggi.
+"""
+                    },
+                ]
+
+                for kpi in SPEED_KPI:
+                    if kpi["key"] not in st.session_state:
+                        st.session_state[kpi["key"]] = False
+
+                speed_cols = st.columns(len(SPEED_KPI))
+                for col, kpi in zip(speed_cols, SPEED_KPI):
+                    with col:
+                        m_col, btn_col = st.columns([5, 1])
+                        with m_col:
+                            st.metric(label=kpi["label"], value=kpi["value"],
+                                      delta=kpi["delta"], delta_color=spd_d_color)
+                        with btn_col:
+                            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
+                            is_open = st.session_state[kpi["key"]]
+                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                            st.button(icon, key=f"btn_{kpi['key']}", help="Hide Formula" if is_open else "Show Formula",
+                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+
+                # JS warna delta On-Time & Terlambat
+                import streamlit.components.v1 as _comp
+                _ontime_color = "#09ab3b" if spd_ontime_pct >= 80 else ("#ffa500" if spd_ontime_pct >= 60 else "#ff4b4b")
+                _comp.html(f"""
+                <script>
+                (function() {{
+                    function applyColors() {{
+                        var doc    = window.parent.document;
+                        var labels = doc.querySelectorAll('[data-testid="stMetricLabel"]');
+                        var found  = 0;
+                        labels.forEach(function(label) {{
+                            var text = (label.innerText || label.textContent || "").trim();
+                            var color = null;
+                            if (text.indexOf("On-Time")   !== -1) color = "{_ontime_color}";
+                            if (text.indexOf("Terlambat") !== -1) color = "{_ontime_color}";
+                            if (!color) return;
+                            var metric = label.closest('[data-testid="stMetric"]');
+                            if (!metric) return;
+                            var delta = metric.querySelector('[data-testid="stMetricDelta"]');
+                            if (!delta) return;
+                            [delta].concat(Array.from(delta.querySelectorAll("*"))).forEach(function(el) {{
+                                el.style.setProperty("color", color, "important");
+                                el.style.setProperty("-webkit-text-fill-color", color, "important");
+                            }});
+                            found++;
+                        }});
+                        if (found < 2) setTimeout(applyColors, 150);
+                    }}
+                    setTimeout(applyColors, 250);
+                    window.addEventListener("load", function() {{ setTimeout(applyColors, 250); }});
+                }})();
+                </script>
+                """, height=0)
+
+                for kpi in SPEED_KPI:
+                    if st.session_state[kpi["key"]]:
+                        st.info(kpi["formula"])
+
+            st.markdown("---")
+
+            # ── ROW 1: Kontrak vs Non-Kontrak (kiri) | Turn Around (kanan) ──
             col1, col2 = st.columns(2)
 
             # ── Kiri: Breakdown Kontrak vs Non-Kontrak ────────────────────
@@ -614,19 +857,13 @@ Di Excel:
                     st.info("""\
 **Kontrak vs Non-Kontrak per Purchasing Group**: Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
 
-**Kalkulasi `jenis_tender` di `vw_pr_po_complete`:**
-```sql
-CASE
-  WHEN LEFT(contract_no, 1) = '4' THEN 'PR - PO Kontrak'
-  ELSE 'Tender Normal'
-END
-```
-Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.
+**Formula Excel:** (PO SAP)
+- Filter sesuai Purchasing Group yang ingin dicari
+- Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
+- Total Realisasi: `= (SUM(Total Amount in Local Curr))`
+- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
 
-**Formula Excel (kolom Jenis Tender):**
-```
-= IF(LEFT(contract_no, 1) = "4", "PR - PO Kontrak", "Tender Normal")
-```
+Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.
 
 **Perbedaan kedua jenis:**
 | Jenis | Karakteristik |
@@ -639,27 +876,66 @@ Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Ten
 
                 kontrak_query = f"""
                 SELECT
-                    COALESCE(purchasing_group, 'Unassigned')              AS purchasing_group,
-                    jenis_tender                                           AS jenis_kontrak,
-                    COUNT(DISTINCT CASE WHEN {bagian_po_cond}
-                        THEN nomor_po || '-' || item_po::text END)         AS jml_item,
-                    COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                        THEN total_amount_local_curr ELSE 0 END), 0)       AS total_realisasi,
-                    ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                        THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
-                FROM vw_pr_po_complete
-                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-                  AND nomor_po IS NOT NULL
-                GROUP BY COALESCE(purchasing_group, 'Unassigned'),
-                         jenis_tender
-                ORDER BY purchasing_group, jenis_kontrak
+                    CASE
+                        WHEN poi.contract_no IS NOT NULL
+                         AND poi.contract_no <> ''
+                         AND LEFT(poi.contract_no, 1) = '4'
+                        THEN 'PR - PO Kontrak'
+                        ELSE 'Tender Normal'
+                    END                                                        AS jenis_kontrak,
+                    COALESCE(poh.purchasing_group, 'Unassigned')               AS purchasing_group,
+                    COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)   AS jml_item,
+                    COALESCE(SUM(poi.total_amount_local_curr), 0)               AS total_realisasi,
+                    ROUND(AVG(poi.pr_po_days)::numeric, 1)                     AS avg_lead_time
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                GROUP BY
+                    CASE
+                        WHEN poi.contract_no IS NOT NULL
+                         AND poi.contract_no <> ''
+                         AND LEFT(poi.contract_no, 1) = '4'
+                        THEN 'PR - PO Kontrak'
+                        ELSE 'Tender Normal'
+                    END,
+                    COALESCE(poh.purchasing_group, 'Unassigned')
+                ORDER BY jenis_kontrak, purchasing_group
+                """
+                # Query terpisah untuk global avg (hindari mean-of-means per purchasing_group)
+                kontrak_global_query = f"""
+                SELECT
+                    CASE
+                        WHEN poi.contract_no IS NOT NULL
+                         AND poi.contract_no <> ''
+                         AND LEFT(poi.contract_no, 1) = '4'
+                        THEN 'PR - PO Kontrak'
+                        ELSE 'Tender Normal'
+                    END                                                        AS jenis_kontrak,
+                    COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)   AS jml_item,
+                    COALESCE(SUM(poi.total_amount_local_curr), 0)               AS total_realisasi,
+                    ROUND(AVG(poi.pr_po_days)::numeric, 1)                     AS avg_lead_time
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                GROUP BY
+                    CASE
+                        WHEN poi.contract_no IS NOT NULL
+                         AND poi.contract_no <> ''
+                         AND LEFT(poi.contract_no, 1) = '4'
+                        THEN 'PR - PO Kontrak'
+                        ELSE 'Tender Normal'
+                    END
+                ORDER BY jenis_kontrak
                 """
                 with st.spinner("Memuat data kontrak..."):
-                    kontrak_data = load_data(kontrak_query)
+                    kontrak_data   = load_data(kontrak_query)
+                    kontrak_global = load_data(kontrak_global_query)
 
                 if not kontrak_data.empty:
-                    # Ringkasan global
-                    kontrak_sum = kontrak_data.groupby('jenis_kontrak').agg(
+                    # Ringkasan global — pakai query global agar AVG tidak terdistorsi (mean-of-means)
+                    kontrak_sum = kontrak_global if not kontrak_global.empty else kontrak_data.groupby('jenis_kontrak').agg(
                         jml_item       =('jml_item',        'sum'),
                         total_realisasi=('total_realisasi', 'sum'),
                         avg_lead_time  =('avg_lead_time',   'mean')
@@ -697,70 +973,6 @@ Dihitung dari No. Contract: diawali angka '4' = PR - PO Kontrak, selainnya = Ten
                     )
                     st.plotly_chart(fig_k, use_container_width=True)
 
-                    # Lead time kontrak vs non-kontrak per Purchasing Group
-                    title_col, btn_col = st.columns([9, 1])
-                    with title_col:
-                        st.markdown("""
-                            <h1 style='display: flex; align-items: center; font-size:22px;'>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                    <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
-                                </svg>
-                                Lead Time: Kontrak vs Non-Kontrak
-                            </h1>
-                        """, unsafe_allow_html=True)
-                    with btn_col:
-                        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_lt_kontrak = "show_formula_pg_lt_kontrak"
-                        if key_lt_kontrak not in st.session_state:
-                            st.session_state[key_lt_kontrak] = False
-                        is_open = st.session_state[key_lt_kontrak]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_lt_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_lt_kontrak})
-
-                    if st.session_state.get(key_lt_kontrak, False):
-                        st.info("""\
-**Lead Time: Kontrak vs Non-Kontrak per Purchasing Group**: Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
-
-**Kalkulasi SQL:**
-```sql
-AVG(lead_time_process_po)
-GROUP BY purchasing_group, jenis_tender
-```
-
-**Ekspektasi umum:**
-- **PR - PO Kontrak** → lead time **lebih pendek**: vendor & harga sudah disepakati di awal kontrak, tidak perlu proses negosiasi ulang
-- **Tender Normal** → lead time **lebih panjang**: perlu tahap penawaran, evaluasi vendor, dan negosiasi harga
-
-Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan untuk mengonversi material yang sering dipesan ke skema kontrak.
-
-**Target:** Garis merah putus-putus = **55 hari**.
-                        """)
-
-                    st.caption("Rata-rata lead time per jenis tender per Purchasing Group.")
-
-                    kontrak_lt = kontrak_data[kontrak_data['avg_lead_time'].notna()]
-                    fig_klt = px.bar(
-                        kontrak_lt,
-                        x='purchasing_group', y='avg_lead_time',
-                        color='jenis_kontrak', barmode='group',
-                        text=kontrak_lt['avg_lead_time'].apply(lambda x: f"{x} Hr"),
-                        color_discrete_map={'PR - PO Kontrak': '#1f77b4', 'Tender Normal': '#ff7f0e'},
-                        labels={
-                            'purchasing_group': 'Purchasing Group',
-                            'avg_lead_time'   : 'Lead Time Avg (Hari)',
-                            'jenis_kontrak'   : 'Jenis'
-                        }
-                    )
-                    fig_klt.add_hline(y=55, line_dash="dash", line_color="red",
-                                      annotation_text="Target 55 Hari",
-                                      annotation_position="bottom right")
-                    fig_klt.update_traces(textposition='outside', textfont_size=9)
-                    fig_klt.update_layout(
-                        height=380,
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
-                    )
-                    st.plotly_chart(fig_klt, use_container_width=True)
                 else:
                     st.info("Tidak ada data kontrak pada periode ini.")
 
@@ -790,19 +1002,10 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
                     st.info("""\
 **Distribusi Turn Around per Purchasing Group**: Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
 
-**Kalkulasi `turn_around_calc` di `vw_pr_po_complete`:**
-```sql
-CASE
-  WHEN LEFT(department_code, 2) = 'TA' THEN 'TA'
-  ELSE 'non'
-END
-```
-**Turn Around** dikalkulasi dari department_code: diawali 'TA' = Turn Around.
-
-**Formula Excel (kolom Turn Around):**
-```
-= IF(LEFT(Department, 2) = "TA", "TA", "non")
-```
+**Formula Excel:** 
+- Total Item: `= IF(LEFT(Departement(Requisitioner), 2) = "TA", "TA", "non")`
+- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
+- Total Realisasi: `= (SUM(Total Amount in Local Curr))`
 
 **Penjelasan kategori:**
 | Kategori | Keterangan |
@@ -817,31 +1020,58 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
 
                 ta_query = f"""
                 SELECT
-                    COALESCE(purchasing_group, 'Unassigned')              AS purchasing_group,
-                    turn_around_calc                                       AS turn_around,
-                    COUNT(DISTINCT CASE WHEN {bagian_po_cond}
-                        THEN nomor_po || '-' || item_po::text END)         AS jml_item,
-                    COALESCE(SUM(CASE WHEN {bagian_po_cond}
-                        THEN total_amount_local_curr ELSE 0 END), 0)       AS total_realisasi,
-                    ROUND(AVG(CASE WHEN {bagian_po_cond} AND lead_time_process_po IS NOT NULL
-                        THEN lead_time_process_po END)::numeric, 1)        AS avg_lead_time
-                FROM vw_pr_po_complete
-                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-                  AND nomor_po IS NOT NULL
-                GROUP BY COALESCE(purchasing_group, 'Unassigned'),
-                         turn_around_calc
+                    COALESCE(poh.purchasing_group, 'Unassigned')               AS purchasing_group,
+                    CASE
+                        WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
+                        ELSE 'non'
+                    END                                                        AS turn_around,
+                    COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)   AS jml_item,
+                    COALESCE(SUM(poi.total_amount_local_curr), 0)               AS total_realisasi,
+                    ROUND(AVG(poi.pr_po_days)::numeric, 1)                     AS avg_lead_time
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                GROUP BY COALESCE(poh.purchasing_group, 'Unassigned'),
+                         CASE
+                             WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
+                             ELSE 'non'
+                         END
                 ORDER BY purchasing_group, jml_item DESC
                 """
+                # Query global untuk ringkasan (hindari mean-of-means)
+                ta_global_query = f"""
+                SELECT
+                    CASE
+                        WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
+                        ELSE 'non'
+                    END                                                        AS turn_around,
+                    COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)   AS jml_item,
+                    COALESCE(SUM(poi.total_amount_local_curr), 0)               AS total_realisasi,
+                    ROUND(AVG(poi.pr_po_days)::numeric, 1)                     AS avg_lead_time
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                GROUP BY
+                    CASE
+                        WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
+                        ELSE 'non'
+                    END
+                ORDER BY jml_item DESC
+                """
                 with st.spinner("Memuat data turn around..."):
-                    ta_data = load_data(ta_query)
+                    ta_data   = load_data(ta_query)
+                    ta_global = load_data(ta_global_query)
 
                 if not ta_data.empty:
-                    # Ringkasan global per kategori turn around
-                    ta_sum = ta_data.groupby('turn_around').agg(
+                    # Ringkasan global — pakai query global agar AVG tidak terdistorsi
+                    ta_sum = ta_global if not ta_global.empty else ta_data.groupby('turn_around').agg(
                         jml_item       =('jml_item',        'sum'),
                         total_realisasi=('total_realisasi', 'sum'),
                         avg_lead_time  =('avg_lead_time',   'mean')
-                    ).reset_index().sort_values('jml_item', ascending=False)
+                    ).reset_index()
+                    ta_sum = ta_sum.sort_values('jml_item', ascending=False)
 
                     # Pie chart distribusi item per turn around
                     fig_ta_pie = px.pie(
@@ -878,603 +1108,248 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                     fig_ta_lt.update_layout(height=350, coloraxis_showscale=False)
                     st.plotly_chart(fig_ta_lt, use_container_width=True)
 
-                    # Tabel detail
-                    st.markdown("""
-                        <h1 style='display: flex; align-items: center; font-size:22px;'>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
-                            </svg>
-                            Detail per Purchasing Group × Turn Around
-                        </h1>
-                    """, unsafe_allow_html=True)
-
-                    df_ta_disp = ta_data.copy()
-                    df_ta_disp['total_realisasi'] = df_ta_disp['total_realisasi'].apply(format_idr)
-                    df_ta_disp['avg_lead_time']   = df_ta_disp['avg_lead_time'].apply(
-                        lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
-                    st.dataframe(
-                        df_ta_disp.rename(columns={
-                            'purchasing_group': 'Purchasing Group',
-                            'turn_around'     : 'Turn Around',
-                            'jml_item'        : 'Jml Item',
-                            'total_realisasi' : 'Total Realisasi',
-                            'avg_lead_time'   : 'Lead Time Avg',
-                        }),
-                        use_container_width=True, height=300
-                    )
                 else:
                     st.info("Tidak ada data turn around pada periode ini.")
 
-            # Download gabungan
-            if not kontrak_data.empty:
-                st.markdown("---")
-                csv_k = kontrak_data.to_csv(index=False)
-                st.download_button(
-                    label="Download Data Kontrak sebagai CSV",
-                    icon=":material/download:",
-                    data=csv_k,
-                    file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
+            # ── Tabel Detail Turn Around (full width, di luar col1/col2) ─────
+            if 'ta_data' in locals() and not ta_data.empty:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0 0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
+                        </svg>
+                        Detail per Purchasing Group × Turn Around
+                    </h1>
+                """, unsafe_allow_html=True)
+                df_ta_disp = ta_data.copy()
+                df_ta_disp['total_realisasi'] = df_ta_disp['total_realisasi'].apply(format_idr)
+                df_ta_disp['avg_lead_time']   = df_ta_disp['avg_lead_time'].apply(
+                    lambda x: f"{x} Hari" if pd.notna(x) else "N/A")
+                st.dataframe(
+                    df_ta_disp.rename(columns={
+                        'purchasing_group': 'Purchasing Group',
+                        'turn_around'     : 'Turn Around',
+                        'jml_item'        : 'Jml Item',
+                        'total_realisasi' : 'Total Realisasi',
+                        'avg_lead_time'   : 'Lead Time Avg',
+                    }),
+                    use_container_width=True, height=280
                 )
 
-        # ══════════════════════════════════════════════════════════════════════
-        # TAB 3: KECEPATAN PROSES OVERALL, TENDER NORMAL VS KONTRAK
-        # ══════════════════════════════════════════════════════════════════════
-        with tab3:
-            st.markdown("Analisis kecepatan waktu proses pengadaan secara keseluruhan, perbandingan antara **Tender Normal** dan **PR-PO Kontrak**, serta distribusi lead time per Purchasing Group.")
 
-            # KPI Kecepatan
-            speed_kpi_query = f"""
-            SELECT
-                ROUND(AVG(lead_time_process_po)::numeric, 1)                          AS avg_lt_overall,
-                ROUND(MIN(lead_time_process_po)::numeric, 0)                          AS min_lt,
-                ROUND(MAX(lead_time_process_po)::numeric, 0)                          AS max_lt,
-                ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
-                    (ORDER BY lead_time_process_po)::numeric, 1)                      AS median_lt,
-                COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END)                AS jml_ontime,
-                COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)                 AS jml_late,
-                COUNT(lead_time_process_po)                                            AS total_lt
-            FROM vw_pr_po_complete
-            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-              AND nomor_po IS NOT NULL
-              AND lead_time_process_po IS NOT NULL
-              AND {bagian_po_cond}
-            """
+            # Download data kontrak
+            if not kontrak_data.empty:
+                st.markdown("---")
 
-            with st.spinner("Memuat KPI kecepatan..."):
-                speed_kpi = load_data(speed_kpi_query)
+                # ── ROW 2: Lead Time Kontrak (kiri) | Tren Lead Time per Bulan (kanan) ──
+                col1, col2 = st.columns(2)
 
-            if not speed_kpi.empty and speed_kpi['total_lt'][0]:
-                avg_lt     = float(speed_kpi['avg_lt_overall'][0] or 0)
-                med_lt     = float(speed_kpi['median_lt'][0] or 0)
-                min_lt     = int(speed_kpi['min_lt'][0] or 0)
-                max_lt     = int(speed_kpi['max_lt'][0] or 0)
-                ontime     = int(speed_kpi['jml_ontime'][0] or 0)
-                late       = int(speed_kpi['jml_late'][0] or 0)
-                total      = int(speed_kpi['total_lt'][0] or 1)
-                ontime_pct = ontime / total * 100
+                with col1:
+                    title_col, btn_col = st.columns([9, 1])
+                    with title_col:
+                        st.markdown("""
+                            <h1 style='display: flex; align-items: center; font-size:22px;'>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                    <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
+                                </svg>
+                                Lead Time: Kontrak vs Non-Kontrak
+                            </h1>
+                        """, unsafe_allow_html=True)
+                    with btn_col:
+                        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                        key_lt_kontrak = "show_formula_pg_lt_kontrak"
+                        if key_lt_kontrak not in st.session_state:
+                            st.session_state[key_lt_kontrak] = False
+                        is_open = st.session_state[key_lt_kontrak]
+                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                        tooltip = "Hide Formula" if is_open else "Show Formula"
+                        st.button(icon, key=f"btn_{key_lt_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_lt_kontrak})
 
-                if ontime_pct >= 80:
-                    color_class = "green"
-                    d_color = "normal"   # Biarkan hijau bawaan
-                elif 60 <= ontime_pct < 80:
-                    color_class = "orange"
-                    d_color = "off"      # Matikan warna bawaan agar CSS kita masuk
-                else:
-                    color_class = "red"
-                    d_color = "inverse"  # Biarkan merah bawaan
+                    if st.session_state.get(key_lt_kontrak, False):
+                        st.info("""\
+**Lead Time: Kontrak vs Non-Kontrak per Purchasing Group**: Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
 
-                SPEED_KPI = [
-                    {
-                        "key": "kpi_speed_avg",
-                        "metric_args": ("Avg Lead Time", f"{format_number(avg_lt, decimals=1)} Hari"),
-                        "metric_kwargs": {"delta": "✅ On Target" if avg_lt <= 55 else "⚠️ Over Target"},
-                        "formula": """\
-**Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
+**Formula Excel:** (PO SAP)
+- Filter sesuai Purchasing Group yang ingin dicari
+- Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
+- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
 
-**Kalkulasi SQL:**
-```sql
-ROUND(AVG(lead_time_process_po)::numeric, 1) AS avg_lt_overall
-```
+**Ekspektasi umum:**
+- **PR - PO Kontrak** → lead time **lebih pendek**: vendor & harga sudah disepakati di awal kontrak, tidak perlu proses negosiasi ulang
+- **Tender Normal** → lead time **lebih panjang**: perlu tahap penawaran, evaluasi vendor, dan negosiasi harga
 
-**Sumber `lead_time_process_po`:** Selisih hari antara `tgl_create_pr` dan `date_ordered`.
-
-**Target SLA = 55 hari.**
-
-| Kondisi | Interpretasi |
-|---|---|
-| ≤ 55 hari | ✅ On Target |
-| > 55 hari | ⚠️ Over Target, perlu evaluasi |
-
-Rata-rata lebih sensitif terhadap outlier dibanding median — jika ada PO dengan lead time sangat panjang, nilai ini akan tertarik ke atas. Bandingkan dengan **Median Lead Time** untuk gambaran lebih lengkap.
-"""
-                    },
-                    {
-                        "key": "kpi_speed_median",
-                        "metric_args": ("Median Lead Time", f"{format_number(med_lt, decimals=1)} Hari"),
-                        "metric_kwargs": {},
-                        "formula": """\
-**Median Lead Time**: Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
-
-**Kalkulasi SQL:**
-```sql
-ROUND(
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY lead_time_process_po)::numeric,
-1) AS median_lt
-```
-
-**Mengapa median, bukan rata-rata?**
-
-| Metrik | Sifat |
-|---|---|
-| **Rata-rata (AVG)** | Mudah terpengaruh outlier, satu PO dengan lead time 500 hari bisa menarik rata-rata jauh ke atas |
-| **Median** | Nilai yang tepat di tengah data, 50% PO selesai lebih cepat, 50% lebih lambat |
-
-Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO dengan lead time ekstrem yang mendistorsi gambaran keseluruhan. Gunakan median sebagai ukuran "kecepatan tipikal" proses pengadaan.
-"""
-                    },
-                    {
-                        "key": "kpi_speed_rentang",
-                        "metric_args": ("Rentang Lead Time", f"{format_number(min_lt)} - {format_number(max_lt)} Hari"),
-                        "metric_kwargs": {},
-                        "formula": """\
-**Rentang Lead Time**: Selisih antara lead time terpendek dan terpanjang dalam periode filter.
-
-**Kalkulasi SQL:**
-```sql
-ROUND(MIN(lead_time_process_po)::numeric, 0) AS min_lt,
-ROUND(MAX(lead_time_process_po)::numeric, 0) AS max_lt
-```
-
-**Cara membaca:**
-- **Rentang sempit** (mis. 5-30 hari) → proses pengadaan konsisten dan terprediksi
-- **Rentang lebar** (mis. 0-500 hari) → ada variabilitas tinggi, perlu investigasi outlier
-
-**Penyebab umum rentang sangat lebar:**
-- PO kontrak (cepat) vs tender terbuka (lama) dalam satu periode
-- PR darurat vs pengadaan rutin
-- Kendala dokumen / approval yang berlarut-larut pada sebagian PO
-
-Filter: hanya baris dengan `nomor_po IS NOT NULL AND lead_time_process_po IS NOT NULL`
-"""
-                    },
-                    {
-                        "key": "kpi_speed_ontime",
-                        "metric_args": ("On-Time (<=55 Hari)", f"{format_number(ontime)}"),
-                        "metric_kwargs": {
-                            "delta": f"{format_number(ontime_pct, decimals=1)}% dari total",
-                            "delta_color": d_color
-                        },
-                        "formula": """\
-**On-Time (≤55 Hari)**: Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.
-
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END) AS jml_ontime
-```
-
-**% dari total** = `jml_ontime / total_lt × 100`
-
-**Target SLA = 55 hari** dihitung dari tanggal PR dibuat (`tgl_create_pr`) hingga tanggal PO diterbitkan (`date_ordered`).
-
-| % On-Time | Interpretasi |
-|---|---|
-| ≥ 80% | 🟢 Proses pengadaan berjalan baik |
-| 60–79% | 🟡 Perlu perhatian, identifikasi bottleneck |
-| < 60% | 🔴 Kritis, evaluasi menyeluruh diperlukan |
-
-Untuk melihat distribusi lengkap per rentang waktu, lihat chart **Distribusi Lead Time Overall** di bawah.
-"""
-                    },
-                    {
-                        "key": "kpi_speed_late",
-                        "metric_args": ("Terlambat (>55 Hari)", f"{format_number(late)}"),
-                        "metric_kwargs": {
-                            "delta": f"{format_number(100-ontime_pct, decimals=1)}% dari total",
-                            "delta_color": d_color
-                        },
-                        "formula": """\
-**Terlambat (>55 Hari)**: Jumlah PO yang melebihi batas SLA 55 hari.
-
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END) AS jml_late
-```
-
-**% dari total** = `jml_late / total_lt × 100`
-
-**Penyebab umum keterlambatan:**
-- Proses approval PR yang panjang (multi-level signatory)
-- Tender/lelang yang memerlukan waktu lama (>30 hari)
-- Vendor tidak responsif atau dokumen tidak lengkap
-- PO lintas departemen dengan koordinasi rumit
-
-**Tindak lanjut yang disarankan:**
-1. Drill-down ke tabel **Ringkasan Kecepatan per PG** di bawah untuk identifikasi PG dengan % terlambat tertinggi
-2. Bandingkan lead time kontrak vs tender di tab **Breakdown per Metode Tender**
-3. Cek chart **Tren Lead Time per Bulan** untuk melihat apakah keterlambatan memburuk atau membaik
-"""
-                    }
-                ]
-
-                for kpi in SPEED_KPI:
-                    if kpi["key"] not in st.session_state:
-                        st.session_state[kpi["key"]] = False
-
-                speed_cols = st.columns(len(SPEED_KPI))
-                for col, kpi in zip(speed_cols, SPEED_KPI):
-                    with col:
-                        m_col, btn_col = st.columns([5, 1])
-                        with m_col:
-                            st.metric(
-                                label=kpi["metric_args"][0], 
-                                value=kpi["metric_args"][1], 
-                                delta=kpi["metric_kwargs"].get("delta"),
-                                delta_color=d_color
-                            )
-                        with btn_col:
-                            st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                            is_open = st.session_state[kpi["key"]]
-                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-
-                            tooltip = "Hide Formula" if is_open else "Show Formula"
-                            
-                            st.button(
-                                icon, 
-                                key=f"btn_{kpi['key']}", 
-                                help=tooltip,
-                                on_click=toggle_state, 
-                                kwargs={"state_key": kpi["key"]}
-                            )
-                        # ── JS: paksa warna delta On-Time & Terlambat sesuai threshold ──
-                # st.markdown('<div class="...">') tidak bisa membungkus st.metric()
-                # karena setiap widget Streamlit dirender sebagai elemen DOM independen.
-                # Satu-satunya cara reliable: JS langsung cari elemen via label teks.
-                import streamlit.components.v1 as _comp
-                _ontime_color = "#09ab3b" if ontime_pct >= 80 else ("#ffa500" if ontime_pct >= 60 else "#ff4b4b")
-                _late_color   = _ontime_color
-                _comp.html(f"""
-                <script>
-                (function() {{
-                    function applyColors() {{
-                        var doc    = window.parent.document;
-                        var labels = doc.querySelectorAll('[data-testid="stMetricLabel"]');
-                        var found  = 0;
-                        labels.forEach(function(label) {{
-                            var text = (label.innerText || label.textContent || "").trim();
-                            var color = null;
-                            if (text.indexOf("On-Time")   !== -1) color = "{_ontime_color}";
-                            if (text.indexOf("Terlambat") !== -1) color = "{_late_color}";
-                            if (!color) return;
-                            var metric = label.closest('[data-testid="stMetric"]');
-                            if (!metric) return;
-                            var delta = metric.querySelector('[data-testid="stMetricDelta"]');
-                            if (!delta) return;
-                            // Set warna di semua elemen dalam delta (termasuk ikon panah)
-                            [delta].concat(Array.from(delta.querySelectorAll("*"))).forEach(function(el) {{
-                                el.style.setProperty("color", color, "important");
-                                el.style.setProperty("-webkit-text-fill-color", color, "important");
-                            }});
-                            found++;
-                        }});
-                        // DOM belum siap, coba lagi
-                        if (found < 2) setTimeout(applyColors, 150);
-                    }}
-                    // Jalankan saat load dan juga langsung (untuk handle rerun Streamlit)
-                    setTimeout(applyColors, 250);
-                    window.addEventListener("load", function() {{ setTimeout(applyColors, 250); }});
-                }})();
-                </script>
-                """, height=0)
-
-                for kpi in SPEED_KPI:
-                    if st.session_state[kpi["key"]]:
-                        st.info(kpi["formula"])
-
-            st.markdown("---")
-
-            # Row 1: Distribusi + Perbandingan Tender Normal vs Kontrak
-            col1, col2 = st.columns(2)
-
-            with col1:
-                title_col, btn_col = st.columns([9, 1])
-                with title_col:
-                    st.markdown("""
-                        <h1 style='display: flex; align-items: center; font-size:22px;'>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5m2.5 5a.5.5 0 0 0-1 0v3.362l-1.429 2.38a.5.5 0 1 0 .858.515l1.5-2.5A.5.5 0 0 0 8.5 9zM.86 5.387A2.5 2.5 0 1 1 4.387 1.86 8.04 8.04 0 0 0 .86 5.387M11.613 1.86a2.5 2.5 0 1 1 3.527 3.527 8.04 8.04 0 0 0-3.527-3.527"/>
-                            </svg>
-                            Distribusi Lead Time Overall
-                        </h1>
-                    """, unsafe_allow_html=True)
-                with btn_col:
-                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_dist_lt = "show_formula_dist_lt"
-                    if key_dist_lt not in st.session_state:
-                        st.session_state[key_dist_lt] = False
-                    is_open = st.session_state[key_dist_lt]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_dist_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_dist_lt})
-
-                if st.session_state.get(key_dist_lt, False):
-                    st.info("""\
-**Distribusi Lead Time Overall**: Pie chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
-
-**Bucket klasifikasi SQL:**
-```sql
-CASE
-  WHEN lead_time_process_po <= 14 THEN '≤14 Hari'
-  WHEN lead_time_process_po <= 30 THEN '15–30 Hari'
-  WHEN lead_time_process_po <= 55 THEN '31–55 Hari'
-  WHEN lead_time_process_po <= 90 THEN '56–90 Hari'
-  ELSE                                  '>90 Hari'
-END
-```
-
-**Target SLA = 55 hari:**
-| Bucket | Status |
-|---|---|
-| ≤55 Hari (Bucket 1–3) | 🟢 On Target |
-| 56–90 Hari | 🟡 Perlu perhatian |
-| >90 Hari | 🔴 Kritis |
-
-Di Excel: `=IFS(lt<=14,"≤14",lt<=30,"15-30",lt<=55,"31-55",lt<=90,"56-90",TRUE,">90")`
-                    """)
-
-                st.caption("Jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.")
-
-                dist_query = f"""
-                SELECT
-                    CASE
-                        WHEN lead_time_process_po <= 14  THEN '<=14 Hari'
-                        WHEN lead_time_process_po <= 30  THEN '15-30 Hari'
-                        WHEN lead_time_process_po <= 55  THEN '31-55 Hari'
-                        WHEN lead_time_process_po <= 90  THEN '56-90 Hari'
-                        ELSE                                  '>90 Hari'
-                    END                    AS bucket,
-                    COUNT(*)               AS jumlah,
-                    MIN(lead_time_process_po) AS sort_key
-                FROM vw_pr_po_complete
-                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-                  AND nomor_po IS NOT NULL
-                  AND lead_time_process_po IS NOT NULL
-                  AND {bagian_po_cond}
-                GROUP BY 1
-                ORDER BY sort_key
-                """
-                with st.spinner("Memuat distribusi..."):
-                    dist_data = load_data(dist_query)
-
-                if not dist_data.empty:
-                    category_order = ['<=14 Hari', '15-30 Hari', '31-55 Hari', '56-90 Hari', '>90 Hari']
-                    dist_data['bucket'] = pd.Categorical(
-                        dist_data['bucket'], categories=category_order, ordered=True
-                    )
-                    dist_data = dist_data.sort_values('bucket')
-                    color_map_dist = {
-                        '<=14 Hari' : '#2ca02c',
-                        '15-30 Hari': '#98df8a',
-                        '31-55 Hari': '#ffdd57',
-                        '56-90 Hari': '#ff7f0e',
-                        '>90 Hari'  : '#d62728',
-                    }
-                    fig_dist = px.pie(
-                        dist_data, 
-                        values='jumlah', 
-                        names='bucket', 
-                        hole=0.4,
-                        category_orders={'bucket': category_order},
-                        color='bucket',
-                        color_discrete_map=color_map_dist
-                    )
-                    fig_dist.update_traces(sort=False)
-                    fig_dist.update_layout(height=400)
-                    st.plotly_chart(fig_dist, use_container_width=True)
-                else:
-                    st.info("Tidak ada data distribusi lead time.")
-
-            with col2:
-                title_col, btn_col = st.columns([9, 1])
-                with title_col:
-                    st.markdown("""
-                        <h1 style='display: flex; align-items: center; font-size:22px;'>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07"/>
-                            </svg>
-                            Lead Time: Tender Normal vs PR-PO Kontrak
-                        </h1>
-                    """, unsafe_allow_html=True)
-                with btn_col:
-                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_tender_lt = "show_formula_tender_lt"
-                    if key_tender_lt not in st.session_state:
-                        st.session_state[key_tender_lt] = False
-                    is_open = st.session_state[key_tender_lt]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_tender_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_tender_lt})
-
-                if st.session_state.get(key_tender_lt, False):
-                    st.info("""\
-**Lead Time: Tender Normal vs PR-PO Kontrak**: Grouped bar chart perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group., dilengkapi statistik median dan % on-time.
-
-**Kalkulasi SQL:**
-```sql
-AVG(lead_time_process_po)   AS avg_lt
-PERCENTILE_CONT(0.5) WITHIN GROUP
-  (ORDER BY lead_time_process_po) AS median_lt
-COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END) AS jml_ontime
-COUNT(CASE WHEN lead_time_process_po >  55 THEN 1 END) AS jml_late
-GROUP BY purchasing_group, jenis_tender
-```
-
-**Mengapa ada Median di samping Average?**
-Average bisa terdistorsi oleh satu outlier ekstrem (misal: satu PO terlupakan 500 hari). Median lebih representatif untuk menggambarkan lead time "tipikal" yang sesungguhnya dialami tim.
+Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan untuk mengonversi material yang sering dipesan ke skema kontrak.
 
 **Target:** Garis merah putus-putus = **55 hari**.
-                    """)
+                        """)
 
-                st.caption("Perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group.")
+                    st.caption("Rata-rata lead time per jenis tender per Purchasing Group.")
 
-                lt_tender_query = f"""
-                SELECT
-                    COALESCE(purchasing_group, 'Unassigned')                     AS purchasing_group,
-                    jenis_tender,
-                    COUNT(*)                                                      AS jml_po,
-                    ROUND(AVG(lead_time_process_po)::numeric, 1)                 AS avg_lt,
-                    ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
-                        (ORDER BY lead_time_process_po)::numeric, 1)             AS median_lt,
-                    COUNT(CASE WHEN lead_time_process_po <= 55 THEN 1 END)       AS jml_ontime,
-                    COUNT(CASE WHEN lead_time_process_po > 55 THEN 1 END)        AS jml_late
-                FROM vw_pr_po_complete
-                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-                  AND nomor_po IS NOT NULL
-                  AND lead_time_process_po IS NOT NULL
-                  AND {bagian_po_cond}
-                GROUP BY COALESCE(purchasing_group, 'Unassigned'), jenis_tender
-                ORDER BY purchasing_group, jenis_tender
-                """
-                with st.spinner("Memuat perbandingan tender..."):
-                    lt_tender_data = load_data(lt_tender_query)
-
-                if not lt_tender_data.empty:
-                    fig_lt_tender = px.bar(
-                        lt_tender_data,
-                        x='purchasing_group', y='avg_lt',
-                        color='jenis_tender', barmode='group',
-                        text=lt_tender_data['avg_lt'].apply(lambda x: f"{x} Hr"),
-                        color_discrete_map={
-                            'PR - PO Kontrak': '#1f77b4',
-                            'Tender Normal'  : '#ff7f0e'
-                        },
+                    kontrak_lt = kontrak_data[kontrak_data['avg_lead_time'].notna()]
+                    fig_klt = px.bar(
+                        kontrak_lt,
+                        x='purchasing_group', y='avg_lead_time',
+                        color='jenis_kontrak', barmode='group',
+                        text=kontrak_lt['avg_lead_time'].apply(lambda x: f"{x} Hr"),
+                        color_discrete_map={'PR - PO Kontrak': '#1f77b4', 'Tender Normal': '#ff7f0e'},
                         labels={
                             'purchasing_group': 'Purchasing Group',
-                            'avg_lt'          : 'Lead Time Avg (Hari)',
-                            'jenis_tender'    : 'Jenis Tender'
+                            'avg_lead_time'   : 'Lead Time Avg (Hari)',
+                            'jenis_kontrak'   : 'Jenis'
                         }
                     )
-                    fig_lt_tender.add_hline(y=55, line_dash="dash", line_color="red",
-                                            annotation_text="Target 55 Hari",
-                                            annotation_position="bottom right")
-                    fig_lt_tender.update_traces(textposition='outside', textfont_size=9)
-                    fig_lt_tender.update_layout(
-                        height=400,
+                    fig_klt.add_hline(y=55, line_dash="dash", line_color="red",
+                                      annotation_text="Target 55 Hari",
+                                      annotation_position="bottom right")
+                    fig_klt.update_traces(textposition='outside', textfont_size=9)
+                    fig_klt.update_layout(
+                        height=380,
                         legend=dict(orientation="h", yanchor="bottom", y=1.02)
                     )
-                    st.plotly_chart(fig_lt_tender, use_container_width=True)
-                else:
-                    st.info("Tidak ada data perbandingan tender.")
-                    lt_tender_data = pd.DataFrame()
+                    st.plotly_chart(fig_klt, use_container_width=True)
 
-            st.markdown("---")
+                with col2:
+                    title_col, btn_col = st.columns([9, 1])
+                    with title_col:
+                        st.markdown("""
+                            <h1 style='display: flex; align-items: center; font-size:22px;'>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-calendar-check" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                                    <path d="M10.854 7.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 9.793l2.646-2.647a.5.5 0 0 1 .708 0"/>
+                                    <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+                                </svg>
+                                Tren Lead Time per Bulan
+                            </h1>
+                        """, unsafe_allow_html=True)
+                    with btn_col:
+                        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                        key_trend_lt = "show_formula_trend_lt"
+                        if key_trend_lt not in st.session_state:
+                            st.session_state[key_trend_lt] = False
+                        is_open = st.session_state[key_trend_lt]
+                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+                        tooltip = "Hide Formula" if is_open else "Show Formula"
+                        st.button(icon, key=f"btn_{key_trend_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend_lt})
 
-            # Row 2: Tren per Bulan + Tabel Detail
-            col1, col2 = st.columns(2)
-
-            with col1:
-                title_col, btn_col = st.columns([9, 1])
-                with title_col:
-                    st.markdown("""
-                        <h1 style='display: flex; align-items: center; font-size:22px;'>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-calendar-check" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                                <path d="M10.854 7.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 9.793l2.646-2.647a.5.5 0 0 1 .708 0"/>
-                                <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
-                            </svg>
-                            Tren Lead Time per Bulan
-                        </h1>
-                    """, unsafe_allow_html=True)
-                with btn_col:
-                    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_trend_lt = "show_formula_trend_lt"
-                    if key_trend_lt not in st.session_state:
-                        st.session_state[key_trend_lt] = False
-                    is_open = st.session_state[key_trend_lt]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_trend_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend_lt})
-
-                if st.session_state.get(key_trend_lt, False):
-                    st.info("""\
+                    if st.session_state.get(key_trend_lt, False):
+                        st.info("""\
 **Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
 
 **Kalkulasi SQL:**
 ```sql
-AVG(lead_time_process_po) AS avg_lt
-GROUP BY DATE_TRUNC('month', date_ordered),
-         jenis_tender
+AVG(poi.pr_po_days) AS avg_lt
+GROUP BY DATE_TRUNC('month', poh.date_ordered), jenis_kontrak
 ORDER BY bulan
 ```
 
-**Cara membaca chart:**
-- Tren **turun konsisten** = proses pengadaan semakin efisien dari waktu ke waktu ✅
+**Cara membaca:**
+- Tren **turun konsisten** = proses semakin efisien ✅
 - Tren **naik** = ada hambatan sistemik yang perlu dievaluasi ⚠️
-- **Lonjakan di bulan tertentu** = cek apakah ada event khusus (pelaksanaan TA, audit, akhir tahun anggaran)
-- Jika garis Kontrak **jauh di bawah** Tender Normal secara konsisten = strategi kontrak terbukti efektif
+- **Lonjakan bulan tertentu** = cek event khusus (TA, audit, akhir tahun anggaran)
+- Garis Kontrak **jauh di bawah** Tender Normal = strategi kontrak terbukti efektif
 
 **Target:** Garis merah putus-putus = **55 hari**.
-                    """)
+                        """)
 
-                st.caption("Rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.")
+                    st.caption("Rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.")
 
-                trend_lt_query = f"""
-                SELECT
-                    DATE_TRUNC('month', date_ordered)::DATE                          AS bulan,
-                    jenis_tender,
-                    ROUND(AVG(lead_time_process_po)::numeric, 1)                     AS avg_lt,
-                    COUNT(*)                                                          AS jml_po
-                FROM vw_pr_po_complete
-                WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-                  AND nomor_po IS NOT NULL
-                  AND date_ordered IS NOT NULL
-                  AND lead_time_process_po IS NOT NULL
-                  AND {bagian_po_cond}
-                GROUP BY 1, 2
-                ORDER BY 1, 2
-                """
-                with st.spinner("Memuat tren lead time..."):
-                    trend_lt_data = load_data(trend_lt_query)
+                    trend_lt_query = f"""
+                    SELECT
+                        DATE_TRUNC('month', poh.date_ordered)::DATE                      AS bulan,
+                        CASE
+                            WHEN poi.contract_no IS NOT NULL
+                             AND poi.contract_no <> ''
+                             AND LEFT(poi.contract_no, 1) = '4'
+                            THEN 'PR - PO Kontrak'
+                            ELSE 'Tender Normal'
+                        END                                                              AS jenis_kontrak,
+                        ROUND(AVG(poi.pr_po_days)::numeric, 1)                          AS avg_lt,
+                        COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)        AS jml_item
+                    FROM po_items poi
+                    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                    WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                      AND poi.pr_po_days IS NOT NULL
+                      AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    GROUP BY 1, 2
+                    ORDER BY 1, 2
+                    """
+                    with st.spinner("Memuat tren lead time..."):
+                        trend_lt_data = load_data(trend_lt_query)
 
-                if not trend_lt_data.empty:
-                    trend_lt_data['bulan'] = pd.to_datetime(trend_lt_data['bulan'])
-                    fig_trend_lt = px.line(
-                        trend_lt_data,
-                        x='bulan', y='avg_lt',
-                        color='jenis_tender', markers=True,
-                        color_discrete_map={
-                            'PR - PO Kontrak': '#1f77b4',
-                            'Tender Normal'  : '#ff7f0e'
-                        },
-                        labels={
-                            'bulan'       : 'Bulan',
-                            'avg_lt'      : 'Lead Time Avg (Hari)',
-                            'jenis_tender': 'Jenis Tender'
-                        }
-                    )
-                    fig_trend_lt.add_hline(y=55, line_dash="dash", line_color="red",
-                                           annotation_text="Target 55 Hari",
-                                           annotation_position="bottom right")
-                    fig_trend_lt.update_layout(
-                        height=400,
-                        hovermode='x unified',
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02)
-                    )
-                    st.plotly_chart(fig_trend_lt, use_container_width=True)
-                else:
-                    st.info("Tidak ada data tren lead time.")
+                    if not trend_lt_data.empty:
+                        trend_lt_data['bulan'] = pd.to_datetime(trend_lt_data['bulan'])
+                        fig_trend_lt = px.line(
+                            trend_lt_data,
+                            x='bulan', y='avg_lt',
+                            color='jenis_kontrak', markers=True,
+                            color_discrete_map={
+                                'PR - PO Kontrak': '#1f77b4',
+                                'Tender Normal'  : '#ff7f0e'
+                            },
+                            labels={
+                                'bulan'        : 'Bulan',
+                                'avg_lt'       : 'Lead Time Avg (Hari)',
+                                'jenis_kontrak': 'Jenis'
+                            }
+                        )
+                        fig_trend_lt.add_hline(y=55, line_dash="dash", line_color="red",
+                                               annotation_text="Target 55 Hari",
+                                               annotation_position="bottom right")
+                        fig_trend_lt.update_layout(
+                            height=380,
+                            hovermode='x unified',
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                        )
+                        st.plotly_chart(fig_trend_lt, use_container_width=True)
+                    else:
+                        st.info("Tidak ada data tren lead time.")
 
-            with col2:
+                st.markdown("---")
+
+                # ── ROW 3: Tabel Ringkasan Kecepatan (full width) ─────────────
                 st.markdown("""
                     <h1 style='display: flex; align-items: center; font-size:22px;'>
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                             <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
                         </svg>
-                        Ringkasan Kecepatan per Purchasing Group x Jenis Tender
+                        Ringkasan Kecepatan per Purchasing Group × Jenis Tender
                     </h1>
                 """, unsafe_allow_html=True)
-                
-                # Tambahan sedikit padding agar tabel sejajar dengan visual di sebelahnya
-                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                st.caption("Detail ketepatan waktu (On-Time vs Terlambat) per Purchasing Group dan jenis tender.")
+
+                # Query: pakai po_items agar konsisten, group by purchasing_group × jenis_kontrak
+                lt_tender_query = f"""
+                SELECT
+                    COALESCE(poh.purchasing_group, 'Unassigned')                     AS purchasing_group,
+                    CASE
+                        WHEN poi.contract_no IS NOT NULL
+                         AND poi.contract_no <> ''
+                         AND LEFT(poi.contract_no, 1) = '4'
+                        THEN 'PR - PO Kontrak'
+                        ELSE 'Tender Normal'
+                    END                                                              AS jenis_tender,
+                    COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)        AS jml_item,
+                    ROUND(AVG(poi.pr_po_days)::numeric, 1)                          AS avg_lt,
+                    ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP
+                        (ORDER BY poi.pr_po_days)::numeric, 1)                      AS median_lt,
+                    COUNT(CASE WHEN poi.pr_po_days <= 55 THEN 1 END)               AS jml_ontime,
+                    COUNT(CASE WHEN poi.pr_po_days > 55 THEN 1 END)                AS jml_late
+                FROM po_items poi
+                JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+                  AND poi.pr_po_days IS NOT NULL
+                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                GROUP BY COALESCE(poh.purchasing_group, 'Unassigned'),
+                         CASE
+                             WHEN poi.contract_no IS NOT NULL
+                              AND poi.contract_no <> ''
+                              AND LEFT(poi.contract_no, 1) = '4'
+                             THEN 'PR - PO Kontrak'
+                             ELSE 'Tender Normal'
+                         END
+                ORDER BY purchasing_group, jenis_tender
+                """
+                with st.spinner("Memuat ringkasan kecepatan..."):
+                    lt_tender_data = load_data(lt_tender_query)
 
                 if not lt_tender_data.empty:
                     lt_tender_data['ontime_pct'] = (
@@ -1494,25 +1369,40 @@ ORDER BY bulan
                         df_speed_disp.rename(columns={
                             'purchasing_group': 'Purchasing Group',
                             'jenis_tender'    : 'Jenis Tender',
-                            'jml_po'          : 'Jml PO',
+                            'jml_item'        : 'Jml Item',
                             'avg_lt'          : 'Lead Time Avg',
                             'median_lt'       : 'Lead Time Median',
-                            'jml_ontime'      : 'On-Time (<=55 Hr)',
+                            'jml_ontime'      : 'On-Time (≤55 Hr)',
                             'jml_late'        : 'Terlambat (>55 Hr)',
                             'ontime_pct'      : '% On-Time',
                         }),
-                        use_container_width=True, height=420
-                    )
-                    csv_speed = lt_tender_data.to_csv(index=False)
-                    st.download_button(
-                        label="Download sebagai CSV",
-                        icon=":material/download:",
-                        data=csv_speed,
-                        file_name=f"kecepatan_proses_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv"
+                        use_container_width=True, height=320
                     )
                 else:
-                    st.info("Tidak ada data kecepatan proses.")
+                    lt_tender_data = pd.DataFrame()
+                    st.info("Tidak ada data ringkasan kecepatan.")
+
+                # Download gabungan
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    csv_k = kontrak_data.to_csv(index=False)
+                    st.download_button(
+                        label="Download Data Kontrak (CSV)",
+                        icon=":material/download:",
+                        data=csv_k,
+                        file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                with col_dl2:
+                    if not lt_tender_data.empty:
+                        csv_speed = lt_tender_data.to_csv(index=False)
+                        st.download_button(
+                            label="Download Ringkasan Kecepatan (CSV)",
+                            icon=":material/download:",
+                            data=csv_speed,
+                            file_name=f"kecepatan_proses_{datetime.now().strftime('%Y%m%d')}.csv",
+                            mime="text/csv"
+                        )
 
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
@@ -1532,8 +1422,9 @@ ORDER BY bulan
         konteks_lines.append(f"- Total OE: {format_idr(t_oe)}")
         konteks_lines.append(f"- Total Realisasi PO: {format_idr(t_real)}")
         konteks_lines.append(f"- Efisiensi Total: {format_idr(t_efis)} ({t_efis_pct:.1f}%)")
-        if pd.notna(avg_lt):
-            konteks_lines.append(f"- Rata-rata Lead Time Keseluruhan: {avg_lt:.1f} Hari")
+        if spd_avg_lt is not None:
+            konteks_lines.append(f"- Rata-rata Lead Time Keseluruhan: {spd_avg_lt:.1f} Hari | Median: {spd_med_lt:.1f} Hari")
+            konteks_lines.append(f"- On-Time (≤55 Hari): {spd_ontime} ({spd_ontime_pct:.1f}%) | Terlambat: {spd_late}")
         konteks_lines.append("\n")
 
         # 2. Rangkuman Tab 1: Overview per PG
@@ -1543,17 +1434,16 @@ ORDER BY bulan
             konteks_lines.append(df_pg_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
-        # 3. Rangkuman Tab 2: Breakdown Kontrak vs Non-Kontrak
+        # 3. Rangkuman Tab 2: Breakdown Kontrak & Kecepatan
         if 'kontrak_data' in locals() and not kontrak_data.empty:
             konteks_lines.append("## 3. BREAKDOWN JENIS TENDER (KONTRAK VS NORMAL) PER PG")
             df_kontrak_simple = kontrak_data[['purchasing_group', 'jenis_kontrak', 'total_realisasi', 'avg_lead_time']]
             konteks_lines.append(df_kontrak_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
-        # 4. Rangkuman Tab 3: Detail Kecepatan
         if 'lt_tender_data' in locals() and not lt_tender_data.empty:
-            konteks_lines.append("## 4. DETAIL KETEPATAN WAKTU (ON-TIME VS LATE) PER PG")
-            df_speed_simple = lt_tender_data[['purchasing_group', 'jml_ontime', 'jml_late', 'ontime_pct']]
+            konteks_lines.append("## 4. DETAIL KETEPATAN WAKTU (ON-TIME VS LATE) PER PG × JENIS TENDER")
+            df_speed_simple = lt_tender_data[['purchasing_group', 'jenis_tender', 'jml_ontime', 'jml_late', 'ontime_pct']]
             konteks_lines.append(df_speed_simple.to_csv(index=False))
             konteks_lines.append("\n")
 

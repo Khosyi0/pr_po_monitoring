@@ -384,21 +384,18 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                                 - Menampilkan chart "% Efisiensi per Purchasing Group": Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
                                 - Menampilkan chart "Rata-rata Lead Time per Purchasing Group": Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
                                 - Menampilkan chart "% Konversi PR → PO per Purchasing Group": Bar chart horizontal persentase PR yang berhasil dikonversi menjadi PO.
-                            - Menampilkan Tab Breakdown per Metode Tender
-                                - Menampilkan chart "Kontrak vs Non-Kontrak per Purchasing Group": Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
-                                - Menampilkan chart "Distribusi Turn Around per Purchasing Group": Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
-                                - Menampilkan tabel "Detail per Purchasing Group × Turn Around"
-                                - Menampilkan chart "Lead Time: Kontrak vs Non-Kontrak per Purchasing Group": Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
-                            - Menampilkan Tab Kecepatan Proses
+                            - Menampilkan Tab Breakdown Metode Tender & Kecepatan
                                 - Menampilkan informasi "Avg Lead Time": Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
                                 - Menampilkan informasi "Median Lead Time": Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
                                 - Menampilkan informasi "Rentang Lead Time": Selisih antara lead time terpendek dan terpanjang dalam periode filter.
                                 - Menampilkan informasi "On-Time (≤55 Hari)": Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.
                                 - Menampilkan informasi "Terlambat (>55 Hari)": Jumlah PO yang melebihi batas SLA 55 hari.
-                                - Menampilkan chart "Distribusi Lead Time Overall": Pie chart jumlah PO per bucket rentang waktu proses, untuk semua Purchasing Group.
-                                - Menampilkan chart "Lead Time: Tender Normal vs PR-PO Kontrak": Grouped bar chart perbandingan rata-rata waktu proses berdasarkan jenis tender per Purchasing Group., dilengkapi statistik median dan % on-time.
+                                - Menampilkan chart "Kontrak vs Non-Kontrak per Purchasing Group": Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
+                                - Menampilkan chart "Distribusi Turn Around per Purchasing Group": Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
+                                - Menampilkan tabel "Detail per Purchasing Group × Turn Around"
+                                - Menampilkan chart "Lead Time: Kontrak vs Non-Kontrak per Purchasing Group": Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
                                 - Menampilkan chart "Tren Lead Time per Bulan": Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
-                                - Menampilkan tabel "Ringkasan Kecepatan per Purchasing Group x Jenis Tender"
+                                - Menampilkan tabel "Ringkasan Kecepatan per Purchasing Group × Jenis Tender"
                         5. Halaman Alert:
                             - Menampilkan tabel "PR Pending Mendekati Kadaluarsa (> 30 Hari)": Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
                             - Menampilkan tabel "PO Overdue (Melewati Delivery Date)": Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
