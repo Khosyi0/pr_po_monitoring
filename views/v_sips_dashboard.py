@@ -180,7 +180,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         SELECT
             COUNT(*)                                                              AS total_pr,
             COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END)          AS total_po,
-            ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)  AS avg_pr_po,
+            ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 2)  AS avg_pr_po,
             COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
                               THEN nilai_sla END), 0)                             AS sla_ontime,
             COALESCE(SUM(CASE WHEN status='Proses PO' THEN oe_pr END),0)          AS oe_proses,
@@ -197,7 +197,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         SELECT
             nama,
             status,
-            TO_CHAR(DATE_TRUNC('month', requisition_date), 'YYYY-MM')  AS bulan,
+            TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM')  AS bulan,
             pr_po_days,
             COALESCE(nilai_sla, 0)                                      AS nilai_sla,
             CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END AS is_po,
@@ -256,16 +256,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Total PR**: Jumlah Purchase Requisition dalam periode filter (semua status).
 
     **Formula Excel:**
-    ```
-    =COUNTIF(SIPS!B:B, nama)
-    ```
-    Menghitung baris di kolom B (Nama) yang sesuai dengan nama karyawan.
-
-    **Kalkulasi SQL (dashboard):**
-    ```sql
-    COUNT(*) AS total_pr
-    FROM vw_sips WHERE requisition_date BETWEEN :from AND :to
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Hitung seluruh baris
 
     **Target:** -""",
             },
@@ -280,15 +272,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Total PO**: Jumlah PR yang sudah memiliki PO, yaitu yang berstatus *Closed* atau *Proses PO*.
 
     **Formula Excel:**
-    ```
-    =COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Closed")
-     + COUNTIFS(SIPS!B:B, nama, SIPS!E:E, "Proses PO")
-    ```
-
-    **Kalkulasi SQL:**
-    ```sql
-    COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Closed` dan `Proses PO`
+    - Hitung seluruh baris
 
     | Status | Termasuk PO? |
     |---|---|
@@ -302,7 +288,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_po_pr",
                 "icon":     "percent",
                 "label":    "PO/PR",
-                "value":    f"{format_number(po_pr_pct)}%",
+                "value":    f"{format_number(po_pr_pct, decimals=1)}%",
                 "delta":    f"{format_number(total_po)} dari {format_number(total_pr)} PR",
                 "dtype":    "positive" if po_pr_pct >= 80 else ("negative" if po_pr_pct < 60 else "neutral"),
                 "formula":  f"""\
@@ -334,22 +320,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "formula":  f"""\
     **Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
 
-    ⚠️ Kolom N (PR-PO) **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
+    ⚠️ PR-PO **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
 
     **Formula Excel:**
-    ```
-    =AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
-    ```
-    Kolom N = PR-PO (hari kalender: Disposisi Buyer → Tanggal PO).
-
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
-    AS avg_pr_po
-    ```
-
-    Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
-    Untuk waktu end-to-end dari Requisition Date → PO, lihat halaman **Analisis Waktu Proses SIPS**.
+    - Filter nama karyawan yang ingin dicari
+    - Hitung rata-rata **PR-PO**
 
     **Target:** -""",
             },
@@ -364,18 +339,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **SLA On Time**: Jumlah PO yang diselesaikan dalam batas SLA standar.
 
     **Formula Excel:**
-    ```
-    =SUMIFS(SIPS!U:U, SIPS!B:B, nama)
-    ```
-    Kolom U = Nilai SLA (1 = on-time, 0 = terlambat).
-
-    **Kalkulasi SQL:**
-    ```sql
-    COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
-                  THEN nilai_sla END), 0) AS sla_ontime
-    ```
-
-    Nilai ini adalah **penjumlahan** kolom Nilai SLA, bukan COUNT sesuai rumus SUMIFS di Excel.
+    - Filter nama karyawan yang ingin dicari
+    - Hitung nilai **1** pada **Nilai SLA**
 
     **Target:** -""",
             },
@@ -416,16 +381,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO*.
 
     **Formula Excel:**
-    ```
-    =SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
-    ```
-    Kolom X = OE PR (Rp). Dibagi 1 miliar untuk satuan Miliar Rp.
-
-    **Kalkulasi SQL:**
-    ```sql
-    SUM(CASE WHEN status='Proses PO' THEN oe_pr END) / 1e9
-    AS oe_proses_po_b
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Proses PO`
+    - Jumlahkan **OE PR** lalu dibagi 1.000.000.000
 
     **Target:** -""",
             },
@@ -440,16 +398,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed*.
 
     **Formula Excel:**
-    ```
-    =SUMIFS(SIPS!X:X, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
-    ```
-    Kolom X = OE PR (Rp).
-
-    **Kalkulasi SQL:**
-    ```sql
-    SUM(CASE WHEN status='Closed' THEN oe_pr END) / 1e9
-    AS oe_closed_b
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Closed`
+    - Jumlahkan **OE PR** lalu dibagi 1.000.000.000
 
     **Target:** -""",
             },
@@ -486,16 +437,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO*.
 
     **Formula Excel:**
-    ```
-    =SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Proses PO") / 1.000.000.000
-    ```
-    Kolom Y = Nilai Item PO (Rp).
-
-    **Kalkulasi SQL:**
-    ```sql
-    SUM(CASE WHEN status='Proses PO' THEN nilai_item_po END) / 1e9
-    AS po_proses_po_b
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Proses PO`
+    - Jumlahkan **Nilai Item PO** lalu dibagi 1.000.000.000
 
     **Target:** -""",
             },
@@ -510,16 +454,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed*.
 
     **Formula Excel:**
-    ```
-    =SUMIFS(SIPS!Y:Y, SIPS!B:B, nama, SIPS!E:E, "Closed") / 1.000.000.000
-    ```
-    Kolom Y = Nilai Item PO (Rp).
-
-    **Kalkulasi SQL:**
-    ```sql
-    SUM(CASE WHEN status='Closed' THEN nilai_item_po END) / 1e9
-    AS po_closed_b
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Closed`
+    - Jumlahkan **Nilai Item PO** lalu dibagi 1.000.000.000
 
     **Target:** -""",
             },
@@ -612,19 +549,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
 
     **Formula Excel:**
-    ```
-    = (COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Closed")
-     + COUNTIFS(SIPS!Z:Z,"<=100%", SIPS!B:B, nama, SIPS!E:E,"Proses PO"))
-     / Total PO
-    ```
-    Kolom Z = Persentase PO/SR atau PO/MR.
-
-    **Kalkulasi SQL:**
-    ```sql
-    COUNT(CASE WHEN persen_po_sr_mr <= 1.0
-                AND status IN ('Closed','Proses PO') THEN 1 END)
-    / COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) * 100
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Proses PO` dan `Closed`
+    - Filter **Persentase PO/SR atau PO/MR** kurang dari sama dengan 100% lalu dibagi **Total PO**
 
     | % | Interpretasi |
     |---|---|
@@ -718,13 +645,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         if st.session_state.get(key_sips_trend, False):
             st.info("""\
 **Pipeline & Trend PR-PO SIPS**: Line chart jumlah PR dan PO yang dibuat per bulan.
-
-**Kalkulasi SQL:**
-Menggabungkan jumlah PR dan PO berdasarkan kolom `requisition_date` (dibulatkan per bulan).
-
-Mode **Kumulatif**: menggunakan fungsi `.cumsum()` di Python setelah data diambil dari database untuk menampilkan total lari (*running total*).
-
-Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan)` per baris bulan.
+                    
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Requisition Date** sesuai bulan yang diinginkan
+- Hitung seluruh baris untuk menghitung **Total PR**
+- Filter **Status** menjadi `Proses PO` dan `Closed` untuk menghitung **Total PO**         
             """)
 
         st.caption("Distribusi volume PR-PO per bulan.")
@@ -804,12 +730,10 @@ Di Excel: `=COUNTIFS(kolom_tgl_pr,">="&awal_bulan, kolom_tgl_pr,"<="&akhir_bulan
             st.info("""\
 **Distribusi Status PR SIPS**: Pie chart persentase jumlah dokumen berdasarkan status akhirnya.
 
-**Kalkulasi SQL:**
-```sql
-SELECT status, COUNT(*) AS Jumlah
-FROM vw_sips
-GROUP BY status
-```
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** sesuai yang diinginkan
+                    
 """)
         st.caption("Distribusi status PR SIPS.")
 
@@ -867,12 +791,12 @@ GROUP BY status
             st.info("""\
     **Performa SLA per Karyawan**: Bar chart persentase pencapaian SLA tepat waktu untuk setiap karyawan.
                     
-    **Kalkulasi SQL:**
-    ```sql
-    % On Time = (SLA On Time / Total PO) × 100%
+    **Kalkulasi:**
     ```
-                    
-    Dihitung khusus untuk PR yang berstatus Closed atau Proses PO. Garis putus-putus menunjukkan batas target minimum (80%).
+    % On Time = SLA On Time / Total PO × 100%
+    ```
+
+    Dihitung khusus untuk PR yang berstatus Closed atau Proses PO.
             """)
             
         st.caption("Persentase pencapaian SLA tepat waktu untuk setiap karyawan.")
@@ -954,7 +878,7 @@ GROUP BY status
             )
             avg_days = days_data['pr_po_days'].mean()
             fig_hist.add_vline(x=avg_days, line_dash='dash', line_color='#f0a500',
-                            annotation_text=f"Rata-rata {format_number(avg_days, decimals=1)} hari",
+                            annotation_text=f"Rata-rata {format_number(avg_days, decimals=2)} hari",
                             annotation_position='top right')
             fig_hist.update_layout(
                 height=max(250, len(perf) * 38) if ('perf' in locals() and not perf.empty) else 300,
@@ -997,17 +921,6 @@ GROUP BY status
     if st.session_state.get(key_sips_vol, False):
         st.info("""\
     **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
-
-    **Kalkulasi SQL:**
-    Mengelompokkan (`GROUP BY`) data berdasarkan `nama` (atau NIK) dan menghitung jumlah ya.
-    ```sql
-    SELECT nama,
-           COUNT(*) AS Total_PR,
-           SUM(CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END) AS Total_PO
-    FROM vw_sips
-    GROUP BY nama
-    ```
-    Di Excel: `=COUNTIF(kolom_nama, nama_karyawan)`
     """)
         
     st.caption("Perbandingan total dokumen PR yang ditugaskan dan diselesaikan (PO) oleh masing-masing karyawan.")
@@ -1072,10 +985,10 @@ GROUP BY status
         st.info("""\
 **Proporsi PO Kontrak vs Non-Kontrak**: Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (*Outline Agreement*) dibandingkan yang tidak.
 
-**Kalkulasi Logika:**
-- **Total PO**: Status dokumen adalah `Closed` atau `Proses PO`.
-- **PO Kontrak**: Kolom `outline_agreement` memiliki nilai (tidak kosong/null).
-- **PO Non-Kontrak**: Kolom `outline_agreement` kosong.
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Hitung jumlah `Non Agreement` dan `Agreement` di **Kontrak/Non kontrak**
 
 Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien karena tidak perlu melakukan proses lelang atau negosiasi berulang.
 """)
@@ -1182,10 +1095,18 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             eff['po_text'] = eff['po'].apply(format_idr_short)
 
             fig_eff = go.Figure()
-            fig_eff.add_bar(y=eff['nama'], x=eff['oe'], name='OE PR', text=eff['oe_text'],
-                            orientation='h', marker_color='#6c8ebf', opacity=0.85)
-            fig_eff.add_bar(y=eff['nama'], x=eff['po'], name='Nilai PO', text=eff['po_text'],
-                            orientation='h', marker_color='#09ab3b', opacity=0.85)
+            fig_eff.add_bar(
+                y=eff['nama'], x=eff['oe'], name='OE PR', text=eff['oe_text'],
+                orientation='h', marker_color='#6c8ebf', opacity=0.85,
+                customdata=eff['oe_text'],
+                hovertemplate='<b>%{y}</b><br>OE PR: Rp %{customdata}<extra></extra>'
+            )
+            fig_eff.add_bar(
+                y=eff['nama'], x=eff['po'], name='Nilai PO', text=eff['po_text'],
+                orientation='h', marker_color='#09ab3b', opacity=0.85,
+                customdata=eff['po_text'],
+                hovertemplate='<b>%{y}</b><br>Nilai PO: Rp %{customdata}<extra></extra>'
+            )
             
             fig_eff.update_traces(textposition='outside')
             fig_eff.update_layout(

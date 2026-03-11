@@ -20,6 +20,26 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "11 Mar 2026", "Versi": "v1.7.5", "Perubahan": """
+    - Validasi isi data halaman Alert
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP
+    - Validasi isi data halaman Dashboard Monitoring SIPS
+        - Fix beberapa query agar sesuai dengan data asli dari excel SIPS
+        - Fix format angka rupiah"""},
+        {"Tanggal": "10 Mar 2026", "Versi": "v1.7.4", "Perubahan": """
+    - Validasi isi data halaman Kinerja Purchasing Group
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP
+        - Merge tab \"Breakdown Metode per Tender\" dan \"Kecepatan Proses\"
+        - Menghapus beberapa chart yang sudah ada di halaman lain
+        - Fix beberapa query agar sesuai dengan data aslid dari excel SAP"""},
+        {"Tanggal": "9 Mar 2026", "Versi": "v1.7.3", "Perubahan": """
+    - Validasi isi data halaman Evaluasi Harga Barang
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP
+        - Memperbarui UI untuk KPI"""},
+        {"Tanggal": "5 Mar 2026", "Versi": "v1.7.2", "Perubahan": """
+    - Validasi isi data halaman Dashboard Monitoring SAP
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP
+        - Mengubah beberapa chart agar informasi lebih mudah dipahami"""},
         {"Tanggal": "3 Mar 2026", "Versi": "v1.7.1", "Perubahan": """
     - Update UI halaman Evaluasi Harga Barang, Dashboard Monitoring SIPS, dan Analisis Waktu Proses SIPS ketika tidak ada data untuk filter yang dipilih
     - Memperbaiki bug infomasi "0" dan informasi detail per chart di halaman Analisis Waktu Proses SIPS
@@ -46,7 +66,7 @@ def render(**kwargs):
     - Menambahkan model LLM bernama untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
         - Model LLM menggunakan model gemini-3-flash-preview dari Google GenAI dengan prompt rahasia yang dirancang khusus untuk memberikan insight yang tajam, faktual, dan objektif berdasarkan data
         - Data perusahaan tidak akan menjadi dataset pelatihan model Gemini karena API KEY yang digunakan jenisnya paid (estimasi Rp 20.000 per bulan)
-        - Model LLM memiliki kepribadian bernama Melati (terinspirasi dari nama PetrokiMelati) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
+        - Model LLM memiliki kepribadian bernama Melati (Monitoring, Evaluasi, Laporan Terintegrasi) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
         - Penggunaan model LLM ini masih dalam tahap awal (proof of concept) dan akan terus disempurnakan"""},
         {"Tanggal": "26 Feb 2026", "Versi": "v1.5.1", "Perubahan": """
     - Menambahkan info penting di halaman Dashboard Monitoring SIPS
@@ -199,5 +219,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7.1"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7.5"])):
             st.markdown(item["Perubahan"])

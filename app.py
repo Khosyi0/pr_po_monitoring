@@ -465,12 +465,8 @@ else:
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect("Bagian SIPS",
-            options=options_bagian_sips,
-            key="sips_filter_bagian",
-            on_change=update_bagian_sips_logic,
-            label_visibility="collapsed"
-        )
+        st.sidebar.pills("Bagian SIPS", options=options_bagian_sips, selection_mode="multi",
+            key="sips_filter_bagian", on_change=update_bagian_sips_logic, label_visibility="collapsed")
         sips_selected_bagian = st.session_state.sips_filter_bagian
 
         # Nama difilter berdasarkan Bagian yang dipilih
@@ -668,7 +664,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.7.1 | "
+        f"Monitoring Dashboard - {system_label} | v1.7.5 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

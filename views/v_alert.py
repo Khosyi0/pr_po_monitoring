@@ -12,6 +12,8 @@ from utils import format_idr, format_idr_short, render_chat_analyst
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        date_from   = kwargs.get('date_from')
+        date_to     = kwargs.get('date_to')
         
         # Fungsi helper untuk tombol toggle formula
         def toggle_state(state_key):
@@ -133,45 +135,52 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
             if st.session_state.get(key_alert_po, False):
                 st.info("""\
-**PO Overdue (Melewati Delivery Date)**: Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
+**PO Overdue (Melewati Delivery Date)**: Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum diterima semua (`Delivery Completed` belum `X`).
+
+**Status `on_time_delivery`:**
+| Status | Kondisi |
+|---|---|
+| `IN PROGRESS` | `Delivery Completed` belum `X` (belum diterima semua, bisa sebagian atau belum sama sekali) |
+| `TEPAT WAKTU` | `Delivery Completed = X` dan `Tgl Terima Barang ≤ Del Date PO` |
+| `TERLAMBAT` | `Delivery Completed = X` dan `Tgl Terima Barang > Del Date PO` |
 
 **Kolom yang ditampilkan:**
 | Kolom | Keterangan |
 |---|---|
 | `nomor_po` | Nomor Purchase Order |
+| `item_po` | Item PO dari Nomor PO |
 | `date_ordered` | Tanggal PO diterbitkan |
 | `target_delivery` | Tanggal delivery yang disepakati (`del_date_po`) |
 | `vendor_name` | Nama vendor pemasok |
 | `on_time_delivery` | Status pengiriman saat ini |
-| `hari_terlambat` | Jumlah hari keterlambatan dari tanggal target |
+| `hari_terlambat` | Jumlah hari melewati target delivery |
 
-Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan status belum selesai.
+**Formula Excel:** (PO SAP)
+- Filter kolom **Delivery Completed** kosong
+- Tambah kolom `=TODAY()-del_date_po`
+- Filter nilai positif.
                 """)
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
             alert_po_query = f"""
             SELECT
-                nomor_po,
-                date_ordered,
-                target_delivery,
-                vendor_name,
-                on_time_delivery,
-                CURRENT_DATE - target_delivery::DATE AS hari_terlambat
-            FROM (
-                SELECT 
-                    v.*, 
-                    p.del_date_po AS target_delivery
-                FROM vw_pr_po_complete v
-                LEFT JOIN purchase_orders p ON v.nomor_po = p.nomor_po
-            ) sub
-            WHERE {filter_conditions}
-            AND {bagian_po_cond}
-            AND nomor_po IS NOT NULL
-            AND target_delivery::DATE < CURRENT_DATE
-            AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
-            GROUP BY 1, 2, 3, 4, 5, 6
-            ORDER BY hari_terlambat DESC
+                poh.nomor_po,
+                poi.item_po,
+                poh.date_ordered,
+                poi.del_date_po AS target_delivery,
+                v.vendor_name,
+                poi.on_time_delivery,
+                CURRENT_DATE - poi.del_date_po::DATE AS hari_terlambat
+            FROM purchase_orders poh
+            JOIN po_items poi ON poh.nomor_po = poi.nomor_po
+            LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+            WHERE poi.del_date_po::DATE < CURRENT_DATE
+            AND poi.on_time_delivery = 'IN PROGRESS'
+            AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+            AND poh.date_ordered::DATE >= '{date_from}'
+            AND poh.date_ordered::DATE <= '{date_to}'
+            ORDER BY hari_terlambat DESC, poh.nomor_po, poi.item_po
             """
             with st.spinner("Memuat PO overdue..."):
                 alert_po_data = load_data(alert_po_query)
@@ -206,10 +215,13 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
 
             if st.session_state.get(key_alert_aging, False):
                 st.info("""\
-**Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
+**Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum diterima semua, dikelompokkan per rentang umur sejak PO diterbitkan.
 
-**Filter data:** Hanya PO dengan `on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')`, barang belum diterima.
-
+**Formula Excel:** (PO SAP)
+- Filter kolom **Delivery Completed** kosong
+- Tambah kolom `=TODAY()-date ordered`
+- Filter nilai sesuai dengan rangenya.
+                        
 **Cara membaca chart:**
 | Bucket | Status |
 |---|---|
@@ -227,15 +239,18 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
             aging_query = f"""
             SELECT
                 CASE
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 15 THEN '0-15 Hari'
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 30 THEN '16-30 Hari'
-                    WHEN CURRENT_DATE - date_ordered::DATE <= 60 THEN '31-60 Hari'
+                    WHEN CURRENT_DATE - poh.date_ordered::DATE <= 15 THEN '0-15 Hari'
+                    WHEN CURRENT_DATE - poh.date_ordered::DATE <= 30 THEN '16-30 Hari'
+                    WHEN CURRENT_DATE - poh.date_ordered::DATE <= 60 THEN '31-60 Hari'
                     ELSE '> 60 Hari'
                 END AS umur_po,
-                COUNT(DISTINCT nomor_po) AS total_po
-            FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND {bagian_po_cond} AND nomor_po IS NOT NULL
-            AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
+                COUNT(*) AS total_item
+            FROM purchase_orders poh
+            JOIN po_items poi ON poh.nomor_po = poi.nomor_po
+            WHERE poi.on_time_delivery = 'IN PROGRESS'
+            AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+            AND poh.date_ordered::DATE >= '{date_from}'
+            AND poh.date_ordered::DATE <= '{date_to}'
             GROUP BY 1
             ORDER BY 1
             """
@@ -246,8 +261,8 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
                 category_aging = ['0-15 Hari', '16-30 Hari', '31-60 Hari', '> 60 Hari']
                 
                 fig = px.bar(
-                    aging_data, x='umur_po', y='total_po',
-                    labels={'umur_po': 'Aging (Hari)', 'total_po': 'Jumlah PO'},
+                    aging_data, x='umur_po', y='total_item',
+                    labels={'umur_po': 'Aging (Hari)', 'total_item': 'Jumlah Item PO'},
                     text_auto=True,
                     category_orders={'umur_po': category_aging}
                 )

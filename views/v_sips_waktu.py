@@ -90,13 +90,13 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     kpi_q = f"""
     SELECT
-        ROUND(AVG(pr_po_days)::numeric,1)                               AS avg_pr_po,
-        ROUND(AVG(realisasi_sla)::numeric,1)                           AS avg_real,
-        ROUND(AVG(standar_sla)::numeric,1)                             AS avg_std,
-        ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric,1)  AS avg_pra,
-        ROUND(AVG(tgl_po - requisition_date)::numeric,1)               AS avg_e2e,
-        ROUND(AVG(standar_sla - realisasi_sla)::numeric,1)            AS avg_headroom,
-        ROUND(SUM(CASE WHEN nilai_sla=1 THEN 1.0 END)/NULLIF(COUNT(*),0)*100,1) AS pct_ontime,
+        ROUND(AVG(pr_po_days)::numeric,2)                               AS avg_pr_po,
+        ROUND(AVG(realisasi_sla)::numeric,2)                           AS avg_real,
+        ROUND(AVG(standar_sla)::numeric,2)                             AS avg_std,
+        ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric,2)  AS avg_pra,
+        ROUND(AVG(tgl_po - requisition_date)::numeric,2)               AS avg_e2e,
+        ROUND(AVG(standar_sla - realisasi_sla)::numeric,2)            AS avg_headroom,
+        ROUND(SUM(CASE WHEN nilai_sla=1 THEN 1.0 END)/NULLIF(COUNT(*),0)*100,2) AS pct_ontime,
         COUNT(CASE WHEN nilai_sla=0 THEN 1 END)                        AS cnt_miss
     FROM vw_sips WHERE {where}
     """
@@ -164,7 +164,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("clock", "Rata-rata PR-PO",
-                                 f"{format_number(avg_pr_po, decimals=1)} hari",
+                                 f"{format_number(avg_pr_po, decimals=2)} hari",
                                  "Disposisi Buyer ke Tgl PO (hari kerja)", "n"),
                         unsafe_allow_html=True)
         with c_btn:
@@ -182,7 +182,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("check", "Rata-rata Realisasi SLA",
-                                 f"{format_number(avg_real, decimals=1)} hari",
+                                 f"{format_number(avg_real, decimals=2)} hari",
                                  f"Disposisi ke PO hari kerja | Standar rata-rata {format_number(avg_std)}H", dc),
                         unsafe_allow_html=True)
         with c_btn:
@@ -199,7 +199,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("split", "Waktu Pra-Disposisi",
-                                 f"{format_number(avg_pra, decimals=1)} hari",
+                                 f"{format_number(avg_pra, decimals=2)} hari",
                                  "Req Date ke Disposisi (routing / approval)", "n"),
                         unsafe_allow_html=True)
         with c_btn:
@@ -220,20 +220,13 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ⚠️ Kolom PR-PO **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit.
 
     **Formula Excel:**
-    ```
-    =AVERAGEIFS(SIPS!N:N, SIPS!B:B, nama)
-    ```
-    Kolom N = PR-PO (hari kerja: Disposisi Buyer → Tanggal PO).
-
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 1)
-    AS avg_pr_po
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Proses PO` dan `Closed`
+    - Hitung rata-rata **PR-PO**
 
     Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
 
-    **Nilai saat ini:** {format_number(avg_pr_po, decimals=1)} hari
+    **Nilai saat ini:** {format_number(avg_pr_po, decimals=2)} hari
 
     **Target:** -
     """)
@@ -262,7 +255,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     | Realisasi ≤ Standard SLA | ✅ On-time, proses selesai sebelum target |
     | Realisasi > Standard SLA | ❌ Miss, proses melewati batas SLA |
 
-    **Standard SLA rata-rata saat ini:** {format_number(avg_std)} hari &nbsp;|&nbsp; **Realisasi saat ini:** {format_number(avg_real, decimals=1)} hari
+    **Standard SLA rata-rata saat ini:** {format_number(avg_std)} hari &nbsp;|&nbsp; **Realisasi saat ini:** {format_number(avg_real, decimals=2)} hari
     """)
 
     if st.session_state.get(key_kpi_pra, False):
@@ -278,7 +271,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ```
     Tidak ada kolom langsung di Excel untuk ini, dihitung dari selisih kolom **Tgl Disposisi Buyer** dan kolom **Requisition Date**.
 
-    **Nilai saat ini:** {format_number(avg_pra, decimals=1)} hari
+    **Nilai saat ini:** {format_number(avg_pra, decimals=2)} hari
 
     **Catatan:** Nilai ini tinggi bisa mengindikasikan bottleneck di proses approval atau routing sebelum PR masuk ke pengadaan.
     """)
@@ -292,7 +285,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("route", "Rata-rata End-to-End",
-                                 f"{format_number(avg_e2e, decimals=1)} hari",
+                                 f"{format_number(avg_e2e, decimals=2)} hari",
                                  "Req Date ke Tgl PO (total keseluruhan)", "n"),
                         unsafe_allow_html=True)
         with c_btn:
@@ -310,7 +303,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("target", "Rata-rata SLA Headroom",
-                                 f"{format_number(avg_headroom, decimals=1)} hari",
+                                 f"{format_number(avg_headroom, decimals=2)} hari",
                                  "Standard SLA minus Realisasi SLA (sisa waktu)", dc),
                         unsafe_allow_html=True)
         with c_btn:
@@ -328,7 +321,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         c_card, c_btn = st.columns([10, 2])
         with c_card:
             st.markdown(kpi_card("check", "% On Time SLA",
-                                 f"{format_number(pct_ontime, decimals=1)}%",
+                                 f"{format_number(pct_ontime, decimals=2)}%",
                                  f"Realisasi SLA <= Standard SLA | Miss: {format_number(cnt_miss)}", dc),
                         unsafe_allow_html=True)
         with c_btn:
@@ -357,7 +350,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ```
     Dihitung dari selisih kolom L (Tanggal PO) dan kolom I (Requisition Date).
 
-    **Nilai saat ini:** {format_number(avg_e2e, decimals=1)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=1)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=1)} hari
+    **Nilai saat ini:** {format_number(avg_e2e, decimals=2)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=2)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=2)} hari
     """)
 
     if st.session_state.get(key_kpi_headroom, False):
@@ -383,7 +376,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     | **0** | Tepat di batas SLA |
     | **Negatif** | Proses melewati Standard SLA, SLA Miss ❌ |
 
-    **Nilai saat ini:** {format_number(avg_headroom, decimals=1)} hari
+    **Nilai saat ini:** {format_number(avg_headroom, decimals=2)} hari
 
     **Target:** ≥ 0 hari (semakin besar semakin baik)
     """)
@@ -415,7 +408,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     | 75% – 89% | 🟡 Perlu perhatian |
     | < 75% | 🔴 Kritis |
 
-    **Nilai saat ini:** {format_number(pct_ontime, decimals=1)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
+    **Nilai saat ini:** {format_number(pct_ontime, decimals=2)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
 
     **Target:** ≥ 90%
     """)
@@ -969,13 +962,13 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
 
     # 1. Ringkasan KPI Waktu Utama
     konteks_lines.append("## 1. RINGKASAN KPI WAKTU PROSES SIPS")
-    konteks_lines.append(f"- Rata-rata End-to-End (Total): {avg_e2e:.1f} hari")
-    konteks_lines.append(f"- Rata-rata Pra-Disposisi (Sebelum masuk pengadaan): {avg_pra:.1f} hari")
-    konteks_lines.append(f"- Rata-rata PR-PO (Hari kerja di pengadaan): {avg_pr_po:.1f} hari")
-    konteks_lines.append(f"- Rata-rata Realisasi SLA (Hari Kerja di pengadaan): {avg_real:.1f} hari")
-    konteks_lines.append(f"- Rata-rata Standard SLA Target: {avg_std:.1f} hari")
-    konteks_lines.append(f"- SLA Headroom (Sisa Waktu): {avg_headroom:.1f} hari")
-    konteks_lines.append(f"- % On Time SLA: {pct_ontime:.1f}% (Jumlah terlambat: {cnt_miss} PO)\n")
+    konteks_lines.append(f"- Rata-rata End-to-End (Total): {avg_e2e:.2f} hari")
+    konteks_lines.append(f"- Rata-rata Pra-Disposisi (Sebelum masuk pengadaan): {avg_pra:.2f} hari")
+    konteks_lines.append(f"- Rata-rata PR-PO (Hari kerja di pengadaan): {avg_pr_po:.2f} hari")
+    konteks_lines.append(f"- Rata-rata Realisasi SLA (Hari Kerja di pengadaan): {avg_real:.2f} hari")
+    konteks_lines.append(f"- Rata-rata Standard SLA Target: {avg_std:.2f} hari")
+    konteks_lines.append(f"- SLA Headroom (Sisa Waktu): {avg_headroom:.2f} hari")
+    konteks_lines.append(f"- % On Time SLA: {pct_ontime:.2f}% (Jumlah terlambat: {cnt_miss} PO)\n")
 
     # 2. Dekomposisi Waktu per Nama (Karyawan)
     if 'decomp' in locals() and not decomp.empty:
