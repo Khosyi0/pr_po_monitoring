@@ -23,10 +23,10 @@ def render(**kwargs):
         {"Tanggal": "3 Mar 2026", "Versi": "v1.7.1", "Perubahan": """
     - Update UI halaman Evaluasi Harga Barang, Dashboard Monitoring SIPS, dan Analisis Waktu Proses SIPS ketika tidak ada data untuk filter yang dipilih
     - Memperbaiki bug infomasi "0" dan informasi detail per chart di halaman Analisis Waktu Proses SIPS
-    - Menambahkan kamus tentang struktur sistem ke Mia"""},
+    - Menambahkan kamus tentang struktur sistem ke Melati"""},
         {"Tanggal": "2 Mar 2026", "Versi": "v1.7", "Perubahan": """
-    - Optimisasi Mia agar dapat membaca keseluruhan data, tidak hanya data yang tampil di halaman tersebut
-    - Menambahkan Mia ke halaman Detailed PR-PO Data dan Detailed SIPS Data
+    - Optimisasi Melati agar dapat membaca keseluruhan data, tidak hanya data yang tampil di halaman tersebut
+    - Menambahkan Melati ke halaman Detailed PR-PO Data dan Detailed SIPS Data
     - Menambahkan filter "Bagian" (ALPATA, BARUM, BB/BD/BP) pada bagian SIPS
     - Merubah query pada "Nama" menjadi "NIK" untuk bagian SIPS agar lebih akurat dan konsisten dengan data yang ada
     - Update filter default untuk tanggal menjadi berawal dari tanggal 1 Januari tahun saat ini
@@ -46,7 +46,7 @@ def render(**kwargs):
     - Menambahkan model LLM bernama untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
         - Model LLM menggunakan model gemini-3-flash-preview dari Google GenAI dengan prompt rahasia yang dirancang khusus untuk memberikan insight yang tajam, faktual, dan objektif berdasarkan data
         - Data perusahaan tidak akan menjadi dataset pelatihan model Gemini karena API KEY yang digunakan jenisnya paid (estimasi Rp 20.000 per bulan)
-        - Model LLM memiliki kepribadian bernama Mia (terinspirasi dari nama Petrokimia) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
+        - Model LLM memiliki kepribadian bernama Melati (terinspirasi dari nama PetrokiMelati) yang bersikap ceria, ramah, sedikit playful, tapi tetap sangat objektif dan tajam saat menganalisis data
         - Penggunaan model LLM ini masih dalam tahap awal (proof of concept) dan akan terus disempurnakan"""},
         {"Tanggal": "26 Feb 2026", "Versi": "v1.5.1", "Perubahan": """
     - Menambahkan info penting di halaman Dashboard Monitoring SIPS

@@ -1261,7 +1261,7 @@ ORDER BY abc_indicator
                 st.info("Tidak ada data yang tersedia.")
 
         # =====================================================================
-        # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
+        # INTEGRASI AI: PANGGIL MELATI DENGAN KONTEKS GLOBAL
         # =====================================================================
 
         # Ambil konteks global (SAP default + SIPS aktif) yang sudah dibangun di app.py

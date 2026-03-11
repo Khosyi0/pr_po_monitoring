@@ -82,7 +82,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         date_to   = kwargs.get('date_to')
         bagian_po_poh = bagian_po_cond.replace('bagian_po', 'poh.bagian_po')
 
-        # PR KPI — filter by tgl_create_pr
+        # PR KPI: filter by tgl_create_pr
         pg_kpi_query = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
@@ -105,7 +105,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
           AND {bagian_po_poh}
         """
 
-        # PO KPI — filter by date_ordered langsung dari tabel po_items
+        # PO KPI: filter by date_ordered langsung dari tabel po_items
         pg_po_kpi_query = f"""
         SELECT
             COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)                 AS total_item_po,
@@ -224,7 +224,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             #
             # jml_item_pr & pr_with_po diambil dari pr_items yang sudah terfilter bagian_pr,
             # lalu di-GROUP BY purchasing_group yang diambil dari po_items (via no_pr+line_item_pr).
-            # PR yang belum punya PO sama sekali akan tetap terlewat — ini trade-off yang wajar
+            # PR yang belum punya PO sama sekali akan tetap terlewat, ini trade-off yang wajar
             # karena kita tidak tahu purchasing_group-nya jika PR belum di-assign ke PO.
             bagian_pr_cond_pri = bagian_pr_cond.replace('bagian_pr', 'pri.bagian_pr')
 
@@ -704,15 +704,35 @@ PR dgn PO   = COUNT(DISTINCT no_pr || '-' || line_item_pr)
                         "formula": """\
 **Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
 
-**Kalkulasi SQL:**
-```sql
-ROUND(AVG(pr_po_days)::numeric, 1) AS avg_lt_overall
-FROM po_items JOIN purchase_orders ...
+**Contoh Formula Excel:** bulan Januari
 ```
+=SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (ISNUMBER(SEARCH("1000076", TEXT(INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "0"))) = FALSE) *
+  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) *
+  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) *
+  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
+   INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))
+) /
+SUMPRODUCT(
+  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
+  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
+  (ISNUMBER(SEARCH("1000076", TEXT(INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "0"))) = FALSE) *
+  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) *
+  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) *
+  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
+    INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0)
+)
+```
+**Formula Excel MANUAL:** (PO SAP)
+- Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
+- Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
+- Dirata-rata
 
-**Sumber `pr_po_days`:** Selisih hari `Date Ordered − Tgl Create PR` yang dihitung saat ETL.
-
-**Target SLA = 55 hari.** Rata-rata lebih sensitif terhadap outlier dibanding median — bandingkan keduanya untuk gambaran lengkap.
+**Target SLA = 55 hari.** Rata-rata lebih sensitif terhadap outlier dibanding median, bandingkan keduanya untuk gambaran lengkap.
 """
                     },
                     {
@@ -723,10 +743,10 @@ FROM po_items JOIN purchase_orders ...
                         "formula": """\
 **Median Lead Time**: Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
 
-**Kalkulasi SQL:**
-```sql
-PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY pr_po_days) AS median_lt
-```
+**Formula Excel:** (PO SAP)
+- Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
+- Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
+- Dicari `mean`nya
 
 Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO dengan lead time ekstrem. Gunakan median sebagai ukuran "kecepatan tipikal".
 """
@@ -739,6 +759,11 @@ Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO deng
                         "formula": """\
 **Rentang Lead Time**: Selisih antara lead time terpendek dan terpanjang dalam periode filter.
 
+**Formula Excel:** (PO SAP)
+- Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
+- Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
+- Dicari terbesar dan terkecilnya
+
 **Rentang sempit** = proses konsisten. **Rentang lebar** = variabilitas tinggi, perlu investigasi outlier.
 """
                     },
@@ -749,6 +774,11 @@ Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO deng
                         "delta": f"{format_number(spd_ontime_pct, decimals=1)}% dari total",
                         "formula": """\
 **On-Time (≤55 Hari)**: Jumlah PO yang diproses dalam batas SLA 55 hari.
+
+**Formula Excel:** (PO SAP)
+- Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
+- Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
+- FIlter `countif` kurang dari sama dengan 55
 
 | % On-Time | Status |
 |---|---|
@@ -765,7 +795,12 @@ Jika median jauh lebih rendah dari rata-rata, berarti ada sejumlah kecil PO deng
                         "formula": """\
 **Terlambat (>55 Hari)**: Jumlah PO yang melebihi batas SLA 55 hari.
 
-Drill-down ke tabel **Ringkasan Kecepatan per PG** di bawah untuk identifikasi PG dengan % terlambat tertinggi.
+**Formula Excel:** (PO SAP)
+- Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
+- Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
+- FIlter `countif` lebih dari sama dengan 55
+
+Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk identifikasi Purchasing Group dengan % terlambat tertinggi.
 """
                     },
                 ]
@@ -934,7 +969,7 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                     kontrak_global = load_data(kontrak_global_query)
 
                 if not kontrak_data.empty:
-                    # Ringkasan global — pakai query global agar AVG tidak terdistorsi (mean-of-means)
+                    # Ringkasan global, pakai query global agar AVG tidak terdistorsi (mean-of-means)
                     kontrak_sum = kontrak_global if not kontrak_global.empty else kontrak_data.groupby('jenis_kontrak').agg(
                         jml_item       =('jml_item',        'sum'),
                         total_realisasi=('total_realisasi', 'sum'),
@@ -1065,7 +1100,7 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                     ta_global = load_data(ta_global_query)
 
                 if not ta_data.empty:
-                    # Ringkasan global — pakai query global agar AVG tidak terdistorsi
+                    # Ringkasan global, pakai query global agar AVG tidak terdistorsi
                     ta_sum = ta_global if not ta_global.empty else ta_data.groupby('turn_around').agg(
                         jml_item       =('jml_item',        'sum'),
                         total_realisasi=('total_realisasi', 'sum'),
@@ -1234,12 +1269,10 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
                         st.info("""\
 **Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
 
-**Kalkulasi SQL:**
-```sql
-AVG(poi.pr_po_days) AS avg_lt
-GROUP BY DATE_TRUNC('month', poh.date_ordered), jenis_kontrak
-ORDER BY bulan
-```
+**Formula Excel:** (PO SAP)
+- Filter per bulan
+- Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
+- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
 
 **Cara membaca:**
 - Tren **turun konsisten** = proses semakin efisien ✅
@@ -1406,7 +1439,7 @@ ORDER BY bulan
 
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
-        # Di luar semua tab agar Mia selalu muncul di bawah halaman
+        # Di luar semua tab agar Melati selalu muncul di bawah halaman
         # =====================================================================
 
         konteks_lines = []

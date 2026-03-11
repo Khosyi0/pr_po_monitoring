@@ -1207,7 +1207,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         st.info("Tidak ada data untuk filter yang dipilih.")
 
     # =====================================================================
-    # INTEGRASI AI: PANGGIL MIA DENGAN KONTEKS GLOBAL
+    # INTEGRASI AI: PANGGIL MELATI DENGAN KONTEKS GLOBAL
     # =====================================================================
 
     # Ambil konteks global (SIPS default + SAP aktif) yang sudah dibangun di app.py

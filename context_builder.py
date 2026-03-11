@@ -1,5 +1,5 @@
 """
-context_builder.py - Pengumpul konteks global untuk Mia (AI Analyst)
+context_builder.py - Pengumpul konteks global untuk Melati (AI Analyst)
 
 Logika lintas sistem:
   • Saat berada di halaman SAP  → konteks SAP pakai filter AKTIF, konteks SIPS pakai filter DEFAULT
@@ -51,7 +51,7 @@ def _fetch_sap_context(load_data, filter_conditions,
             date_to   = m_to.group(1)   if m_to   else '2026-12-31'
 
 
-        # PR query — filter by tgl_create_pr
+        # PR query: filter by tgl_create_pr
         pr_q = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
@@ -65,7 +65,7 @@ def _fetch_sap_context(load_data, filter_conditions,
         WHERE {filter_conditions}
         """
 
-        # PO query — filter by date_ordered
+        # PO query: filter by date_ordered
         po_q = f"""
         SELECT
             COUNT(poi.nomor_po)                                           AS total_po,

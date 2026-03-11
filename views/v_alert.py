@@ -58,15 +58,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             st.info("""\
 **PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
 
-**Kalkulasi SQL:**
-```sql
-umur_hari = CURRENT_DATE - tgl_create_pr::DATE
-Filter : nomor_po IS NULL           -- belum ada PO
-     AND no_pr != 'No PR'           -- bukan baris fiktif
-     AND umur_hari > 30             -- lebih dari 30 hari
-ORDER BY umur_hari DESC             -- yang paling lama di atas
-```
-
 **Kolom yang ditampilkan:**
 | Kolom | Keterangan |
 |---|---|
@@ -77,7 +68,10 @@ ORDER BY umur_hari DESC             -- yang paling lama di atas
 | `estimasi_pr` | Nilai estimasi per baris PR (kolom `estimasi_pr`) |
 | `umur_hari` | Selisih hari dari tanggal buat hingga hari ini |
 
-Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` → filter nilai > 30.
+**Formula Excel:** (PR SAP)
+- Filter kolom **No PO** kosong
+- Tambah kolom `=TODAY()-tgl_create_pr`
+- Filter nilai > 30.
             """)
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True) # Spasi sebelum tabel
@@ -90,7 +84,7 @@ Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` 
             estimasi_pr,
             CURRENT_DATE - tgl_create_pr::DATE AS umur_hari
         FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND nomor_po IS NULL AND no_pr != 'No PR'
+        WHERE {filter_conditions} AND {bagian_pr_cond} AND nomor_po IS NULL AND no_pr != 'No PR'
         AND (CURRENT_DATE - tgl_create_pr::DATE) > 30
         ORDER BY umur_hari DESC
         """
@@ -141,14 +135,6 @@ Di Excel: filter kolom *No PO* kosong → tambah kolom `=TODAY()-tgl_create_pr` 
                 st.info("""\
 **PO Overdue (Melewati Delivery Date)**: Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum masuk Good Receipt (GR).
 
-**Kalkulasi SQL:**
-```sql
-hari_terlambat = CURRENT_DATE - del_date_po::DATE
-Filter : del_date_po::DATE < CURRENT_DATE
-     AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
-ORDER BY hari_terlambat DESC
-```
-
 **Kolom yang ditampilkan:**
 | Kolom | Keterangan |
 |---|---|
@@ -180,6 +166,7 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
                 LEFT JOIN purchase_orders p ON v.nomor_po = p.nomor_po
             ) sub
             WHERE {filter_conditions}
+            AND {bagian_po_cond}
             AND nomor_po IS NOT NULL
             AND target_delivery::DATE < CURRENT_DATE
             AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
@@ -221,18 +208,6 @@ Di Excel: tambah kolom `=TODAY()-del_date_po` → filter nilai positif dan statu
                 st.info("""\
 **Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
 
-**Kalkulasi SQL:**
-```sql
-aging_days = CURRENT_DATE − date_ordered::DATE
-
-CASE
-  WHEN aging_days <= 15 THEN '0-15 Hari'
-  WHEN aging_days <= 30 THEN '16-30 Hari'
-  WHEN aging_days <= 60 THEN '31-60 Hari'
-  ELSE                       '> 60 Hari'
-END AS umur_po
-```
-
 **Filter data:** Hanya PO dengan `on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')`, barang belum diterima.
 
 **Cara membaca chart:**
@@ -259,7 +234,7 @@ END AS umur_po
                 END AS umur_po,
                 COUNT(DISTINCT nomor_po) AS total_po
             FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND nomor_po IS NOT NULL
+            WHERE {filter_conditions} AND {bagian_po_cond} AND nomor_po IS NOT NULL
             AND on_time_delivery IN ('TERLAMBAT', 'IN PROGRESS')
             GROUP BY 1
             ORDER BY 1

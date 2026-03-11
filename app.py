@@ -596,7 +596,7 @@ teks_filter_sips = f"""
 - Nama: {', '.join(sips_selected_nama)}
 """
 
-# ── Bangun / refresh konteks global untuk Mia ────────────────────────────────
+# ── Bangun / refresh konteks global untuk Melati ────────────────────────────────
 global_context = build_global_context(
     load_data      = load_data,
     is_sips        = is_sips,
