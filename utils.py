@@ -262,7 +262,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
     st.markdown(f"""
         <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4; margin-bottom: 5px;'>
             {icon_html}
-            Tanya ke Melati (Asisten Monitoring & Reporting Pengadaan Barang)
+            Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)
         </h1>
     """, unsafe_allow_html=True)
     st.caption(f"Tanyakan *insight* atau kesimpulan dari data di sistem Monitoring & Reporting Pengadaan Barang.")
