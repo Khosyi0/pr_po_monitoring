@@ -412,7 +412,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                                 - "Total PR": Jumlah Purchase Requisition dalam periode filter (semua status).
                                 - "Total PO": Jumlah PR yang sudah memiliki PO, yaitu yang berstatus Closed atau Proses PO.
                                 - "PO/PR": Persentase PR yang sudah dikonversi menjadi PO.
-                                - "Rata-rata PR-PO": Rata-rata jumlah hari dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
+                                - "Rata-rata PR-PO": Rata-rata jumlah hari semua PR-PO dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
                                 - "SLA On Time": Jumlah PO yang diselesaikan dalam batas SLA standar.
                                 - "% On Time": Persentase PO yang diselesaikan tepat waktu.
                                 - "OE Proses PO": Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus Proses PO.
@@ -434,7 +434,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                         7. Detailed SIPS Data: Menampilkan tabel "Data mentah dokumen SIPS".
                         8. Analisis Waktu Proses SIPS:
                             - Menampilkan Ringkasan Waktu:
-                                - "Rata-rata PR-PO": Rata-rata jumlah hari dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan (hari kerja).
+                                - "Rata-rata PR-PO": Rata-rata jumlah hari PR-PO dengan Status Proses PO dan Closed dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
                                 - "Rata-rata Realisasi SLA": Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam hari kerja.
                                 - "Waktu Pra-Disposisi": Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
                                 - "Rata-rata End-to-End": Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.

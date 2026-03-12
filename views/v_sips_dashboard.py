@@ -318,9 +318,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Waktu PR → PO",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
-
-    ⚠️ PR-PO **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit. Ini adalah waktu murni proses pengadaan dalam hari kalender.
+    **Rata-rata PR-PO**: Rata-rata jumlah hari semua PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari

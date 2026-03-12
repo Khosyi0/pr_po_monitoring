@@ -429,46 +429,6 @@ if not is_sips:
 # ══════════════════════════════════════════════════════════════════════════════
 else:
     try:
-        bagian_data = load_data("""
-            SELECT DISTINCT bagian FROM sips_employees
-            WHERE bagian IS NOT NULL ORDER BY bagian
-
-        """)
-        options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
-
-        def update_bagian_sips_logic():
-            cur, prv = st.session_state.sips_filter_bagian, st.session_state.sips_prev_bagian
-            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.sips_filter_bagian = ['All']
-            # Reset filter nama saat bagian berubah
-            st.session_state.sips_filter_nama = ['All']
-            st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
-
-        # ── Filter Bagian ─────────────────────────────────────────────────────
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
-                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
-                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
-                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
-                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
-                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
-                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
-                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
-                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
-                         A1.5 1.5 0 0 1 12.5 11z"/>
-            </svg>
-            Bagian
-        </p>
-        """, unsafe_allow_html=True)
-        st.sidebar.pills("Bagian SIPS", options=options_bagian_sips, selection_mode="multi",
-            key="sips_filter_bagian", on_change=update_bagian_sips_logic, label_visibility="collapsed")
-        sips_selected_bagian = st.session_state.sips_filter_bagian
-
         # Nama difilter berdasarkan Bagian yang dipilih
         if 'All' not in sips_selected_bagian and sips_selected_bagian:
             bagian_sql = "', '".join(sips_selected_bagian)
@@ -514,6 +474,46 @@ else:
             label_visibility="collapsed"
         )
         sips_selected_nama = st.session_state.sips_filter_nama
+
+        bagian_data = load_data("""
+            SELECT DISTINCT bagian FROM sips_employees
+            WHERE bagian IS NOT NULL ORDER BY bagian
+
+        """)
+        options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
+
+        def update_bagian_sips_logic():
+            cur, prv = st.session_state.sips_filter_bagian, st.session_state.sips_prev_bagian
+            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.sips_filter_bagian = ['All']
+            # Reset filter nama saat bagian berubah
+            st.session_state.sips_filter_nama = ['All']
+            st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
+
+        # ── Filter Bagian ─────────────────────────────────────────────────────
+        st.sidebar.markdown("""
+        <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
+                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
+                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
+                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
+                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
+                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
+                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
+                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
+                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
+                         A1.5 1.5 0 0 1 12.5 11z"/>
+            </svg>
+            Bagian
+        </p>
+        """, unsafe_allow_html=True)
+        st.sidebar.pills("Bagian SIPS", options=options_bagian_sips, selection_mode="multi",
+            key="sips_filter_bagian", on_change=update_bagian_sips_logic, label_visibility="collapsed")
+        sips_selected_bagian = st.session_state.sips_filter_bagian
 
         # ── Date Range SIPS ───────────────────────────────────────────────────
         st.sidebar.markdown("""
@@ -664,7 +664,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.7.5 | "
+        f"Monitoring Dashboard - {system_label} | v1.7.6 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

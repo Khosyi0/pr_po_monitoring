@@ -165,7 +165,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         with c_card:
             st.markdown(kpi_card("clock", "Rata-rata PR-PO",
                                  f"{format_number(avg_pr_po, decimals=2)} hari",
-                                 "Disposisi Buyer ke Tgl PO (hari kerja)", "n"),
+                                 "Proses Po dan Closed", "n"),
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -215,16 +215,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     # Formula info baris 1 - tampil di bawah baris, lebar penuh
     if st.session_state.get(key_kpi_pr_po, False):
         st.info(f"""\
-    **Rata-rata PR-PO**: Rata-rata jumlah hari dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan (hari kerja).
-
-    ⚠️ Kolom PR-PO **bukan** dari Requisition Date ke PO, melainkan dari saat PR diterima buyer (disposisi) sampai PO terbit.
+    **Rata-rata Proses Po dan Closed dari PR-PO**: Rata-rata jumlah hari PR-PO dengan **Status** `Proses PO` dan `Closed` dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Proses PO` dan `Closed`
     - Hitung rata-rata **PR-PO**
-
-    Berbeda dari **Realisasi SLA (T)** yang menghitung hari kerja, rata-rata selisih keduanya ±8 hari.
 
     **Nilai saat ini:** {format_number(avg_pr_po, decimals=2)} hari
 
@@ -235,18 +231,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         st.info(f"""\
     **Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
 
-    Berbeda dari PR-PO yang menggunakan hari kerja, Realisasi SLA mengeluarkan hari libur/akhir pekan sehingga nilainya lebih kecil (rata-rata selisih ±8 hari).
-
     **Formula Excel:**
-    ```
-    =AVERAGEIFS(SIPS!T:T, SIPS!B:B, nama)
-    ```
-    Kolom T = Realisasi SLA (hari kerja).
-
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(realisasi_sla)::numeric, 1) AS avg_real
-    ```
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Nilai SLA** menjadi `1`
+    - Hitung rata-rata **Realisasi SLA**
 
     **Interpretasi:**
 
@@ -264,12 +252,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     Ini adalah waktu **di luar kendali tim pengadaan**.
 
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric, 1)
-    AS avg_pra
-    ```
-    Tidak ada kolom langsung di Excel untuk ini, dihitung dari selisih kolom **Tgl Disposisi Buyer** dan kolom **Requisition Date**.
+    **Formula Excel:**
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Nilai SLA** menjadi `1`
+    - Hitung rata-rata dari `Tanggal Disposisi Buyer` dikurangi dengan `Requisition Date`
 
     **Nilai saat ini:** {format_number(avg_pra, decimals=2)} hari
 
@@ -343,12 +329,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     - Pra-Disposisi = waktu sebelum buyer menerima PR (routing, approval, antrian)
     - PR-PO = waktu pengadaan setelah buyer menerima PR
 
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(tgl_po - requisition_date)::numeric, 1)
-    AS avg_e2e
-    ```
-    Dihitung dari selisih kolom L (Tanggal PO) dan kolom I (Requisition Date).
+    **Formula Excel:**
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Closed`
+    - Hitung rata-rata dari `Tanggal PO` dikurangi dengan `Requisition Date`
 
     **Nilai saat ini:** {format_number(avg_e2e, decimals=2)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=2)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=2)} hari
     """)
@@ -361,12 +345,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ```
     SLA Headroom = Standard SLA − Realisasi SLA
     ```
-
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(AVG(standar_sla - realisasi_sla)::numeric, 1)
-    AS avg_headroom
-    ```
+                
+    **Formula Excel:**
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Nilai SLA** menjadi `1`
+    - Hitung rata-rata dari `Standard SLA` dikurangi dengan `Realisasi SLA`
 
     **Interpretasi:**
 
@@ -386,19 +369,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
 
     **Formula Excel:**
-    ```
-    =COUNTIFS(SIPS!U:U, 1, SIPS!B:B, nama) / Total PO × 100%
-    ```
-    Kolom U = Nilai SLA (1 = on-time, 0 = miss, '-' = belum ada PO).
-
-    **Kalkulasi SQL:**
-    ```sql
-    ROUND(
-      SUM(CASE WHEN nilai_sla = 1 THEN 1.0 END)
-      / NULLIF(COUNT(*), 0) * 100, 1
-    ) AS pct_ontime
-    ```
-    Baris dengan `nilai_sla = '-'` (PR belum ada PO) **dikecualikan** dari perhitungan via `WHERE nilai_sla IS NOT NULL`.
+    - Filter nama karyawan yang ingin dicari
+    - Filter **Nilai SLA** menjadi `1` dan `0`
+    - `= Nilai SLA 1 - Total PO`
 
     **Interpretasi:**
 
@@ -443,18 +416,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
 | Komponen | Artinya |
 |---|---|
-| Oranye - Realisasi SLA | Waktu proses pengadaan yang dihitung sebagai Realisasi SLA (hari kerja) |
-| Biru - PR-PO minus Realisasi | Selisih waktu antara total PR-PO dengan Realisasi SLA |
+| Oranye - Rata-rata Realisasi SLA | Waktu proses pengadaan yang dihitung sebagai Realisasi SLA (hari kerja) |
+| Biru - Rata-rata PR-PO minus Realisasi | Selisih waktu antara total PR-PO dengan Realisasi SLA |
 
 Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru yang panjang mengindikasikan banyaknya waktu yang "terpotong" (misal karena penahanan/pending atau faktor pengecualian lain) yang tidak masuk ke perhitungan Realisasi SLA.
 
-**Kalkulasi SQL:**
-```sql
-AVG(realisasi_sla) AS avg_realisasi
-AVG(pr_po_days)    AS avg_pr_po
--- Selisih Biru = avg_pr_po - avg_realisasi
-GROUP BY nama
-```
 """)
 
     if df.empty:
@@ -474,9 +440,9 @@ GROUP BY nama
 
             # Pembuatan Chart
             fig = go.Figure()
-            fig.add_bar(y=decomp["nama"], x=decomp["realisasi"], name="Realisasi SLA",
+            fig.add_bar(y=decomp["nama"], x=decomp["realisasi"], name="Rata-rata Realisasi SLA",
                         orientation="h", marker_color="#f0a500")
-            fig.add_bar(y=decomp["nama"], x=decomp["selisih"], name="PR-PO minus Realisasi",
+            fig.add_bar(y=decomp["nama"], x=decomp["selisih"], name="Rata-rata PR-PO minus Realisasi",
                         orientation="h", marker_color="#6c8ebf")
 
             fig.update_layout(barmode="stack", height=max(280, len(decomp)*44),
@@ -514,6 +480,11 @@ GROUP BY nama
         st.info("""\
 **Standard SLA per jenis pengadaan:** Bar Chart % On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak.
 
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1` dan `0`
+- Hitung jumlah **Standard SLA** dengan nilai `12 Hari`, `24 Hari`, `48 Hari`, dan `57 Hari`
+                
 | Standard SLA | Jenis | Prioritas |
 |---|---|---|
 | 12 Hari | Agreement | Semua |
@@ -523,11 +494,6 @@ GROUP BY nama
 
 `Nilai SLA = 1` = Realisasi <= Standard (on-time), `= 0` = miss, `= '-'` = belum PO (dikecualikan).
 
-**Kalkulasi SQL:**
-```sql
-SUM(CASE WHEN nilai_sla=1 THEN 1.0 END) / COUNT(*) * 100 AS pct_ontime
-GROUP BY standar_sla
-```
 """)
 
     if df.empty:
@@ -612,11 +578,6 @@ GROUP BY standar_sla
 | 0 | Tepat di batas SLA |
 | Negatif | Melewati Standard SLA, SLA Miss |
 
-**Kalkulasi SQL:**
-```sql
-AVG(standar_sla - realisasi_sla) AS avg_headroom
-GROUP BY nama
-```
 Hijau = rata-rata headroom positif. Merah = sering melewati target.
 """)
 
@@ -676,15 +637,6 @@ Hijau = rata-rata headroom positif. Merah = sering melewati target.
 | Garis hijau | Realisasi SLA | Hari kerja Disposisi ke PO |
 | Garis merah putus | % On Time | Sumbu kanan |
 
-**Kalkulasi SQL:**
-```sql
-TO_CHAR(DATE_TRUNC('month',requisition_date),'YYYY-MM') AS bulan,
-AVG(pr_po_days)                AS avg_pr_po,
-AVG(realisasi_sla)             AS avg_real,
-AVG(tgl_po - requisition_date) AS avg_e2e,
-SUM(CASE WHEN nilai_sla=1 THEN 1.0 END)/COUNT(*)*100 AS pct_ontime
-GROUP BY bulan ORDER BY bulan
-```
 """)
 
     if df.empty or "bulan" not in df.columns or not df["bulan"].notna().any():
@@ -695,6 +647,13 @@ GROUP BY bulan ORDER BY bulan
             avg_e2e  =("e2e","mean"), total=("nilai_sla","count"),
             ontime   =("nilai_sla", lambda x: (pd.to_numeric(x,errors="coerce")==1).sum()),
         ).reset_index().sort_values("bulan")
+
+    if date_from:
+        bulan_from = str(date_from)[:7]   # ambil "YYYY-MM"
+        trend = trend[trend["bulan"] >= bulan_from]
+    if date_to:
+        bulan_to = str(date_to)[:7]
+        trend = trend[trend["bulan"] <= bulan_to]
 
         if not trend.empty:
             trend["pct"] = (trend["ontime"]/trend["total"]*100).round(1)
@@ -747,8 +706,8 @@ GROUP BY bulan ORDER BY bulan
         st.info("""\
 **Distribusi Waktu**: Bar Chart Sebaran PR-PO dan Realisasi SLA untuk mendeteksi outlier.
 
-- **Kiri - PR-PO (N, hari kerja)**: Disposisi ke Tgl PO. Ekor kanan panjang = ada PR yang sangat lama diproses setelah disposisi.
-- **Kanan - Realisasi SLA (hari kerja)**: Waktu bersih proses pengadaan dari Disposisi ke PO dengan mengecualikan hari libur. Ini adalah metrik utama penentu On-Time/Miss SLA. Outlier di sebelah kanan menunjukkan dokumen yang jauh melewati target SLA.
+- **Kiri - PR-PO**: Disposisi ke Tgl PO. Ekor kanan panjang = ada PR yang sangat lama diproses setelah disposisi.
+- **Kanan - Realisasi SLA**: Waktu bersih proses pengadaan dari Disposisi ke PO dengan mengecualikan hari libur. Ini adalah metrik utama penentu On-Time/Miss SLA. Outlier di sebelah kanan menunjukkan dokumen yang jauh melewati target SLA.
 
 Garis putus = rata-rata masing-masing.
 """)
@@ -827,13 +786,13 @@ Garis putus = rata-rata masing-masing.
 | Investasi | 48H |
 | Normal | 12H (Agreement) / 57H (Non-Agreement) |
 
-**Kalkulasi SQL:**
-```sql
-AVG(pr_po_days)    AS avg_pr_po,
-AVG(realisasi_sla) AS avg_real,
-SUM(CASE WHEN nilai_sla=1 THEN 1.0 END)/COUNT(*)*100 AS pct_ontime
-GROUP BY prioritas
-```
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1` dan `0`
+- Filter **Prioritas** menjadi `Urgent`, `TA`, `Investasi`, dan `Normal`
+- **Chart Kiri**: Hitung rata-rata **PR-PO** dan **Realisasi SLA**
+- **Chart Kanan**: Total nilai `1` pada **Nilai SLA** dibagi **Total PO**
+                
 Idealnya Emergency dan Urgent lebih rendah dari Normal.
 """)
 
@@ -911,9 +870,12 @@ Idealnya Emergency dan Urgent lebih rendah dari Normal.
 **Waktu Realisasi SLA per Purchasing Group**: Bar Chart Perbandingan rata-rata waktu penyelesaian berdasarkan Purchasing Group.
 
 Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan oleh masing-masing Purchasing Group.
-
-**Kalkulasi SQL:**
-`SELECT purchasing_group, AVG(realisasi_sla) AS avg_realisasi FROM vw_sips GROUP BY purchasing_group`
+                
+**Formula Excel:**
+- Filter **Purchasing Group** yang ingin dicari
+- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Hitung rata-rata **Realisasi SLA**
+                
 """)
 
     if df.empty or "purchasing_group" not in df.columns:

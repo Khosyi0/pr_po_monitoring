@@ -20,6 +20,9 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "12 Mar 2026", "Versi": "v1.7.6", "Perubahan": """
+    - Validasi isi data halaman Analisis Waktu Proses SIPS
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP"""},
         {"Tanggal": "11 Mar 2026", "Versi": "v1.7.5", "Perubahan": """
     - Validasi isi data halaman Alert
         - Fix beberapa query agar sesuai dengan data asli dari excel SAP
@@ -219,5 +222,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7.5"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.7.6"])):
             st.markdown(item["Perubahan"])
