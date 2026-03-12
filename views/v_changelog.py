@@ -22,7 +22,15 @@ def render(**kwargs):
     changelog_data = [
         {"Tanggal": "12 Mar 2026", "Versi": "v1.7.6", "Perubahan": """
     - Validasi isi data halaman Analisis Waktu Proses SIPS
-        - Fix beberapa query agar sesuai dengan data asli dari excel SAP"""},
+        - Fix beberapa query agar sesuai dengan data asli dari excel SAP
+    - Mengubah beberapa elemen di halaman Dashboard Monitoring SAP
+        - Fix query
+            - Total PR
+            - Kecepatan Proses PO
+            - % Pengiriman Barang
+            - Ketepatan Pengiriman Barang
+        - Penambahan filter khusus pada chart Top 10 Vendors by PO Value
+        - Mengubah tanggal yang muncul pada chart PR-PO Creation Trend"""},
         {"Tanggal": "11 Mar 2026", "Versi": "v1.7.5", "Perubahan": """
     - Validasi isi data halaman Alert
         - Fix beberapa query agar sesuai dengan data asli dari excel SAP
