@@ -45,13 +45,13 @@ def _fetch_sap_context(load_data, filter_conditions,
         # Fallback: jika date_from/date_to tidak tersedia, ambil dari filter_conditions
         if not date_from or not date_to:
             import re
-            m_from = re.search(r"tgl_create_pr >= '([^']+)'", filter_conditions)
-            m_to   = re.search(r"tgl_create_pr <= '([^']+)'", filter_conditions)
+            m_from = re.search(r"first_full_release >= '([^']+)'", filter_conditions)
+            m_to   = re.search(r"first_full_release <= '([^']+)'", filter_conditions)
             date_from = m_from.group(1) if m_from else '2026-01-01'
             date_to   = m_to.group(1)   if m_to   else '2026-12-31'
 
 
-        # PR query: filter by tgl_create_pr
+        # PR query: filter by first_full_release (hanya PR yang sudah full release di periode tsb)
         pr_q = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
@@ -63,6 +63,7 @@ def _fetch_sap_context(load_data, filter_conditions,
             COALESCE(SUM(CASE WHEN {bagian_pr_cond} THEN oe ELSE 0 END), 0) AS total_estimasi
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
+          AND first_full_release IS NOT NULL
         """
 
         # PO query: filter by date_ordered
@@ -70,7 +71,11 @@ def _fetch_sap_context(load_data, filter_conditions,
         SELECT
             COUNT(poi.nomor_po)                                           AS total_po,
             COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS total_po_amount,
-            ROUND(AVG(gr.lead_time_process_po)::numeric, 2)               AS avg_lead_time,
+            ROUND(AVG(
+                CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
+                THEN (poh.date_ordered::date - poi.first_full_release::date)
+                END
+            )::numeric, 2)                                                        AS avg_lead_time,
             COUNT(DISTINCT poh.nomor_po)                                  AS total_po_distinct,
             COUNT(DISTINCT CASE WHEN poi.status_pengiriman = 'SELESAI'
                 THEN poh.nomor_po END)                                    AS po_delivered,
@@ -80,7 +85,6 @@ def _fetch_sap_context(load_data, filter_conditions,
                 THEN poh.nomor_po END)                                    AS po_delivered_total
         FROM po_items poi
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
           AND {bagian_po_poi}
         """

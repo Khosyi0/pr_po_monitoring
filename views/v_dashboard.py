@@ -50,7 +50,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         date_from = kwargs.get('date_from')
         date_to   = kwargs.get('date_to')
 
-        # ── Query PR: filter by tgl_create_pr (perilaku asli) ─────────────────
+        # ── Query PR: filter by first_full_release (hanya PR yang sudah full release) ─
         pr_kpi_query = f"""
         WITH unique_pr AS (
             SELECT 
@@ -60,6 +60,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 MAX(estimasi_pr) AS oe_val
             FROM vw_pr_po_complete
             WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
+              AND first_full_release IS NOT NULL
             GROUP BY no_pr, line_item_pr
         )
         SELECT
@@ -72,17 +73,18 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
         # ── Query PO: filter by date_ordered langsung dari tabel po_items ──────
         bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
-        filter_po = filter_conditions.replace('department_code', 'poi.department_code').replace('plant_code', 'poi.plant_code').replace('tgl_create_pr', 'poh.date_ordered')
+        filter_po = filter_conditions.replace('department_code', 'poi.department_code').replace('plant_code', 'poi.plant_code').replace('tgl_create_pr', 'poh.date_ordered').replace('first_full_release', 'poh.date_ordered')
 
         po_kpi_query = f"""
         SELECT
             COUNT(poi.nomor_po)                                           AS total_po,
             COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS total_po_amount,
-            
-            -- AMBIL ESTIMASI MURNI DARI PO ITEMS (APPLE-TO-APPLE)
             COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0)           AS total_oe_po,
-            
-            ROUND(AVG(gr.lead_time_process_po)::numeric, 2)               AS avg_lead_time,
+            ROUND(AVG(
+                CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
+                THEN (poh.date_ordered::date - poi.first_full_release::date)
+                END
+            )::numeric, 2)                                                        AS avg_lead_time,
             COUNT(DISTINCT poh.nomor_po)                                  AS total_po_distinct,
             COUNT(DISTINCT CASE WHEN poi.status_pengiriman = 'SELESAI'
                 THEN poh.nomor_po END)                                    AS po_delivered,
@@ -93,7 +95,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS realisasi_po
         FROM po_items poi
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
           AND {bagian_po_poi}
           AND {filter_po}
@@ -137,44 +138,14 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "value": f"{format_number(total_pr)}",
                 "delta": f"{format_number(pr_with_po)} with PO",
                 "formula": """\
-**Total PR**: Jumlah Purchase Requisition unik dalam periode filter.
+**Total PR**: Jumlah Purchase Requisition unik dalam periode filter. Dihitung dari baris yang memiliki `1St Full Release` terisi dan tanggalnya masuk dalam rentang periode yang dipilih.
 
-**Kalkulasi SQL:**
-```sql
-COUNT(DISTINCT CASE
-    WHEN no_pr != 'No PR' AND {bagian_pr_cond}
-    THEN no_pr || '-' || line_item_pr::text
-END) AS total_pr
-```
-
-**Kalkulasi Sub-metrik PR with PO:**
-```sql
-COUNT DISTINCT dimana `nomor_po IS NOT NULL`
-```
-
-**Contoh Formula Excel:**
-
-PR dibuat di bulan Januari 2026
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=1) * (YEAR(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))=2026) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))<>"") * (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0))<>"X") * (LEFT(INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0)), 1)<>"U") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))<>"1000076")
-)
-```
-PR dibuat di bulan Januari dengan Filter Department **INV**
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000,0,MATCH("Tgl Create PR",$A$1:$ZZ$1,0)))=1) *
-  (YEAR(INDEX($A$2:$ZZ$21000,0,MATCH("Tgl Create PR",$A$1:$ZZ$1,0)))=2026) *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("PR Deletion Flag",$A$1:$ZZ$1,0))<>"X") *
-  (LEFT(INDEX($A$2:$ZZ$21000,0,MATCH("Account Assignment",$A$1:$ZZ$1,0)),1)<>"U") *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("Material No",$A$1:$ZZ$1,0))<>"1000076") *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("Departement(Requisitioner)",$A$1:$ZZ$1,0))="INV")
-)
-```
-PR dibuat di bulan Januari dan sudah ada PO-nya (tidak harus Januari)
-```
-=SUMPRODUCT((MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) = 1) * (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") * (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> ""))
-```
+**Formula Excel:** (PR SAP)
+- Filter **1St Full Release** selain `blanks`
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `X`
+- FIlter **Account Assignment** selain `U`
+- Hitung barisnya (multi winners dihitung **1**)
 
 **Target:** -\
 """,
@@ -188,27 +159,10 @@ PR dibuat di bulan Januari dan sudah ada PO-nya (tidak harus Januari)
                 "formula": """\
 **Total PO**: Jumlah Purchase Order dalam periode filter.
 
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN {bagian_po_cond} THEN nomor_po END) AS total_po
-```
-
-PR pending = jumlah PR yang belum memiliki PO. Semakin kecil = semakin baik.
-```
-= Total_PR - PR_with_PO
-```
-
-**Contoh Formula Excel:**
-
-PO dibuat di bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000,0,MATCH("Date Ordered",$A$1:$ZZ$1,0)))=1) *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("Material No",$A$1:$ZZ$1,0))<>"1000076") *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("PO Deletion Flag",$A$1:$ZZ$1,0))<>"L") *
-  (INDEX($A$2:$ZZ$21000,0,MATCH("No PR",$A$1:$ZZ$1,0))<>"")
-)
-```
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `L`
+- Hitung barisnya
 
 **Target:** -\
 """,
@@ -221,11 +175,6 @@ PO dibuat di bulan Januari
                 "delta": "Target: -%",
                 "formula": """\
 **Produktivitas PR-PO**: Persentase item PR yang berhasil dikonversi menjadi PO.
-
-**Kalkulasi SQL:**
-```sql
-COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
-```
 
 **Formula:**
 ```
@@ -250,13 +199,11 @@ COUNT(pr_with_po) / COUNT(total_pr) * 100 AS produktivitas_pct
                 "formula": f"""\
 **Total Savings**: Selisih OE dengan realisasi PO.
 
-**Kalkulasi SQL:**
-```sql
-SUM(oe) - SUM(total_amount_local_curr) AS total_savings
-
--- % Savings: weighted (bukan rata-rata per baris)
-(SUM(oe) - SUM(total_amount_local_curr)) / SUM(oe) * 100 AS avg_savings_pct
-```
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `L`
+- Buat Kolom **OE**: `= Quantity PR × Estimasi PR`
+- Hitung selisih dari jumlah **OE** dan jumlah **Total Amount in Local Curr**
 
 | Kondisi | Artinya |
 |---|---|
@@ -264,26 +211,6 @@ SUM(oe) - SUM(total_amount_local_curr) AS total_savings
 | Negatif | Realisasi > OE → over budget ❌ |
 
 **Total Savings saat ini:** Rp {int(savings):,}
-
-**Contoh Formula Excel:** di bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
-  INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)),
-  INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0))
-)
--
-SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
-  INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0))
-)
-```
 
 **Target:** -\
 """,
@@ -299,23 +226,12 @@ SUMPRODUCT(
 
 **Total Estimasi PR saat ini:** {int(estimasi_pr_all):,}
 
-**Kalkulasi SQL:**
-```sql
--- Mengambil estimasi_pr murni, karena di laporan PR SAP nilainya sudah berbentuk harga total (bukan harga satuan)
-SUM(estimasi_pr) AS total_estimasi
-```
-
-**Contoh Formula Excel:** di bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PR Deletion Flag", $A$1:$ZZ$1, 0)) <> "X") *
-  (LEFT(INDEX($A$2:$ZZ$21000, 0, MATCH("Account Assignment", $A$1:$ZZ$1, 0)), 1) <> "U") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076"),
-  INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0))
-)
-```
+**Formula Excel:** (PR SAP)
+- Filter **1St Full Release** selain `blanks`
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `X`
+- FIlter **Account Assignment** selain `U`
+- Hitung jumlah **Estimasi PR**
 
 **Target:** -\
 """,
@@ -366,17 +282,12 @@ SUM(estimasi_pr) AS total_estimasi
                 "value": f"{format_number(avg_lt_val, decimals=2)} Hari",
                 "delta": "Target: - Hari Kalender",
                 "formula": """\
-**Kecepatan Proses PO**: Rata-rata hari dari PR dibuat hingga PO diterbitkan.
-
-**Kalkulasi SQL:**
-```sql
-ROUND(AVG(lead_time_process_po)::numeric, 2) AS avg_lead_time
-```
-
-**Formula Excel:**
-```
-= AVERAGE(date_ordered - tgl_create_pr)
-```
+**Kecepatan Proses PO**: Rata-rata hari dari `1St Full Release` PR hingga PO diterbitkan (`Date Ordered`).
+ 
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `L`
+- Hitung rata-rata dari **Date Ordered** dikurangi dengan **1St Full Release**
 
 | Benchmark | Status |
 |---|---|
@@ -695,6 +606,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN no_pr || '-' || line_item_pr::text END) AS pr_with_po
             FROM vw_pr_po_complete
             WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
+              AND first_full_release IS NOT NULL
             GROUP BY department_code
             ORDER BY total_pr DESC
             LIMIT 10
@@ -826,7 +738,7 @@ Di Excel: `=SUMIF(kolom_vendor, nama_vendor, kolom_total_amount)` untuk tiap ven
 **Kalkulasi SQL:**
 | Metrik | Formula |
 |---|---|
-| PR per bulan | `COUNT(DISTINCT no_pr \|\| '-' \|\| line_item_pr)` GROUP BY `DATE_TRUNC('month', tgl_create_pr)` |
+| PR per bulan | `COUNT(DISTINCT no_pr \|\| '-' \|\| line_item_pr)` GROUP BY `DATE_TRUNC('month', first_full_release)` |
 | PO per bulan | `COUNT(nomor_po)` GROUP BY `DATE_TRUNC('month', date_ordered)` |
 
 Kedua sumber digabung dengan `FULL OUTER JOIN` agar bulan tanpa PR atau tanpa PO tetap muncul.
@@ -841,11 +753,11 @@ Formula Excel mengikuti KPI **Total PR** dan **Total PO** di atas.
             trend_query = f"""
             WITH pr_monthly AS (
                 SELECT
-                    DATE_TRUNC('month', tgl_create_pr) AS month_date,
+                    DATE_TRUNC('month', first_full_release) AS month_date,
                     COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
                         THEN no_pr || '-' || line_item_pr::text END) AS total_pr
                 FROM vw_pr_po_complete
-                WHERE tgl_create_pr IS NOT NULL AND {filter_conditions}
+                WHERE first_full_release IS NOT NULL AND {filter_conditions}
                 GROUP BY 1
             ),
             po_monthly AS (
@@ -922,53 +834,35 @@ Formula Excel mengikuti KPI **Total PR** dan **Total PO** di atas.
 
             if st.session_state.get(key4, False):
                 st.info("""\
-**Lead Time Distribution**: Pie chart distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).
-
-**Bucket klasifikasi SQL:**
-```
-CASE
-  WHEN lead_time_process_po <= 7  THEN '0-7 days'
-  WHEN lead_time_process_po <= 14 THEN '8-14 days'
-  WHEN lead_time_process_po <= 30 THEN '15-30 days'
-  WHEN lead_time_process_po <= 60 THEN '31-60 days'
-  ELSE                                 '60+ days'
-END
-```
-
-**Sumber kolom:** `lead_time_process_po` di `vw_pr_po_complete`, dihitung sebagai selisih hari antara `tgl_create_pr` dan `date_ordered` (tanggal PO diterbitkan).
-
-**Contoh Formula Excel:** lead time `date_ordered - tgl_create_pr` = range 0-7 hari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> 1000076) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)) <> "") *
-  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) - INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0) *
-  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) - INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) <= 7)
-)
-```
+**Lead Time Distribution**: Pie chart distribusi PO berdasarkan rentang waktu proses (dari `1St Full Release` PR hingga `Date Ordered` PO terbit).
+ 
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PR Deletion Flag** selain `L`
+- Buat kolom **PR-PO**: `=Date Ordered - 1St Full Release**
+- Filter sesuai range yang diinginkan
                 """)
-
-            st.caption("Distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).")
+ 
+            st.caption("Distribusi PO berdasarkan rentang waktu proses (dari PR dibuat **1St Full Release** sampai PO terbit **Date Ordered**).")
                 
             leadtime_query = f"""
             SELECT
                 CASE
-                    WHEN lead_time_process_po <= 7  THEN '0-7 days'
-                    WHEN lead_time_process_po <= 14 THEN '8-14 days'
-                    WHEN lead_time_process_po <= 30 THEN '15-30 days'
-                    WHEN lead_time_process_po <= 60 THEN '31-60 days'
+                    WHEN (poh.date_ordered::date - poi.first_full_release::date) <= 7  THEN '0-7 days'
+                    WHEN (poh.date_ordered::date - poi.first_full_release::date) <= 14 THEN '8-14 days'
+                    WHEN (poh.date_ordered::date - poi.first_full_release::date) <= 30 THEN '15-30 days'
+                    WHEN (poh.date_ordered::date - poi.first_full_release::date) <= 60 THEN '31-60 days'
                     ELSE '60+ days'
                 END AS lead_time_range,
                 COUNT(*) AS count,
-                MIN(lead_time_process_po) AS sort_order
-            FROM vw_pr_po_complete
-            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
-            AND lead_time_process_po IS NOT NULL
-            AND lead_time_process_po >= 0
-            AND no_pr != 'No PR'
-            AND {bagian_po_cond}
+                MIN(poh.date_ordered::date - poi.first_full_release::date) AS sort_order
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND poi.first_full_release IS NOT NULL
+              AND (poh.date_ordered::date - poi.first_full_release::date) >= 0
+              AND poi.no_pr IS NOT NULL
+              AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
             GROUP BY 1
             ORDER BY sort_order ASC
             """

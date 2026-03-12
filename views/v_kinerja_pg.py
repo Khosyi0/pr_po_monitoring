@@ -82,7 +82,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         date_to   = kwargs.get('date_to')
         bagian_po_poh = bagian_po_cond.replace('bagian_po', 'poh.bagian_po')
 
-        # PR KPI: filter by tgl_create_pr
+        # PR KPI: filter by first_full_release (hanya PR yang sudah full release)
         pg_kpi_query = f"""
         SELECT
             COUNT(DISTINCT CASE WHEN no_pr != 'No PR' AND {bagian_pr_cond}
@@ -91,6 +91,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 THEN no_pr || '-' || line_item_pr::text END)                         AS pr_with_po
         FROM vw_pr_po_complete
         WHERE {filter_conditions}
+          AND first_full_release IS NOT NULL
         """
 
         # OE dari po_items langsung (PO SAP), hindari double-count dari join PR-PO di view
@@ -110,10 +111,13 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         SELECT
             COUNT(DISTINCT poi.nomor_po || '-' || poi.item_po::text)                 AS total_item_po,
             COALESCE(SUM(poi.total_amount_local_curr), 0)                            AS total_realisasi,
-            ROUND(AVG(gr.lead_time_process_po)::numeric, 1)                          AS avg_lead_time_overall
+            ROUND(AVG(
+                CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
+                THEN (poh.date_ordered::date - poi.first_full_release::date)
+                END
+            )::numeric, 1)                                                           AS avg_lead_time_overall
         FROM po_items poi
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-        LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
           AND {bagian_po_poh}
         """
@@ -242,8 +246,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             JOIN po_items poi
                 ON pri.no_pr = poi.no_pr AND pri.line_item_pr = poi.line_item_pr
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-            WHERE pri.tgl_create_pr >= '{date_from}'
-              AND pri.tgl_create_pr <= '{date_to}'
+            WHERE pri.first_full_release >= '{date_from}'
+              AND pri.first_full_release <= '{date_to}'
+              AND pri.first_full_release IS NOT NULL
               AND ({bagian_pr_cond_pri})
             GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
             """
@@ -271,12 +276,17 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                         1)
                     ELSE NULL
                 END                                                                  AS efisiensi_pct,
-                ROUND(AVG(gr.lead_time_process_po)::numeric, 1)                      AS avg_lead_time,
-                MIN(gr.lead_time_process_po)                                         AS min_lead_time,
-                MAX(gr.lead_time_process_po)                                         AS max_lead_time
+                ROUND(AVG(
+                    CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
+                    THEN (poh.date_ordered::date - poi.first_full_release::date)
+                    END
+                )::numeric, 1)                                                       AS avg_lead_time,
+                MIN(CASE WHEN poi.first_full_release IS NOT NULL
+                    THEN (poh.date_ordered::date - poi.first_full_release::date) END) AS min_lead_time,
+                MAX(CASE WHEN poi.first_full_release IS NOT NULL
+                    THEN (poh.date_ordered::date - poi.first_full_release::date) END) AS max_lead_time
             FROM po_items poi
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-            LEFT JOIN goods_receipt gr ON poi.po_item_id = gr.po_item_id
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
             GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
@@ -462,7 +472,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 |---|---|
 | Nilai OE | `SUM(estimasi_pr × quantity_pr)` |
 | Nilai Realisasi | `SUM(total_amount_local_curr)` |
-| % Efisiensi | `(Nilai OE − Nilai Realisasi) × 100%` |
+| % Efisiensi | `(Nilai OE - Nilai Realisasi) × 100%` |
 
 **Formula Excel:** (PO SAP)
 - Filter sesuai Purchasing Group yang ingin dicari
@@ -896,7 +906,7 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
 - Filter sesuai Purchasing Group yang ingin dicari
 - Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
 - Total Realisasi: `= (SUM(Total Amount in Local Curr))`
-- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
+- Lead Time: `= AVERAGE(Date Ordered - 1St Full Release)` (hanya baris yang `1St Full Release` terisi)
 
 Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali angka '4' = PR - PO Kontrak, selainnya = Tender Normal.
 
@@ -925,7 +935,8 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                 FROM po_items poi
                 JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND poi.first_full_release IS NOT NULL
+                    AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
                 GROUP BY
                     CASE
                         WHEN poi.contract_no IS NOT NULL
@@ -953,7 +964,8 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                 FROM po_items poi
                 JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND poi.first_full_release IS NOT NULL
+                    AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
                 GROUP BY
                     CASE
                         WHEN poi.contract_no IS NOT NULL
@@ -1039,7 +1051,7 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
 
 **Formula Excel:** 
 - Total Item: `= IF(LEFT(Departement(Requisitioner), 2) = "TA", "TA", "non")`
-- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
+- Lead Time: `= AVERAGE(Date Ordered - 1St Full Release)` (hanya baris yang `1St Full Release` terisi)
 - Total Realisasi: `= (SUM(Total Amount in Local Curr))`
 
 **Penjelasan kategori:**
@@ -1066,7 +1078,8 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 FROM po_items poi
                 JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND poi.first_full_release IS NOT NULL
+                    AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
                 GROUP BY COALESCE(poh.purchasing_group, 'Unassigned'),
                          CASE
                              WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
@@ -1087,7 +1100,8 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 FROM po_items poi
                 JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-                  AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND poi.first_full_release IS NOT NULL
+                    AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
                 GROUP BY
                     CASE
                         WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
@@ -1207,7 +1221,7 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
 **Formula Excel:** (PO SAP)
 - Filter sesuai Purchasing Group yang ingin dicari
 - Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
-- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
+- Lead Time: `= AVERAGE(Date Ordered - 1St Full Release)` (hanya baris yang `1St Full Release` terisi)
 
 **Ekspektasi umum:**
 - **PR - PO Kontrak** → lead time **lebih pendek**: vendor & harga sudah disepakati di awal kontrak, tidak perlu proses negosiasi ulang
@@ -1272,7 +1286,7 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
 **Formula Excel:** (PO SAP)
 - Filter per bulan
 - Kolom Jenis Tender: `= IF(LEFT(No Contract, 1) = "4", "PR - PO Kontrak", "Tender Normal")`
-- Lead Time: `= (AVERAGE(Date Ordered − Tgl Create PR)`)
+- Lead Time: `= AVERAGE(Date Ordered - 1St Full Release)` (hanya baris yang `1St Full Release` terisi)
 
 **Cara membaca:**
 - Tren **turun konsisten** = proses semakin efisien ✅

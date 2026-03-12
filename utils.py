@@ -161,10 +161,15 @@ def build_filter_conditions(
     selected_department, exclude_dept,
     selected_p_group, exclude_purchasing_group
 ) -> str:
-    """Bangun string kondisi WHERE untuk query SQL dari nilai filter sidebar."""
+    """Bangun string kondisi WHERE untuk query SQL dari nilai filter sidebar.
+    
+    Filter tanggal menggunakan kolom `first_full_release` (bukan `tgl_create_pr`).
+    Total PR dihitung dari baris yang memiliki `first_full_release IS NOT NULL`
+    dan tanggalnya masuk dalam rentang periode yang dipilih.
+    """
     conditions = [
-        f"tgl_create_pr >= '{date_from}'",
-        f"tgl_create_pr <= '{date_to}'"
+        f"first_full_release >= '{date_from}'",
+        f"first_full_release <= '{date_to}'"
     ]
 
     if selected_department and 'All' not in selected_department:
@@ -353,7 +358,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                                 - "Total Estimasi PR (OE)": Total nilai OE dari semua PR.
                                 - "Pengelolaan Anggaran Operasional": Belum ada info lebih lanjut.
                                 - "Sinergi PI Group": Belum ada info lebih lanjut.
-                                - "Kecepatan Proses PO": Rata-rata hari dari PR dibuat hingga PO diterbitkan.
+                                - "Kecepatan Proses PO": Rata-rata hari dari 1St Full Release PR hingga PO diterbitkan (Date Ordered).
                                 - "% Pengiriman Barang (GR/PO)": Persentase PO yang sudah diterima barangnya.
                                 - "Ketepatan Pengiriman Barang": Persentase PO diterima tepat waktu dari total yang sudah dikirim.
                                 - "Pemenuhan SLA OTOBOS": Belum ada info lebih lanjut.
@@ -363,7 +368,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                             - Menampilkan chart "PR Status by Department": Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
                             - Menampilkan chart "Top 10 Vendors by PO Value": Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
                             - Menampilkan chart "PR-PO Creation Trend": Line chart jumlah PR dan PO yang dibuat per bulan.
-                            - Menampilkan chart "Lead Time Distribution": Pie chart distribusi PO berdasarkan rentang waktu proses (dari PR dibuat sampai PO terbit).
+                            - Menampilkan chart "Lead Time Distribution": Pie chart distribusi PO berdasarkan rentang waktu proses (dari 1St Full Release PR hingga Date Ordered PO terbit).
                             - Menampilkan tabel "Top 10 PR Without PO (Pending)": Tabel 10 PR tertua yang belum diproses menjadi PO. 
                             - Menampilkan chart "Delivery Performance": Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
                             - Menampilkan chart "Material Category Value": Bar chart total nilai PO per kategori ABC material.
