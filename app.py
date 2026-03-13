@@ -293,9 +293,9 @@ if not is_sips:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
         bagian_data  = load_data("""
-            SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete WHERE bagian_pr IS NOT NULL
+            SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete WHERE bagian_pr IS NOT NULL AND bagian_pr != 'UNKNOWN'
             UNION
-            SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete WHERE bagian_po IS NOT NULL
+            SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete WHERE bagian_po IS NOT NULL AND bagian_po != 'UNKNOWN'
             ORDER BY 1
         """)
         p_group_data = load_data("""
