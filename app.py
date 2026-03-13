@@ -39,6 +39,75 @@ st.set_page_config(
 inject_css()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# AUTH — cek sebelum apapun dirender
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_login():
+    """Tampilkan halaman login. Panggil st.stop() setelah ini jika belum auth."""
+    # Sembunyikan sidebar saat halaman login
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none; }
+            [data-testid="stSidebarNav"] { display: none; }
+            .login-container {
+                max-width: 400px;
+                margin: 80px auto 0 auto;
+                padding: 40px;
+                border-radius: 16px;
+                border: 1px solid rgba(128,128,128,0.2);
+                background: var(--background-color);
+                box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    col_l, col_m, col_r = st.columns([1, 2, 1])
+    with col_m:
+        st.markdown("""
+            <div style='text-align:center; margin-bottom: 24px;'>
+                <span style='font-size:48px;'>📊</span>
+                <h2 style='margin:8px 0 4px 0; font-size:22px;'>Monitoring Dashboard</h2>
+                <p style='color: #888; font-size:14px; margin:0;'>Pengadaan PR-PO & SIPS</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+        password_input = st.text_input(
+            "Password",
+            type="password",
+            placeholder="Masukkan password...",
+            label_visibility="collapsed"
+        )
+
+        if st.button("🔓  Masuk", use_container_width=True, type="primary"):
+            try:
+                correct_password = st.secrets["auth"]["password"]
+            except (KeyError, FileNotFoundError):
+                st.error("Konfigurasi auth tidak ditemukan di secrets.")
+                st.stop()
+
+            if password_input == correct_password:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Password salah. Silakan coba lagi.")
+
+        st.markdown("""
+            <p style='text-align:center; color:#aaa; font-size:12px; margin-top:24px;'>
+                Hubungi administrator jika lupa password.
+            </p>
+        """, unsafe_allow_html=True)
+
+
+# Inisialisasi state auth
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# Blok akses — stop di sini jika belum login
+if not st.session_state.authenticated:
+    render_login()
+    st.stop()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -538,6 +607,12 @@ else:
 
     except Exception as e:
         st.sidebar.error(f"Error loading SIPS filters: {e}")
+
+# ── Tombol Logout — selalu di paling bawah sidebar ───────────────────────────
+st.sidebar.markdown("---")
+if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout"):
+    st.session_state.authenticated = False
+    st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEFAULT FILTER VALUES  (dipakai untuk sistem yang TIDAK aktif saat ini)
