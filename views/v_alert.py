@@ -490,5 +490,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         # Render chat di bawah halaman Alert
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="Halaman Alert (Warning & Action Required)"
+            nama_halaman="Halaman Alert (Warning & Action Required)",
+            load_data_fn=load_data,
         )

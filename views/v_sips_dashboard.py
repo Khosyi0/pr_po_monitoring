@@ -1167,5 +1167,6 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
 
     render_chat_analyst(
         konteks_data_teks=konteks_final,
-        nama_halaman="Dashboard SIPS"
+        nama_halaman="Dashboard SIPS",
+        load_data_fn=load_data,
     )

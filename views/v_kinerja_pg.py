@@ -1478,5 +1478,6 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
         # Render chat di bawah semua tab
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="Kinerja Purchasing Group"
+            nama_halaman="Kinerja Purchasing Group",
+            load_data_fn=load_data,
         )

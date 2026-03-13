@@ -1248,5 +1248,6 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="PR-PO Monitoring Dashboard"
+            nama_halaman="PR-PO Monitoring Dashboard",
+            load_data_fn=load_data,
         )

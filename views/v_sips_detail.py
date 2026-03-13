@@ -214,5 +214,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     render_chat_analyst(
         konteks_data_teks=konteks_final,
-        nama_halaman="Detailed SIPS Data"
+        nama_halaman="Detailed SIPS Data",
+        load_data_fn=load_data,
     )

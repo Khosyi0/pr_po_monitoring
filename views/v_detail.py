@@ -129,5 +129,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="Detailed PR-PO Data"
+            nama_halaman="Detailed PR-PO Data",
+            load_data_fn=load_data,
         )

@@ -991,5 +991,6 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
         # Render kolom chat di paling bawah halaman
         render_chat_analyst(
             konteks_data_teks=konteks_final, 
-            nama_halaman="Evaluasi Harga Barang"
+            nama_halaman="Evaluasi Harga Barang",
+            load_data_fn=load_data,
         )

@@ -101,14 +101,16 @@ def render_login():
             </div>
         """, unsafe_allow_html=True)
 
-        password_input = st.text_input(
-            "Password",
-            type="password",
-            placeholder="Masukkan password...",
-            label_visibility="collapsed"
-        )
+        with st.form("login_form"):
+            password_input = st.text_input(
+                "Password",
+                type="password",
+                placeholder="Masukkan password...",
+                label_visibility="collapsed"
+            )
+            submitted = st.form_submit_button("Masuk", use_container_width=True, type="primary")
 
-        if st.button("Masuk", use_container_width=True, type="primary"):
+        if submitted:
             try:
                 correct_password = st.secrets["auth"]["password"]
             except (KeyError, FileNotFoundError):
@@ -769,7 +771,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.7.6 | "
+        f"Monitoring Dashboard - {system_label} | v1.8 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

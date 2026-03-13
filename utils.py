@@ -247,10 +247,76 @@ def build_sips_where(date_from=None, date_to=None,
     return " AND ".join(wp)
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PETA SISTEM: LAZY LOAD — hanya dimuat saat user bertanya soal struktur
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Kata kunci yang mengindikasikan pertanyaan tentang struktur/letak di dashboard
+_TRIGGER_PETA = [
+    # Navigasi & letak
+    "halaman", "page", "menu", "navigasi", "dimana", "di mana", "letak",
+    "ada di", "temukan di", "lihat di", "pergi ke", "buka halaman",
+    # Elemen visual
+    "chart", "grafik", "tabel", "table", "diagram", "visualisasi",
+    "kpi", "kartu", "card", "metrik",
+    # Pertanyaan struktur
+    "ada apa", "apa saja", "fitur apa", "struktur", "isi halaman",
+    "menampilkan apa", "berisi apa", "bagian mana", "section",
+    # Kata tanya umum yang mungkin tentang navigasi
+    "di sini ada", "bisa lihat", "cara lihat", "cara melihat",
+]
+
+def _butuh_peta_sistem(user_input: str) -> bool:
+    """Cek apakah pertanyaan user memerlukan informasi Peta Sistem."""
+    teks = user_input.lower()
+    return any(k in teks for k in _TRIGGER_PETA)
+
+
+def _fetch_peta_sistem(load_data_fn) -> str:
+    """
+    Ambil Peta Sistem dari database (lazy — hanya dipanggil saat dibutuhkan).
+    Hasil di-cache di st.session_state selama sesi berlangsung.
+    """
+    # Cache di session_state agar tidak query DB berulang dalam satu sesi
+    if "melati_peta_cache" in st.session_state:
+        return st.session_state["melati_peta_cache"]
+
+    try:
+        df = load_data_fn("""
+            SELECT urutan, nama_halaman, konten
+            FROM melati_peta_sistem
+            ORDER BY urutan
+        """)
+
+        if df.empty:
+            return ""
+
+        lines = [
+            "INFORMASI STRUKTUR HALAMAN APLIKASI (PETA SISTEM):",
+            "Kamu mengetahui seluruh daftar halaman dan chart di sistem ini beserta deskripsi singkatnya.",
+            "",
+        ]
+
+        for _, row in df.iterrows():
+            lines.append(f"{row['urutan']}. {row['nama_halaman']}")
+            # Indent setiap baris konten
+            for baris in str(row['konten']).strip().splitlines():
+                lines.append(f"    {baris.strip()}")
+            lines.append("")
+
+        result = "\n".join(lines)
+        st.session_state["melati_peta_cache"] = result
+        return result
+
+    except Exception as e:
+        # Tabel belum ada atau error — kembalikan string kosong, tidak crash
+        return ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # KOMPONEN AI ANALYST (GEMINI)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
+def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=None):
     """Merender antarmuka chat LLM secara sebaris (inline) dengan kotak scrollable."""
     st.divider()
 
@@ -342,118 +408,13 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                 with st.spinner("Tunggu, Melati sedang menganalisis data..."):
                     try:
                         # -------------------------------------------------------------
-                        # PETA SISTEM (Nama Chart + Caption Singkat)
+                        # PETA SISTEM — lazy load, hanya jika pertanyaan menyinggung
+                        # struktur / letak chart / navigasi dashboard
                         # -------------------------------------------------------------
-                        peta_sistem = """
-                        INFORMASI STRUKTUR HALAMAN APLIKASI (PETA SISTEM):
-                        Kamu mengetahui seluruh daftar halaman dan chart di sistem ini beserta deskripsi singkatnya.
-                        
-                        KATEGORI 1: PR-PO SAP
-                        1. Halaman Dashboard Monitoring SAP: 
-                            - Menampilkan ringkasan KPI utama:
-                                - "Total PR": Jumlah Purchase Requisition unik dalam periode filter.
-                                - "Total PO": Jumlah baris Purchase Order dalam periode filter.
-                                - "Produktivitas PR-PO": Persentase item PR yang berhasil dikonversi menjadi PO.
-                                - "Total Savings": Selisih OE dengan realisasi PO.
-                                - "Total Estimasi PR (OE)": Total nilai OE dari semua PR.
-                                - "Pengelolaan Anggaran Operasional": Belum ada info lebih lanjut.
-                                - "Sinergi PI Group": Belum ada info lebih lanjut.
-                                - "Kecepatan Proses PO": Rata-rata hari dari 1St Full Release PR hingga PO diterbitkan (Date Ordered).
-                                - "% Pengiriman Barang (GR/PO)": Persentase PO yang sudah diterima barangnya.
-                                - "Ketepatan Pengiriman Barang": Persentase PO diterima tepat waktu dari total yang sudah dikirim.
-                                - "Pemenuhan SLA OTOBOS": Belum ada info lebih lanjut.
-                                - "Efisiensi Pengadaan (PO/OE)": Rata-rata persentase penghematan dari nilai OE per item PO.
-                                - "Pemenuhan Izin Impor": Belum ada info lebih lanjut.
-                                - "Pemenuhan SLA Pembebasan Barang": Belum ada info lebih lanjut.
-                            - Menampilkan chart "PR Status by Department": Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
-                            - Menampilkan chart "Top 10 Vendors by PO Value": Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
-                            - Menampilkan chart "PR-PO Creation Trend": Line chart jumlah PR dan PO yang dibuat per bulan.
-                            - Menampilkan chart "Lead Time Distribution": Pie chart distribusi PO berdasarkan rentang waktu proses (dari 1St Full Release PR hingga Date Ordered PO terbit).
-                            - Menampilkan tabel "Top 10 PR Without PO (Pending)": Tabel 10 PR tertua yang belum diproses menjadi PO. 
-                            - Menampilkan chart "Delivery Performance": Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
-                            - Menampilkan chart "Material Category Value": Bar chart total nilai PO per kategori ABC material.
-                        2. Detailed PR-PO SAP Data: Menampilkan tabel "Data mentah (raw data) SAP secara lengkap yang bisa di-filter".
-                        3. Evaluasi Harga Barang:
-                            - Menampilkan ringkasan KPI utama:
-                                - "Total Material Unik": Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
-                                - "Total OE": Total nilai anggaran estimasi untuk semua material yang sudah masuk PO.
-                                - "Total Realisasi PO": Total nilai aktual yang dibayarkan dalam Purchase Order.
-                                - "Selisih OE vs Realisasi": Perbedaan antara total OE (anggaran) dan total realisasi PO.
-                                - "Item PO Melebihi OE": Jumlah item PO yang nilai realisasinya melebihi OE.
-                                - "Item PO Di Bawah / Sesuai OE": Jumlah item PO yang nilai realisasinya sama atau lebih murah dari OE.
-                            - Menampilkan chart "OE vs Realisasi Harga PO (per Material)": Scatter chart perbandingan nilai estimasi vs realisasi PO per material.
-                            - Menampilkan chart "Top 10 Material: Overspend Terbesar": Bar chart 10 material dengan selisih (realisasi - OE) terbesar.
-                            - Menampilkan chart "Variasi Harga Antar Vendor (Top 10 Material)": Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
-                            - Menampilkan chart "Tren Harga Historis per Material": Line chart pergerakan harga satuan PO per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar dan melihat konsistensi vendor.
-                            - Menampilkan chart "Perbandingan Vendor": Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
-                            - Menampilkan tabel "Detail Evaluasi Harga per Material": Ringkasan perbandingan OE vs realisasi per material.
-                        4. Kinerja Purchasing Group: 
-                            - Menampilkan Tab Overview per Purchasing Group:
-                                - Menampilkan Tabel "Ringkasan per Purchasing Group"
-                                - Menampilkan chart "Perbandingan Nilai OE vs Realisasi PO": Grouped bar chart perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group.
-                                - Menampilkan chart "% Efisiensi per Purchasing Group": Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
-                                - Menampilkan chart "Rata-rata Lead Time per Purchasing Group": Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
-                                - Menampilkan chart "% Konversi PR → PO per Purchasing Group": Bar chart horizontal persentase PR yang berhasil dikonversi menjadi PO.
-                            - Menampilkan Tab Breakdown Metode Tender & Kecepatan
-                                - Menampilkan informasi "Avg Lead Time": Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
-                                - Menampilkan informasi "Median Lead Time": Nilai tengah dari seluruh distribusi lead time PO dalam periode filter.
-                                - Menampilkan informasi "Rentang Lead Time": Selisih antara lead time terpendek dan terpanjang dalam periode filter.
-                                - Menampilkan informasi "On-Time (≤55 Hari)": Jumlah PO yang berhasil diproses dalam batas SLA 55 hari.
-                                - Menampilkan informasi "Terlambat (>55 Hari)": Jumlah PO yang melebihi batas SLA 55 hari.
-                                - Menampilkan chart "Kontrak vs Non-Kontrak per Purchasing Group": Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
-                                - Menampilkan chart "Distribusi Turn Around per Purchasing Group": Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
-                                - Menampilkan tabel "Detail per Purchasing Group × Turn Around"
-                                - Menampilkan chart "Lead Time: Kontrak vs Non-Kontrak per Purchasing Group": Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
-                                - Menampilkan chart "Tren Lead Time per Bulan": Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
-                                - Menampilkan tabel "Ringkasan Kecepatan per Purchasing Group × Jenis Tender"
-                        5. Halaman Alert:
-                            - Menampilkan tabel "PR Pending Mendekati Kadaluarsa (> 30 Hari)": Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
-                            - Menampilkan tabel "PO Overdue (Melewati Delivery Date)": Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum diterima semua (Delivery Completed belum X).
-                            - Menampilkan chart "Rekap Aging PO (Belum Dikirim)": Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
-                            - Menampilkan chart "Monitoring PO Status": Menampilkan jumlah PO berdasarkan statusnya.
-                        
-                        KATEGORI 2: SIPS
-                        6. Dashboard Monitoring SIPS:
-                            - Menampilkan ringkasan KPI utama:
-                                - "Total PR": Jumlah Purchase Requisition dalam periode filter (semua status).
-                                - "Total PO": Jumlah PR yang sudah memiliki PO, yaitu yang berstatus Closed atau Proses PO.
-                                - "PO/PR": Persentase PR yang sudah dikonversi menjadi PO.
-                                - "Rata-rata PR-PO": Rata-rata jumlah hari semua PR-PO dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
-                                - "SLA On Time": Jumlah PO yang diselesaikan dalam batas SLA standar.
-                                - "% On Time": Persentase PO yang diselesaikan tepat waktu.
-                                - "OE Proses PO": Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus Proses PO.
-                                - "OE Closed": Total nilai Owner's Estimate untuk PR yang sudah berstatus Closed.
-                                - "Total OE": Gabungan OE untuk status Proses PO dan Closed.
-                                - "PO Proses PO": Total nilai realisasi PO untuk yang berstatus Proses PO.
-                                - "PO Closed": Total nilai realisasi PO untuk yang berstatus Closed.
-                                - "Total PO (Nilai)": Gabungan realisasi nilai PO untuk status Proses PO dan Closed.
-                                - "Efisiensi %": Persentase penghematan dari selisih OE dengan realisasi nilai PO.
-                                - "Efisiensi Rp": Nominal penghematan dalam Rupiah.
-                                - "% On Budget": Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
-                            - Menampilkan chart "Pipeline & Trend PR-PO SIPS": Line chart jumlah PR dan PO yang dibuat per bulan.
-                            - Menampilkan chart "Distribusi Status PR SIPS": Pie chart persentase jumlah dokumen berdasarkan status akhirnya.
-                            - Menampilkan chart "Performa SLA per Karyawan": Bar chart persentase pencapaian SLA tepat waktu untuk setiap karyawan.
-                            - Menampilkan chart "Distribusi Waktu PR → PO": Histogram persebaran jumlah PR berdasarkan lama proses pembuatannya (dalam satuan hari).
-                            - Menampilkan chart "Beban Kerja per Karyawan": Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
-                            - Menampilkan chart "Proporsi PO Kontrak vs Non-Kontrak": Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (Outline Agreement) dibandingkan yang tidak.
-                            - Menampilkan chart "Perbandingan Nilai OE vs PO per Karyawan": Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.
-                        7. Detailed SIPS Data: Menampilkan tabel "Data mentah dokumen SIPS".
-                        8. Analisis Waktu Proses SIPS:
-                            - Menampilkan Ringkasan Waktu:
-                                - "Rata-rata PR-PO": Rata-rata jumlah hari PR-PO dengan Status Proses PO dan Closed dari Tanggal Disposisi Buyer hingga Tanggal PO per karyawan.
-                                - "Rata-rata Realisasi SLA": Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam hari kerja.
-                                - "Waktu Pra-Disposisi": Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
-                                - "Rata-rata End-to-End": Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
-                                - "Rata-rata SLA Headroom": Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
-                                - "% On Time SLA": Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
-                            - Menampilkan chart "Dekomposisi Waktu per Nama": Stacked bar chart Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan.
-                            - Menampilkan chart "Standard SLA per jenis pengadaan": Bar Chart % On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak.
-                            - Menampilkan chart "SLA Headroom per Nama": Horizontal Bar Chart Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan.
-                            - Menampilkan chart "Tren Waktu per Bulan": Combo Chart Perubahan kecepatan proses dari bulan ke bulan.
-                            - Menampilkan chart "Distribusi Waktu": Bar Chart Sebaran PR-PO dan Realisasi SLA untuk mendeteksi outlier.
-                            - Menampilkan chart "Waktu per Prioritas": Bar Chart Rata-rata PR-PO & Realisasi SLA per Prioritas dan % On Time per Prioritas.
-                            - Menampilkan chart "Waktu Realisasi SLA per Purchasing Group": Bar Chart Perbandingan rata-rata waktu penyelesaian berdasarkan Purchasing Group.
-                        """
+                        if _butuh_peta_sistem(user_input) and load_data_fn is not None:
+                            peta_context = _fetch_peta_sistem(load_data_fn)
+                        else:
+                            peta_context = ""
 
                         # Rakit Prompt Rahasia
                         system_prompt = f"""
@@ -469,7 +430,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                         6. FORMAT: Berikan analisis terstruktur, tebalkan angka penting, gunakan bullet points, dan sedikit emoji.
                         7. ATURAN FILTER LINTAS SISTEM (PENTING!): Pada 'BUKTI DATA' di bawah, tertera informasi 'Halaman aktif' saat ini. JIKA user bertanya tentang data/angka dari sistem yang BERBEDA dengan halaman aktif saat ini (misalnya: kita sedang di halaman SIPS, tapi user menanyakan data SAP, atau sebaliknya), kamu WAJIB menyebutkan "Kondisi Filter" yang sedang berlaku pada data tersebut sebelum memberikan jawabannya. Ambil informasi filter ini dari teks di bawah tulisan [SAP] FILTER AKTIF atau [SIPS] FILTER AKTIF.
                         
-                        {peta_sistem}
+                        {peta_context}
 
                         Berikut adalah BUKTI-BUKTI DATA yang sedang tayang di layar saat ini:
                         --- MULAI BUKTI DATA ---

@@ -971,5 +971,6 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
     # Panggil komponen chat
     render_chat_analyst(
         konteks_data_teks=konteks_final,
-        nama_halaman="Analisis Waktu Proses SIPS"
+        nama_halaman="Analisis Waktu Proses SIPS",
+        load_data_fn=load_data,
     )
