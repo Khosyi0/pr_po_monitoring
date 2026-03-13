@@ -94,32 +94,12 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "delta": "Item dalam PO",
                 "formula": """**Total Material Unik:** Jumlah kode material berbeda yang tercatat dalam PO di periode filter.
 
-**Kalkulasi SQL:**
-```sql
-COUNT(DISTINCT material_no) AS total_material
-```
-Filter: `nomor_po IS NOT NULL AND oe IS NOT NULL` - hanya material yang sudah masuk PO dan memiliki data OE untuk perbandingan harga.
-
-**Contoh Formula Excel:** bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
-  IFERROR(1 / COUNTIFS(
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)), ">="&DATE(2026,1,1),
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)), "<="&DATE(2026,1,31),
-    INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)), "<>L",
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "<>1000076",
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "<>",
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), "<>",
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0))
-  ), 0)
-)
-```"""
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076` dan `blanks`
+- Filter **PO Deletion Flag** selain `L`
+- Buat kolom baru `=COUNTIFS` menghitung kemunculan **Material No** yang sama dari baris pertama sampai baris saat ini. Kalau hasilnya = 1, berarti ini kemunculan pertama → nilai 1 (tidak duplikat). Kalau sudah pernah muncul sebelumnya → nilai 2 (duplikat).
+- Hitung jumlah angka **1** di kolom tersebut
+"""
             },
             {
                 "key": "kpi_eval_oe",
@@ -131,27 +111,12 @@ Filter: `nomor_po IS NOT NULL AND oe IS NOT NULL` - hanya material yang sudah ma
 
 **Total OE saat ini:** Rp {total_oe_val:,.2f}
 
-**Kalkulasi SQL:**
-```sql
-COALESCE(SUM(oe), 0) AS total_oe
-```
-**Sumber kolom `oe`:** `estimasi_pr × quantity_pr` per baris item PO.
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076
+- Filter **PO Deletion Flag** selain `L`
+- Buat kolom **OE**: `= Quantity PR × Estimasi PR`
+- Jumlahkan nilai pada kolom **OE**
 
-**Contoh Formula Excel**: bulan Januari
-
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
-  IFERROR(
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) *
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)),
-  0)
-)
-```
 Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunakan sebagai baseline untuk mengukur apakah realisasi PO lebih mahal atau lebih murah.
 """
             },
@@ -165,22 +130,10 @@ Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunaka
 
 **Total Realisasi PO saat ini:** Rp {total_real_val:,.2f}
 
-**Kalkulasi SQL:**
-```sql
-COALESCE(SUM(total_amount_local_curr), 0) AS total_realisasi
-```
-**Contoh Formula Excel**: bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
-  IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0)
-)
-```
-**Sumber kolom `total_amount_local_curr`:** Nilai PO dalam mata uang lokal (IDR), diambil langsung dari tabel `po_items`. Sudah memperhitungkan kurs jika PO aslinya dalam mata uang asing.
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076
+- Filter **PO Deletion Flag** selain `L`
+- Jumlahkan nilai pada kolom **Total Amount in Local Curr**
 """
             },
             {
@@ -193,10 +146,6 @@ COALESCE(SUM(total_amount_local_curr), 0) AS total_realisasi
 
 **Total Selisih saat ini:** Rp {total_efis_val:,.2f}
 
-**Kalkulasi SQL:**
-```
-total_oe - total_realisasi
-```
 **Formula**
 ```
 = Total OE - Total Realisasi PO
@@ -215,24 +164,13 @@ total_oe - total_realisasi
                 "delta": "Perlu Investigasi",
                 "formula": """**Item PO Melebihi OE**: Jumlah item PO yang nilai realisasinya melebihi OE.
 
-**Kalkulasi SQL:**
-```sql
-COUNT(CASE WHEN total_amount_local_curr > oe AND oe > 0 THEN 1 END) AS po_melebihi_oe
-```
-**Contoh Formula Excel:** bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
-  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)), 0) > 0) *
-  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0) > 0) *
-  (IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0) >
-   IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) * INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0))
-)
-```
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076
+- Filter **PO Deletion Flag** selain `L`
+- Buat kolom **OE**: `= Quantity PR × Estimasi PR`
+- Buat kolom **Efisiensi**: `=OE - Total Amount in Local Curr`
+- Filter kolom **Efisiensi** yang hasilnya kurang dari **0**
+
 Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifikasi, kondisi pasar yang lebih mahal dari estimasi, atau kesalahan input OE di awal.
 """
             },
@@ -244,24 +182,13 @@ Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifika
                 "delta": "Aman/Hemat",
                 "formula": """**Item PO Di Bawah / Sesuai OE**: Jumlah item PO yang nilai realisasinya sama atau lebih murah dari OE.
 
-**Kalkulasi SQL:**   
-```
-COUNT(CASE WHEN total_amount_local_curr <= oe AND oe > 0 THEN 1 END) AS po_dibawah_oe
-```
-**Contoh Formula Excel:** bulan Januari    
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) <> "") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)) <> "1000076") *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)) <> "") *
-  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)), 0) > 0) *
-  (IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0) > 0) *
-  (IFERROR(--INDEX($A$2:$ZZ$21000, 0, MATCH("Total Amount in Local Curr", $A$1:$ZZ$1, 0)), 0) <=
-   IFERROR(INDEX($A$2:$ZZ$21000, 0, MATCH("Estimasi PR", $A$1:$ZZ$1, 0)) * INDEX($A$2:$ZZ$21000, 0, MATCH("Quantity PR", $A$1:$ZZ$1, 0)), 0))
-)
-```
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076
+- Filter **PO Deletion Flag** selain `L`
+- Buat kolom **OE**: `= Quantity PR × Estimasi PR`
+- Buat kolom **Efisiensi**: `=OE - Total Amount in Local Curr`
+- Filter kolom **Efisiensi** yang hasilnya lebih besar sama dengan **0**
+
 Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik performa pengadaan dalam hal kepatuhan anggaran.         
 """
             },
@@ -362,10 +289,11 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
 | Realisasi (sumbu Y) | `AVG(total_amount_local_curr)` dari tabel `po_items` |
 | Warna titik | 🔴 Merah = `realisasi > OE` (overspend) · 🟢 Hijau = `realisasi ≤ OE` (efisien) |
 
-**Formula Excel:** (gunakan file PO SAP)
-- Filter sesuai **Material No** terlebih dahulu jika ingin mencari barangnya
-- Kolom **OE**: `= Estimasi_PR × Qty_PR` (kolom "Estimasi PR" dan "Quantity PR" di PO SAP)
-- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
+**Formula Excel:** (PO SAP)
+- Filter **PO Deletion Flag** selain `L`
+- Filter **Material No** sesuai yang dicari, pastikan **Description** sesuai
+- Buat kolom **OE**: `= Estimasi_PR × Qty_PR` dan jumlahkan
+- Buat kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr` dan jumlahkan
 - Nilai **negatif** di kolom Efisiensi = overspend
 
 Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
@@ -457,18 +385,12 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 st.info("""\
 **Top 10 Material: Overspend Terbesar**: Bar chart 10 material dengan selisih (OE - realisasi) terbesar.
 
-**Kalkulasi SQL:**
-```sql
-overspend = SUM(total_amount_local_curr) - SUM(estimasi_pr * quantity_pr)
-```
-Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif.
-
-**Formula Excel:** (gunakan file PO SAP)
-- Filter sesuai **Material No** terlebih dahulu jika ingin mencari barangnya
-- Kolom **OE**: `= Estimasi_PR × Qty_PR`
-- Kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
-- Filter baris dengan nilai Efisiensi **negatif** (konvensi Excel: negatif = realisasi lebih mahal dari OE)
-- Urutkan ascending, ambil 10 teratas (nilai paling negatif = paling overspend)
+**Formula Excel:** (PO SAP)
+- Filter **PO Deletion Flag** selain `L`
+- Filter **Material No** sesuai yang dicari, pastikan **Description** sesuai
+- Buat kolom **OE**: `= Estimasi_PR × Qty_PR`
+- Buat kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
+- Jumlahkan kolom **Efisiensi** yang kurang dari **0**
                 """)
 
             st.caption("Top 10 material dengan selisih (OE - realisasi) terbesar.")
@@ -566,7 +488,12 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
             v.vendor_name,
             ROUND((SUM(v.total_amount_local_curr) / NULLIF(SUM(v.qty_po), 0))::numeric, 2) AS harga_satuan_avg,
             COUNT(DISTINCT v.nomor_po)                                          AS jumlah_po,
-            ROUND(AVG(v.lead_time_process_po)::numeric, 1)                      AS avg_lead_time,
+            ROUND(AVG(
+                CASE
+                    WHEN v.date_ordered IS NOT NULL AND v.first_full_release IS NOT NULL
+                    THEN EXTRACT(DAY FROM (v.date_ordered - v.first_full_release))
+                END
+            )::numeric, 1)                                                       AS avg_lead_time,
             COUNT(CASE WHEN v.on_time_delivery = 'TEPAT WAKTU' THEN 1 END)          AS jml_ontime,
             COUNT(CASE WHEN v.on_time_delivery IS NOT NULL THEN 1 END)          AS jml_delivery_ada
         FROM ranked r
@@ -636,17 +563,12 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
                 st.info("""\
     **Variasi Harga Antar Vendor (Top 10 Material)**: Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
 
-    **Kalkulasi harga satuan SQL:**
-    `unit_price = total_amount_local_curr / NULLIF(qty_po, 0)`
-
-    Chart menampilkan scatter harga satuan tiap transaksi PO per vendor, untuk 10 material dengan nilai total terbesar.
-
-    **Cara membaca:**
-    - Rentang harga **sempit** = harga pasar sudah terstabilisasi antar vendor
-    - Rentang harga **lebar** = ada potensi penghematan besar melalui seleksi vendor atau negosiasi
-    - Vendor dengan harga terendah konsisten = kandidat utama untuk dijadikan **vendor preferens**
-
-    Di Excel: `= Total Amount in Local Curr / Qty PO`
+    **Formula Excel:** (PO SAP)
+    - Filter **PO Deletion Flag** selain `L`
+    - Filter **Material No** sesuai yang dicari, pastikan **Description** sesuai
+    - Pastikan filter **1St Full Release** sesuai dengan filter di dashboard
+    - Buat kolom baru `=Total Amount in Local Curr / Qty PO`
+    - Jika dua item pada **Vendor Name** yang sama, maka kolom baru tersebut dirata-rata
                 """)
 
             st.caption("Top 10 perbandingan harga satuan dari vendor berbeda untuk material yang sama.")
@@ -836,11 +758,11 @@ Diurutkan descending, diambil 10 material teratas dengan nilai overspend positif
             st.info("""\
 **Perbandingan Vendor**: Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
 
-**Kalkulasi Metrik (SQL):**
-- **Harga Satuan**: `SUM(total_amount_local_curr) / NULLIF(SUM(qty_po), 0)`
-- **Lead Time Proses**: `AVG(lead_time_process_po)` (Rata-rata waktu dari **Tgl Create PR** ke **Date Ordered**)
+**Kalkulasi Metrik:**
+- **Harga Satuan**: Seperti pada chart **Variasi Harga Antar Vendor (Top 10 Material)**
+- **Lead Time Proses**: Rata-rata waktu dari **1St Full Release** ke **Date Ordered**
 - **On-Time Delivery**: `(Jumlah pengiriman 'TEPAT WAKTU' / Total pengiriman yang memiliki status) × 100%`
-- **Frekuensi**: `COUNT(DISTINCT nomor_po)` (Berapa kali transaksi PO dengan vendor ini)
+- **Frekuensi**: Berapa kali transaksi PO dengan vendor ini
 
 **Indikator Warna:**
 - 🟢 **Terbaik (Hijau)**: Harga terendah (selisih ≤ 2% dari minimum), Lead Time sangat cepat, On-Time ≥ 90%

@@ -24,6 +24,7 @@ def render(**kwargs):
     - Validasi isi data halaman Analisis Waktu Proses SIPS
         - Fix beberapa query agar sesuai dengan data asli dari excel SAP
     - Mengubah beberapa elemen di halaman Dashboard Monitoring SAP
+    - Menambahkan chart Monitoring PO Status pada Halaman Alert
         - Fix query
             - Total PR
             - Kecepatan Proses PO

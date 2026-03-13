@@ -275,6 +275,166 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             else:
                 st.info("Tidak ada data aging PO.")
 
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # MONITORING PO STATUS
+        # ══════════════════════════════════════════════════════════════════════
+        title_col, btn_col = st.columns([10, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:30px; margin-bottom: 0px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-diagram-3-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
+                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M7.519 5.057c-.886 1.418-1.772 2.838-2.542 4.265v1.12H8.85V12h1.26v-1.559h1.007V9.334H10.11V4.002H8.176zM6.225 9.281v.053H8.85V5.063h-.065c-.867 1.33-1.787 2.806-2.56 4.218"/>
+                    </svg>
+                    Monitoring PO Status
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            key_po_status = "show_formula_po_status"
+            if key_po_status not in st.session_state:
+                st.session_state[key_po_status] = False
+            is_open = st.session_state[key_po_status]
+            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_po_status}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_po_status})
+
+        st.caption("Distribusi PO berdasarkan kolom PO Status dari Excel PO SAP.")
+
+        if st.session_state.get(key_po_status, False):
+            st.info("""\
+**Monitoring PO Status**: Menampilkan jumlah PO berdasarkan statusnya.
+
+**Keterangan Nilai PO Status:**
+| Nilai | Keterangan |
+|---|---|
+| `A` | PO aktif / dalam proses |
+| `B` | PO selesai / closed |
+| *(kosong)* | Status tidak diisi / belum ditentukan |
+
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PO Deletion Flag** selain `L`
+- Filter **PO Status** sesuai yang diinginkan
+            """)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        po_status_query = f"""
+        SELECT
+            COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)') AS po_status,
+            COUNT(DISTINCT poh.nomor_po)                           AS jumlah_po,
+            COUNT(poi.item_po)                                     AS jumlah_item
+        FROM purchase_orders poh
+        JOIN po_items poi ON poh.nomor_po = poi.nomor_po
+        WHERE poh.date_ordered::DATE >= '{date_from}'
+          AND poh.date_ordered::DATE <= '{date_to}'
+          AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+        GROUP BY 1
+        ORDER BY
+            CASE COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)')
+                WHEN 'A' THEN 1
+                WHEN 'B' THEN 2
+                ELSE 3
+            END
+        """
+        with st.spinner("Memuat Monitoring PO Status..."):
+            po_status_data = load_data(po_status_query)
+
+        if not po_status_data.empty:
+            col_chart, col_tbl = st.columns([1.4, 1], gap="large")
+
+            with col_chart:
+                color_po   = {'A': '#1f77b4', 'B': '#09ab3b', '(kosong)': '#aaaaaa'}
+                color_item = {'A': '#aec7e8', 'B': '#98e6b0', '(kosong)': '#dddddd'}
+                colors_po   = [color_po.get(s, '#cccccc')   for s in po_status_data['po_status']]
+                colors_item = [color_item.get(s, '#eeeeee') for s in po_status_data['po_status']]
+
+                fig_status = go.Figure()
+                fig_status.add_trace(go.Bar(
+                    name='Jumlah PO',
+                    x=po_status_data['po_status'],
+                    y=po_status_data['jumlah_po'],
+                    text=po_status_data['jumlah_po'],
+                    textposition='outside',
+                    marker_color=colors_po,
+                    hovertemplate="<b>PO Status: %{x}</b><br>Jumlah PO: %{y}<extra></extra>",
+                ))
+                fig_status.add_trace(go.Bar(
+                    name='Jumlah Item',
+                    x=po_status_data['po_status'],
+                    y=po_status_data['jumlah_item'],
+                    text=po_status_data['jumlah_item'],
+                    textposition='outside',
+                    marker_color=colors_item,
+                    marker_line_color=colors_po,
+                    marker_line_width=1.5,
+                    hovertemplate="<b>PO Status: %{x}</b><br>Jumlah Item: %{y}<extra></extra>",
+                ))
+                fig_status.update_layout(
+                    barmode='group',
+                    height=380,
+                    xaxis_title="PO Status",
+                    yaxis_title="Jumlah",
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                    margin=dict(t=40, b=10, l=0, r=0),
+                )
+                st.plotly_chart(fig_status, use_container_width=True)
+
+            with col_tbl:
+                st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+                total_po   = po_status_data['jumlah_po'].sum()
+                total_item = po_status_data['jumlah_item'].sum()
+
+                # Build HTML tabel ringkasan
+                TH = 'padding:8px 12px;font-size:14px;font-weight:600;'
+                P  = 'padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.2);font-size:14px;'
+                thead = (
+                    '<thead><tr style="border-bottom:2px solid rgba(128,128,128,0.4)">'
+                    + f'<th style="{TH}text-align:left">PO Status</th>'
+                    + f'<th style="{TH}text-align:center">Jumlah PO</th>'
+                    + f'<th style="{TH}text-align:center">Jumlah Item</th>'
+                    + f'<th style="{TH}text-align:center">% dari Total</th>'
+                    + '</tr></thead>'
+                )
+
+                badge_color = {'A': '#1f77b4', 'B': '#09ab3b', '(kosong)': '#888888'}
+                rows_parts = []
+                for _, row in po_status_data.iterrows():
+                    status = str(row['po_status'])
+                    pct    = round(row['jumlah_po'] / total_po * 100, 1) if total_po > 0 else 0
+                    bc     = badge_color.get(status, '#cccccc')
+                    badge  = f'<span style="background:{bc};color:#fff;padding:2px 10px;border-radius:12px;font-size:13px;font-weight:600">{status}</span>'
+                    rows_parts.append(
+                        '<tr>'
+                        + f'<td style="{P}">{badge}</td>'
+                        + f'<td style="{P}text-align:center;font-weight:600">{int(row["jumlah_po"])}</td>'
+                        + f'<td style="{P}text-align:center">{int(row["jumlah_item"])}</td>'
+                        + f'<td style="{P}text-align:center">{pct}%</td>'
+                        + '</tr>'
+                    )
+
+                # Baris total
+                rows_parts.append(
+                    '<tr style="border-top:2px solid rgba(128,128,128,0.4);font-weight:700">'
+                    + f'<td style="padding:8px 12px;font-size:14px">Total</td>'
+                    + f'<td style="padding:8px 12px;font-size:14px;text-align:center">{int(total_po)}</td>'
+                    + f'<td style="padding:8px 12px;font-size:14px;text-align:center">{int(total_item)}</td>'
+                    + f'<td style="padding:8px 12px;font-size:14px;text-align:center">100%</td>'
+                    + '</tr>'
+                )
+
+                tabel_html = (
+                    '<table style="width:100%;border-collapse:collapse">'
+                    + thead
+                    + '<tbody>' + ''.join(rows_parts) + '</tbody>'
+                    + '</table>'
+                )
+                st.markdown(tabel_html, unsafe_allow_html=True)
+        else:
+            st.info("Tidak ada data PO Status untuk filter yang dipilih.")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -313,6 +473,14 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             konteks_lines.append("\n")
         else:
             konteks_lines.append("## 3. RINGKASAN AGING PO\nTidak ada data aging PO.\n")
+
+        # 4. Monitoring PO Status
+        if 'po_status_data' in locals() and not po_status_data.empty:
+            konteks_lines.append("## 4. MONITORING PO STATUS")
+            konteks_lines.append(po_status_data.to_csv(index=False))
+            konteks_lines.append("\n")
+        else:
+            konteks_lines.append("## 4. MONITORING PO STATUS\nTidak ada data PO Status.\n")
 
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)

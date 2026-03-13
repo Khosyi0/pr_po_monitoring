@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import calendar
-from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst
+from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, idr_axis
 
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
@@ -162,7 +162,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Hitung barisnya
 
 **Target:** -\
@@ -202,7 +202,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Buat Kolom **OE**: `= Quantity PR × Estimasi PR`
 - Hitung selisih dari jumlah **OE** dan jumlah **Total Amount in Local Curr**
 
@@ -230,7 +230,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 **Formula Excel:** (PR SAP)
 - Filter **1St Full Release** selain `blanks`
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `X`
+- Filter **PO Deletion Flag** selain `X`
 - Filter **Account Assignment** selain `U`
 - Hitung jumlah **Estimasi PR**
 
@@ -287,7 +287,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
  
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Hitung rata-rata dari **Date Ordered** dikurangi dengan **1St Full Release**
 
 | Benchmark | Status |
@@ -310,7 +310,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Jumlahkan **Delivery Completed** yang isinya `X`
 - Lalu dibagi dengan **Total PO**
 
@@ -330,7 +330,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Jumlahkan **Delivery Completed** yang isinya `X`
 - Filter hanya yang **Tgl Terima Barang** sebelum **Del Date PO**
 - Lalu dibagi dengan total data tanpa filter **Tgl Terima Barang** sebelum **Del Date PO**
@@ -370,7 +370,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Buat kolom **Efisiensi**: =`(Estimasi PR × Quantity PR) - Total Amount in Local Curr`
 - Bagi jumlah **Efisiensi** dengan jumlah **Total Amount in Local Curr**
 
@@ -645,7 +645,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Filter **Vendor Name** sesuai yang diinginkan
 - Jumlahkan **Total Amount in Local Curr**
                 """)
@@ -661,7 +661,6 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             selected_vendor_filter = st.pills(
                 "Filter Vendor",
                 options=vendor_filter_opts,
-                default="ALL",
                 key=vendor_filter_key,
                 label_visibility="collapsed"
             )
@@ -710,11 +709,23 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 vendor_data = load_data(vendor_query)
 
             if not vendor_data.empty:
+                vendor_data['label_text'] = vendor_data['total_value'].apply(format_idr_short)
                 fig = px.bar(
                     vendor_data, x='total_value', y='vendor', orientation='h',
-                    labels={'total_value': 'Total Value (IDR)', 'vendor': 'Vendor'}
+                    labels={'total_value': 'Total Value (IDR)', 'vendor': 'Vendor'},
+                    text='label_text'
                 )
-                fig.update_layout(height=400, yaxis={'categoryorder': 'total ascending'}, separators=",.")
+                max_vendor_val = vendor_data['total_value'].max()
+                fig.update_layout(
+                    height=400,
+                    yaxis={'categoryorder': 'total ascending'},
+                    xaxis=idr_axis(max_vendor_val),
+                    separators=",."
+                )
+                fig.update_traces(
+                    textfont_size=11, textposition="outside", cliponaxis=False,
+                    hovertemplate="<b>%{y}</b><br>Total: Rp %{text}<extra></extra>"
+                )
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
@@ -884,7 +895,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
  
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Buat kolom **PR-PO**: `=Date Ordered - 1St Full Release**
 - Filter sesuai range yang diinginkan
                 """)
@@ -1038,18 +1049,18 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
 **Formula Excel TEPAT WAKTU:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Jumlahkan **Delivery Completed** yang isinya `X`
 - Filter hanya yang **Tgl Terima Barang** sebelum **Del Date PO**
                         
 **Formula Excel IN PROGRESS:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Jumlahkan **Delivery Completed** yang isinya selain `X`
                         
 **Formula Excel TERLAMBAT:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Jumlahkan **Delivery Completed** yang isinya `X`
 - Filter hanya yang **Tgl Terima Barang** sesudah **Del Date PO**
                 """)
@@ -1112,7 +1123,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
 **Formula Excel:** (PO SAP)
 - Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `L`
+- Filter **PO Deletion Flag** selain `L`
 - Filter **ABC Indicator** sesuai keinginan
 - Jumlahkan nilai **Total Amount in Local Curr**
 
@@ -1146,7 +1157,11 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     labels={'abc_indicator': 'ABC Category', 'total_value': 'Total PO Value (IDR)'},
                     text='label_text'
                 )
-                fig.update_layout(height=350, margin=dict(t=20, b=0, l=0, r=0), separators=",.")
+                max_mat_val = material_data['total_value'].max()
+                fig.update_layout(
+                    height=350, margin=dict(t=20, b=0, l=0, r=0), separators=",.",
+                    yaxis=idr_axis(max_mat_val)
+                )
                 fig.update_traces(
                     textfont_size=12, textangle=0, textposition="outside", cliponaxis=False,
                     hovertemplate="<b>ABC: %{x}</b><br>Total: Rp %{text}<extra></extra>"

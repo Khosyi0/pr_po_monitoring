@@ -714,30 +714,7 @@ PR dgn PO   = COUNT(DISTINCT no_pr || '-' || line_item_pr)
                         "formula": """\
 **Avg Lead Time**: Rata-rata waktu proses dari PR dibuat hingga PO diterbitkan, untuk semua Purchasing Group.
 
-**Contoh Formula Excel:** bulan Januari
-```
-=SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (ISNUMBER(SEARCH("1000076", TEXT(INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "0"))) = FALSE) *
-  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) *
-  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) *
-  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
-   INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0)))
-) /
-SUMPRODUCT(
-  (MONTH(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) = 1) *
-  (INDEX($A$2:$ZZ$21000, 0, MATCH("PO Deletion Flag", $A$1:$ZZ$1, 0)) <> "L") *
-  (ISNUMBER(SEARCH("1000076", TEXT(INDEX($A$2:$ZZ$21000, 0, MATCH("Material No", $A$1:$ZZ$1, 0)), "0"))) = FALSE) *
-  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0))) *
-  ISNUMBER(INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) *
-  ((INDEX($A$2:$ZZ$21000, 0, MATCH("Date Ordered", $A$1:$ZZ$1, 0)) -
-    INDEX($A$2:$ZZ$21000, 0, MATCH("Tgl Create PR", $A$1:$ZZ$1, 0))) >= 0)
-)
-```
-**Formula Excel MANUAL:** (PO SAP)
+**Formula Excel:** (PO SAP)
 - Filter Material No selain `1000076` dan PO Deletion Flag selain `L`
 - Buat kolom baru untuk perhitungan `Date Ordered - Tgl Create PR`
 - Dirata-rata

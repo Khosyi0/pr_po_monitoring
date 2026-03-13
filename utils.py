@@ -410,6 +410,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str):
                             - Menampilkan tabel "PR Pending Mendekati Kadaluarsa (> 30 Hari)": Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
                             - Menampilkan tabel "PO Overdue (Melewati Delivery Date)": Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum diterima semua (Delivery Completed belum X).
                             - Menampilkan chart "Rekap Aging PO (Belum Dikirim)": Bar chart jumlah PO yang belum dikirim dikelompokkan per rentang umur.
+                            - Menampilkan chart "Monitoring PO Status": Menampilkan jumlah PO berdasarkan statusnya.
                         
                         KATEGORI 2: SIPS
                         6. Dashboard Monitoring SIPS:
