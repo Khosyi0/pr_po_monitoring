@@ -126,7 +126,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         po_delivered     = int(po_kpi['po_delivered'][0] or 0)
         po_ontime        = int(po_kpi['po_ontime'][0] or 0)
         po_del_tot       = int(po_kpi['po_delivered_total'][0] or 0)
-        produktivitas    = (pr_with_po / total_pr * 100) if total_pr > 0 else 0.0
+        produktivitas    = (total_po / total_pr * 100) if total_po > 0 else 0.0
         pct_pengiriman   = (po_delivered / total_po * 100) if total_po > 0 else 0.0
         ketepatan_pct    = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
 
@@ -175,11 +175,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "value": f"{format_number(produktivitas, decimals=2)}%",
                 "delta": "Target: -%",
                 "formula": """\
-**Produktivitas PR-PO**: Persentase item PR yang berhasil dikonversi menjadi PO.
+**Produktivitas PR-PO**: Persentase total item PO dibanding total item PR.
 
 **Formula:**
 ```
-= PR_with_PO / Total_PR × 100%
+= Total PO / Total PR × 100%
 ```
 
 | % | Interpretasi |
