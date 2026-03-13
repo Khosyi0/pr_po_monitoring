@@ -12,7 +12,20 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import warnings
+import base64
+import os
 warnings.filterwarnings('ignore')
+
+# ── Load Dashboard icon (untuk page_icon & halaman login) ────────────────────
+def _load_icon_b64(path: str) -> str | None:
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        return None
+
+_ICON_PATH = "assets/Dashboard_icon.png"
+_icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions
@@ -29,9 +42,12 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu
 # PAGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 
+from PIL import Image
+_page_icon = Image.open(_ICON_PATH) if os.path.exists(_ICON_PATH) else "📊"
+
 st.set_page_config(
     page_title="Monitoring Dashboard",
-    page_icon="📊",
+    page_icon=_page_icon,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -65,9 +81,23 @@ def render_login():
     with col_m:
         st.markdown("""
             <div style='text-align:center; margin-bottom: 24px;'>
-                <span style='font-size:48px;'>📊</span>
-                <h2 style='margin:8px 0 4px 0; font-size:22px;'>Monitoring Dashboard</h2>
-                <p style='color: #888; font-size:14px; margin:0;'>Pengadaan PR-PO & SIPS</p>
+        """, unsafe_allow_html=True)
+
+        # Tampilkan ikon dashboard jika tersedia, fallback ke emoji
+        if _icon_b64:
+            st.markdown(
+                f"<div style='text-align:center;'>"
+                f"<img src='data:image/png;base64,{_icon_b64}' "
+                f"width='90' height='90' style='border-radius:16px; margin-bottom:12px;'>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown("<div style='text-align:center; font-size:56px;'>📊</div>", unsafe_allow_html=True)
+
+        st.markdown("""
+                <h2 style='font-size:24px; text-align:center; margin-left:18px;'>Monitoring Dashboard</h2>
+                <p style='color: #888; font-size:14px; margin-bottom:18px; text-align:center;'>Pengadaan PR-PO & SIPS</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -78,7 +108,7 @@ def render_login():
             label_visibility="collapsed"
         )
 
-        if st.button("🔓  Masuk", use_container_width=True, type="primary"):
+        if st.button("Masuk", use_container_width=True, type="primary"):
             try:
                 correct_password = st.secrets["auth"]["password"]
             except (KeyError, FileNotFoundError):
