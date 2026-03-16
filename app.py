@@ -28,7 +28,7 @@ _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data
-from utils import inject_css, build_filter_conditions, build_bagian_conditions, render_filter_bar
+from utils import inject_css, build_filter_conditions, build_bagian_conditions, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 
 
@@ -138,6 +138,9 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     render_login()
     st.stop()
+
+# Scroll-to-top — dipanggil setelah auth agar tidak tampil di halaman login
+inject_scroll_to_top()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE
@@ -899,7 +902,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8.1 | "
+        f"Monitoring Dashboard - {system_label} | v1.8 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
