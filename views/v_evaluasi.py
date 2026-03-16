@@ -254,32 +254,30 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
 
         st.markdown("---")
 
-        # ── ROW 1: Scatter OE vs Realisasi & Bar Top Material Overspend ───────────
-        col1, col2 = st.columns(2)
+        # ── ROW 1: Scatter OE vs Realisasi (full width) ────────────────────────────
 
-        with col1:
-            title_col, btn_col = st.columns([9, 1])
-            with title_col:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:22px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                            <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
-                        </svg>
-                        OE vs Realisasi Harga PO (per Material)
-                    </h1>
-                """, unsafe_allow_html=True)
-            with btn_col:
-                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_scatter = "show_formula_eval_scatter"
-                if key_scatter not in st.session_state:
-                    st.session_state[key_scatter] = False
-                is_open = st.session_state[key_scatter]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_scatter}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_scatter})
+        title_col, btn_col = st.columns([9, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:22px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                        <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
+                    </svg>
+                    OE vs Realisasi Harga PO (per Material)
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            key_scatter = "show_formula_eval_scatter"
+            if key_scatter not in st.session_state:
+                st.session_state[key_scatter] = False
+            is_open = st.session_state[key_scatter]
+            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_scatter}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_scatter})
 
-            if st.session_state.get(key_scatter, False):
-                st.info("""\
+        if st.session_state.get(key_scatter, False):
+            st.info("""\
 **OE vs Realisasi Harga PO (per Material)**: Scatter chart perbandingan nilai estimasi vs realisasi PO per material.
 
 **Kalkulasi SQL:**
@@ -297,70 +295,76 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
 - Nilai **negatif** di kolom Efisiensi = overspend
 
 Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis = overspend.
-                """)
+            """)
 
-            st.caption("Perbandingan nilai estimasi vs realisasi PO per material")
+        st.caption("Perbandingan nilai estimasi vs realisasi PO per material")
 
-            scatter_query = f"""
-            SELECT
-                poi.material_no,
-                COALESCE(m.description, poi.description, 'Unknown')              AS nama_material,
-                ROUND(AVG(poi.estimasi_pr * poi.quantity_pr)::numeric, 2)        AS avg_oe,
-                ROUND(AVG(poi.total_amount_local_curr)::numeric, 2)              AS avg_realisasi,
-                COUNT(DISTINCT poi.nomor_po)                                     AS jumlah_po
-            FROM po_items poi
-            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-            LEFT JOIN materials m ON poi.material_no = m.material_no
-            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-            AND poi.nomor_po IS NOT NULL
-            AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
-            AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
-            AND poi.total_amount_local_curr > 0
-            AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
-            GROUP BY poi.material_no, m.description, poi.description
-            ORDER BY jumlah_po DESC
-            LIMIT 50
-            """
-            with st.spinner("Memuat scatter chart..."):
-                scatter_data = load_data(scatter_query)
+        scatter_query = f"""
+        SELECT
+            poi.material_no,
+            COALESCE(m.description, poi.description, 'Unknown')              AS nama_material,
+            ROUND(AVG(poi.estimasi_pr * poi.quantity_pr)::numeric, 2)        AS avg_oe,
+            ROUND(AVG(poi.total_amount_local_curr)::numeric, 2)              AS avg_realisasi,
+            COUNT(DISTINCT poi.nomor_po)                                     AS jumlah_po
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN materials m ON poi.material_no = m.material_no
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+        AND poi.nomor_po IS NOT NULL
+        AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
+        AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
+        AND poi.total_amount_local_curr > 0
+        AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+        GROUP BY poi.material_no, m.description, poi.description
+        ORDER BY jumlah_po DESC
+        LIMIT 50
+        """
+        with st.spinner("Memuat scatter chart..."):
+            scatter_data = load_data(scatter_query)
 
-            if not scatter_data.empty:
-                scatter_data['status'] = scatter_data.apply(
-                    lambda r: 'Melebihi OE' if r['avg_realisasi'] > r['avg_oe'] else 'Di Bawah / Sesuai OE',
-                    axis=1
-                )
-                scatter_data['selisih'] = scatter_data['avg_oe'] - scatter_data['avg_realisasi']
-                max_val = max(scatter_data['avg_oe'].max(), scatter_data['avg_realisasi'].max()) * 1.1
-                fig = px.scatter(
-                    scatter_data,
-                    x='avg_oe', y='avg_realisasi',
-                    color='status',
-                    size='jumlah_po',
-                    hover_name='nama_material',
-                    hover_data={'material_no': True, 'jumlah_po': True,
-                                'avg_oe': ':,.0f', 'avg_realisasi': ':,.0f', 'selisih': ':,.0f'},
-                    color_discrete_map={'Melebihi OE': '#d62728', 'Di Bawah / Sesuai OE': '#2ca02c'},
-                    labels={'avg_oe': 'Rata-rata OE (IDR)', 'avg_realisasi': 'Rata-rata Realisasi PO (IDR)', 'selisih': 'Selisih (IDR)'}
-                )
-                fig.add_shape(type='line', x0=0, y0=0, x1=max_val, y1=max_val,
-                            line=dict(color='gray', dash='dash', width=1))
-                fig.add_annotation(x=max_val * 0.85, y=max_val * 0.9,
-                                    text="Batas OE", showarrow=False,
-                                    font=dict(color='gray', size=11))
-                axis_cfg = idr_axis(max_val)
-                fig.update_layout(
-                    height=420,
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02),
-                    separators=",.",
-                    xaxis=axis_cfg,
-                    yaxis=axis_cfg,
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption("Titik di atas garis diagonal = realisasi melebihi OE. Ukuran titik = jumlah PO.")
-            else:
-                st.info("Tidak ada data yang tersedia.")
+        if not scatter_data.empty:
+            scatter_data['status'] = scatter_data.apply(
+                lambda r: 'Melebihi OE' if r['avg_realisasi'] > r['avg_oe'] else 'Di Bawah / Sesuai OE',
+                axis=1
+            )
+            scatter_data['selisih'] = scatter_data['avg_oe'] - scatter_data['avg_realisasi']
+            max_val = max(scatter_data['avg_oe'].max(), scatter_data['avg_realisasi'].max()) * 1.1
+            fig = px.scatter(
+                scatter_data,
+                x='avg_oe', y='avg_realisasi',
+                color='status',
+                size='jumlah_po',
+                hover_name='nama_material',
+                hover_data={'material_no': True, 'jumlah_po': True,
+                            'avg_oe': ':,.0f', 'avg_realisasi': ':,.0f', 'selisih': ':,.0f'},
+                color_discrete_map={'Melebihi OE': '#d62728', 'Di Bawah / Sesuai OE': '#2ca02c'},
+                labels={'avg_oe': 'Rata-rata OE (IDR)', 'avg_realisasi': 'Rata-rata Realisasi PO (IDR)', 'selisih': 'Selisih (IDR)'}
+            )
+            fig.add_shape(type='line', x0=0, y0=0, x1=max_val, y1=max_val,
+                        line=dict(color='gray', dash='dash', width=1))
+            fig.add_annotation(x=max_val * 0.85, y=max_val * 0.9,
+                                text="Batas OE", showarrow=False,
+                                font=dict(color='gray', size=11))
+            axis_cfg = idr_axis(max_val)
+            fig.update_layout(
+                height=420,
+                legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                separators=",.",
+                xaxis=axis_cfg,
+                yaxis=axis_cfg,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("Titik di atas garis diagonal = realisasi melebihi OE. Ukuran titik = jumlah PO.")
+        else:
+            st.info("Tidak ada data yang tersedia.")
 
-        with col2:
+
+        st.markdown("---")
+
+        # ── ROW 1b: Top 10 Overspend & Top 10 Efisiensi ─────────────────────────────
+        col_over, col_ef = st.columns(2)
+
+        with col_over:
             title_col, btn_col = st.columns([9, 1])
             with title_col:
                 st.markdown("""
@@ -459,6 +463,112 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.success("Tidak ada material dengan realisasi melebihi OE pada periode ini.")
+
+        with col_ef:
+            title_col, btn_col = st.columns([9, 1])
+            with title_col:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-patch-check-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path d="M10.067.87a2.89 2.89 0 0 0-4.134 0l-.622.638-.89-.011a2.89 2.89 0 0 0-2.924 2.924l.01.89-.636.622a2.89 2.89 0 0 0 0 4.134l.637.622-.011.89a2.89 2.89 0 0 0 2.924 2.924l.89-.01.622.636a2.89 2.89 0 0 0 4.134 0l.622-.637.89.011a2.89 2.89 0 0 0 2.924-2.924l-.01-.89.636-.622a2.89 2.89 0 0 0 0-4.134l-.637-.622.011-.89a2.89 2.89 0 0 0-2.924-2.924l-.89.01zm.287 5.984-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7 8.793l2.646-2.647a.5.5 0 0 1 .708.708"/>
+                        </svg>
+                        Top 10 Material: Efisiensi Terbesar
+                    </h1>
+                """, unsafe_allow_html=True)
+            with btn_col:
+                st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+                key_efisien = "show_formula_eval_efisien"
+                if key_efisien not in st.session_state:
+                    st.session_state[key_efisien] = False
+                is_open_ef = st.session_state[key_efisien]
+                icon_ef = ":material/visibility_off:" if is_open_ef else ":material/visibility:"
+                st.button(icon_ef, key=f"btn_{key_efisien}",
+                          help="Hide Formula" if is_open_ef else "Show Formula",
+                          on_click=toggle_state, kwargs={"state_key": key_efisien})
+
+            if st.session_state.get(key_efisien, False):
+                st.info("""\
+**Top 10 Material: Efisiensi Terbesar**: Bar chart 10 material dengan total penghematan (OE - realisasi) terbesar.
+
+**Formula Excel:** (PO SAP)
+- Filter **PO Deletion Flag** selain `L`
+- Filter **Material No** sesuai yang dicari, pastikan **Description** sesuai
+- Buat kolom **OE**: `= Estimasi_PR × Qty_PR`
+- Buat kolom **Efisiensi**: `= OE − Total_Amount_in_Local_Curr`
+- Jumlahkan kolom **Efisiensi** yang lebih dari **0**
+
+**Catatan:** Efisiensi besar belum tentu selalu positif, bisa jadi OE-nya terlalu tinggi sejak awal, atau spesifikasi barang diturunkan. Perlu dikonfirmasi ke bagian terkait.
+                """)
+
+            st.caption("Top 10 material dengan penghematan terbesar terhadap OE.")
+
+            efisien_query = f"""
+            SELECT
+                poi.material_no,
+                COALESCE(m.description, MIN(poi.description), 'Unknown')           AS nama_material,
+                SUM((poi.estimasi_pr * poi.quantity_pr) - poi.total_amount_local_curr) AS total_efisiensi,
+                ROUND(AVG(
+                    CASE WHEN (poi.estimasi_pr * poi.quantity_pr) > 0
+                    THEN (((poi.estimasi_pr * poi.quantity_pr) - poi.total_amount_local_curr)
+                          / (poi.estimasi_pr * poi.quantity_pr) * 100)
+                    END
+                )::numeric, 1)                                                     AS persen_efisiensi,
+                COUNT(DISTINCT poi.nomor_po)                                       AS jumlah_po
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN materials m ON poi.material_no = m.material_no
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+            AND poi.nomor_po IS NOT NULL
+            AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
+            AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
+            AND poi.total_amount_local_curr < (poi.estimasi_pr * poi.quantity_pr)
+            AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+            GROUP BY poi.material_no, m.description
+            ORDER BY total_efisiensi DESC
+            LIMIT 10
+            """
+            with st.spinner("Memuat top efisiensi..."):
+                efisien_data = load_data(efisien_query)
+
+            if not efisien_data.empty:
+                efisien_data['label']           = efisien_data['nama_material'].str[:30]
+                efisien_data['label_text']      = efisien_data['total_efisiensi'].apply(format_idr_short)
+                efisien_data['hover_efisiensi'] = efisien_data['total_efisiensi'].apply(
+                    lambda x: f"Rp {x:,.0f}"
+                )
+                fig_ef = px.bar(
+                    efisien_data,
+                    x='total_efisiensi', y='label', orientation='h',
+                    text='label_text',
+                    color='persen_efisiensi',
+                    color_continuous_scale='Greens',
+                    labels={
+                        'total_efisiensi':  'Total Efisiensi (IDR)',
+                        'label':            'Material',
+                        'persen_efisiensi': '% Efisiensi',
+                    },
+                    custom_data=['hover_efisiensi', 'persen_efisiensi', 'jumlah_po', 'material_no'],
+                )
+                fig_ef.update_traces(
+                    textposition='outside',
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        "Total Efisiensi: %{customdata[0]}<br>"
+                        "% Efisiensi: %{customdata[1]:.1f}%<br>"
+                        "Jumlah PO: %{customdata[2]}<br>"
+                        "Material No: %{customdata[3]}"
+                        "<extra></extra>"
+                    )
+                )
+                fig_ef.update_layout(
+                    height=450,
+                    yaxis={'categoryorder': 'total ascending'},
+                    coloraxis_colorbar=dict(title='% Efisiensi'),
+                    xaxis=idr_axis(efisien_data['total_efisiensi'].max() * 1.15),
+                )
+                st.plotly_chart(fig_ef, use_container_width=True)
+            else:
+                st.info("Tidak ada material dengan realisasi di bawah OE pada periode ini.")
 
         st.markdown("---")
 
@@ -861,7 +971,335 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
         st.markdown("---")
 
-        # ── ROW 3: Tabel Detail Evaluasi Harga ────────────────────────────────────
+        # ── ROW 3: Ranking Vendor Keseluruhan ─────────────────────────────────────
+        title_col_rv, btn_col_rv = st.columns([9, 1])
+        with title_col_rv:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:22px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trophy-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                        <path d="M2.5.5A.5.5 0 0 1 3 0h10a.5.5 0 0 1 .5.5q0 .807-.034 1.536a3 3 0 1 1-1.133 5.89c-.79 1.865-1.878 2.777-2.833 3.011v2.173l1.425.356c.194.048.377.135.537.255L13.3 15.1a.5.5 0 0 1-.3.9H3a.5.5 0 0 1-.3-.9l1.838-1.379c.16-.12.343-.207.537-.255L6.5 13.11v-2.173c-.955-.234-2.043-1.146-2.833-3.012a3 3 0 1 1-1.132-5.89A33 33 0 0 1 2.5.5m.099 2.54a2 2 0 0 0 .72 3.935c-.333-1.05-.588-2.346-.72-3.935m10.083 3.935a2 2 0 0 0 .72-3.935c-.133 1.59-.388 2.885-.72 3.935"/>
+                    </svg>
+                    Ranking Vendor Keseluruhan
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col_rv:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            key_rv = "show_formula_ranking_vendor"
+            if key_rv not in st.session_state:
+                st.session_state[key_rv] = False
+            is_open_rv = st.session_state[key_rv]
+            icon_rv = ":material/visibility_off:" if is_open_rv else ":material/visibility:"
+            st.button(icon_rv, key=f"btn_{key_rv}",
+                      help="Hide Formula" if is_open_rv else "Show Formula",
+                      on_click=toggle_state, kwargs={"state_key": key_rv})
+
+        if st.session_state.get(key_rv, False):
+            st.info("""\
+**Ranking Vendor Keseluruhan**: Tabel yang merangkum performa semua vendor secara lintas material dalam periode filter, bukan hanya satu material. Berguna untuk evaluasi vendor secara holistik sebelum keputusan strategis seperti kontrak jangka panjang atau blacklist.
+
+**Tab Visualisasi terdiri dari dua chart:**
+- **Peta Risiko Vendor (Scatter)**: Sumbu X = total nilai PO, Sumbu Y = % selisih vs OE. Titik di kanan-atas = vendor bernilai besar dan cenderung mahal → prioritas renegosiasi. \
+Ukuran titik = jumlah PO. Garis horizontal = batas 0% OE. Garis vertikal = nilai PO median.
+- **% Realisasi vs OE per Vendor**: Bar chart horizontal diurutkan dari yang paling mahal, dengan warna merah/kuning/hijau berdasarkan posisi relatif terhadap OE.
+- **Total Nilai PO**: `SUM(total_amount_local_curr)`, total nilai transaksi vendor
+- **Jml PO**: Jumlah Purchase Order unik yang melibatkan vendor ini
+- **Jml Material**: Jumlah kode material berbeda yang pernah dipasok
+- **% vs OE**: Rata-rata selisih realisasi terhadap OE per item → negatif = hemat, positif = mahal
+- **Avg Lead Time**: Rata-rata hari dari 1St Full Release PR hingga Date Ordered PO
+- **% On-Time**: Persentase pengiriman tepat waktu dari total yang memiliki status delivery
+
+**Indikator warna % vs OE:**
+- 🟢 Hijau: realisasi ≤ OE (efisien / on-budget)
+- 🟡 Kuning: realisasi sedikit di atas OE (0% – 10%)
+- 🔴 Merah: realisasi jauh di atas OE (> 10%)
+
+**Indikator warna % On-Time:**
+- 🟢 ≥ 90% &nbsp;|&nbsp; 🟡 70–89% &nbsp;|&nbsp; 🔴 < 70%
+            """)
+
+        st.caption("Performa keseluruhan vendor lintas material dalam periode filter. Diurutkan berdasarkan total nilai PO terbesar.")
+
+        ranking_vendor_query = f"""
+        SELECT
+            v.vendor_name,
+            COUNT(DISTINCT poi.nomor_po)                                             AS jumlah_po,
+            COUNT(DISTINCT poi.material_no)                                          AS jumlah_material,
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                            AS total_nilai_po,
+            ROUND(AVG(
+                CASE WHEN (poi.estimasi_pr * poi.quantity_pr) > 0
+                THEN ((poi.total_amount_local_curr - (poi.estimasi_pr * poi.quantity_pr))
+                      / (poi.estimasi_pr * poi.quantity_pr) * 100)
+                END
+            )::numeric, 1)                                                           AS pct_vs_oe,
+            ROUND(AVG(
+                CASE WHEN poh.date_ordered IS NOT NULL AND poi.first_full_release IS NOT NULL
+                THEN (poh.date_ordered::date - poi.first_full_release::date)
+                END
+            )::numeric, 1)                                                           AS avg_lead_time,
+            COUNT(CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU' THEN 1 END)        AS jml_ontime,
+            COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
+                  THEN 1 END)                                                        AS jml_delivery_ada
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+          AND v.vendor_name IS NOT NULL
+          AND poi.total_amount_local_curr IS NOT NULL
+          AND {bagian_po_poi}
+        GROUP BY v.vendor_name
+        ORDER BY total_nilai_po DESC
+        LIMIT 50
+        """
+        with st.spinner("Memuat ranking vendor..."):
+            ranking_vendor_data = load_data(ranking_vendor_query)
+
+        if not ranking_vendor_data.empty:
+            # Hitung % on-time
+            ranking_vendor_data['pct_ontime'] = ranking_vendor_data.apply(
+                lambda r: round(r['jml_ontime'] / r['jml_delivery_ada'] * 100, 1)
+                if r['jml_delivery_ada'] > 0 else None,
+                axis=1
+            )
+
+            # ── Tab chart vs tabel ─────────────────────────────────────────────
+            tab_chart, tab_tabel = st.tabs([
+                ":material/bar_chart: Visualisasi",
+                ":material/table_chart: Tabel Lengkap",
+            ])
+
+            with tab_chart:
+                # Dua chart berdampingan: Total Nilai PO & % vs OE
+                ch1, ch2 = st.columns(2)
+
+                with ch1:
+                    st.markdown("**Peta Risiko Vendor: Nilai PO vs % Selisih terhadap OE**")
+                    scatter_rv = ranking_vendor_data.dropna(subset=['pct_vs_oe']).copy()
+                    scatter_rv['label'] = scatter_rv['vendor_name'].str[:30]
+                    scatter_rv['hover_nilai'] = scatter_rv['total_nilai_po'].apply(
+                        lambda x: f"Rp {x:,.0f}"
+                    )
+                    scatter_rv['kuadran'] = scatter_rv.apply(
+                        lambda r: '🔴 Nilai Besar & Mahal'   if r['total_nilai_po'] >= scatter_rv['total_nilai_po'].median() and r['pct_vs_oe'] > 0
+                        else ('🟡 Nilai Kecil & Mahal'        if r['pct_vs_oe'] > 0
+                        else ('🔵 Nilai Besar & Efisien'      if r['total_nilai_po'] >= scatter_rv['total_nilai_po'].median()
+                        else '🟢 Nilai Kecil & Efisien')),
+                        axis=1
+                    )
+                    color_map_rv = {
+                        '🔴 Nilai Besar & Mahal':   '#d62728',
+                        '🟡 Nilai Kecil & Mahal':   '#f0a500',
+                        '🔵 Nilai Besar & Efisien': '#1f77b4',
+                        '🟢 Nilai Kecil & Efisien': '#2ca02c',
+                    }
+                    fig_rv1 = px.scatter(
+                        scatter_rv,
+                        x='total_nilai_po',
+                        y='pct_vs_oe',
+                        color='kuadran',
+                        color_discrete_map=color_map_rv,
+                        size='jumlah_po',
+                        size_max=30,
+                        hover_name='label',
+                        custom_data=['hover_nilai', 'jumlah_po', 'jumlah_material', 'avg_lead_time'],
+                        labels={
+                            'total_nilai_po': 'Total Nilai PO (IDR)',
+                            'pct_vs_oe':      '% Selisih vs OE',
+                            'kuadran':        'Kuadran',
+                        },
+                    )
+                    fig_rv1.update_traces(
+                        hovertemplate=(
+                            "<b>%{hovertext}</b><br>"
+                            "Total Nilai PO: %{customdata[0]}<br>"
+                            "% vs OE: %{y:+.1f}%<br>"
+                            "Jumlah PO: %{customdata[1]}<br>"
+                            "Jumlah Material: %{customdata[2]}<br>"
+                            "Avg Lead Time: %{customdata[3]:.0f} hari"
+                            "<extra></extra>"
+                        )
+                    )
+                    # Garis referensi: vertikal (median nilai) & horizontal (0% OE)
+                    median_nilai = scatter_rv['total_nilai_po'].median()
+                    fig_rv1.add_hline(y=0,           line_dash='dash', line_color='gray',   line_width=1)
+                    fig_rv1.add_vline(x=median_nilai, line_dash='dot',  line_color='gray',   line_width=1)
+                    # Anotasi kuadran
+                    x_max = scatter_rv['total_nilai_po'].max()
+                    y_max = scatter_rv['pct_vs_oe'].abs().max()
+                    fig_rv1.add_annotation(
+                        x=x_max * 0.98, y=y_max * 0.92, xanchor='right',
+                        text="⚠️ Prioritas Evaluasi", showarrow=False,
+                        font=dict(color='#d62728', size=11)
+                    )
+                    fig_rv1.add_annotation(
+                        x=x_max * 0.98, y=-y_max * 0.92, xanchor='right',
+                        text="✅ Pertahankan", showarrow=False,
+                        font=dict(color='#1f77b4', size=11)
+                    )
+                    fig_rv1.update_layout(
+                        height=520,
+                        xaxis=idr_axis(x_max * 1.05),
+                        yaxis_title='% Selisih vs OE (+ = lebih mahal, - = lebih hemat)',
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02, font=dict(size=10)),
+                        hovermode='closest',
+                    )
+                    st.plotly_chart(fig_rv1, use_container_width=True)
+                    st.caption(
+                        "Titik di atas garis horizontal (0%) = realisasi melebihi OE. "
+                        "Garis vertikal = nilai PO median. Ukuran titik = jumlah PO."
+                    )
+ 
+                with ch2:
+                    st.markdown("**% Realisasi vs OE per Vendor (Top 20, diurutkan terburuk)**")
+                    top20_oe = ranking_vendor_data.head(20).dropna(subset=['pct_vs_oe']).copy()
+                    if not top20_oe.empty:
+                        top20_oe = top20_oe.sort_values('pct_vs_oe', ascending=False)
+                        top20_oe['warna'] = top20_oe['pct_vs_oe'].apply(
+                            lambda x: '🔴 Melebihi OE (>10%)' if x > 10
+                            else ('🟡 Sedikit di atas OE (0-10%)' if x > 0
+                            else '🟢 Di Bawah / Sesuai OE')
+                        )
+                        color_map = {
+                            '🔴 Melebihi OE (>10%)':        '#d62728',
+                            '🟡 Sedikit di atas OE (0-10%)': '#f0a500',
+                            '🟢 Di Bawah / Sesuai OE':       '#2ca02c',
+                        }
+                        top20_oe['label'] = top20_oe['vendor_name'].str[:28]
+                        fig_rv2 = px.bar(
+                            top20_oe,
+                            x='pct_vs_oe', y='label', orientation='h',
+                            color='warna',
+                            color_discrete_map=color_map,
+                            text=top20_oe['pct_vs_oe'].apply(lambda x: f"{x:+.1f}%"),
+                            labels={'pct_vs_oe': '% Selisih vs OE', 'label': 'Vendor', 'warna': 'Status'},
+                            custom_data=['jumlah_po'],
+                        )
+                        fig_rv2.update_traces(
+                            textposition='outside',
+                            hovertemplate=(
+                                "<b>%{y}</b><br>"
+                                "% vs OE: %{x:+.1f}%<br>"
+                                "Jumlah PO: %{customdata[0]}"
+                                "<extra></extra>"
+                            )
+                        )
+                        x_abs = top20_oe['pct_vs_oe'].abs().max() * 1.3
+                        fig_rv2.update_layout(
+                            height=520,
+                            yaxis={'categoryorder': 'total ascending'},
+                            xaxis=dict(range=[-x_abs, x_abs]),
+                            legend=dict(orientation='h', yanchor='bottom', y=1.02, font=dict(size=11)),
+                        )
+                        fig_rv2.add_vline(x=0, line_dash='dash', line_color='gray', line_width=1)
+                        st.plotly_chart(fig_rv2, use_container_width=True)
+                    else:
+                        st.info("Data % vs OE tidak tersedia untuk vendor ini.")
+
+            with tab_tabel:
+                max_po_rv  = ranking_vendor_data['jumlah_po'].max()
+                max_val_rv = ranking_vendor_data['total_nilai_po'].max()
+
+                def _rv_nilai(val):
+                    if pd.isna(val): return '<span style="color:gray">-</span>'
+                    pct   = val / max_val_rv if max_val_rv > 0 else 0
+                    bar_w = max(4, int(pct * 80))
+                    bar   = '<div style="width:' + str(bar_w) + 'px;height:8px;background:#1f77b4;border-radius:4px;display:inline-block;vertical-align:middle;margin-right:6px"></div>'
+                    return bar + '<span style="font-weight:600">' + format_idr_short(val) + '</span>'
+
+                def _rv_pct_oe(val):
+                    if pd.isna(val): return '<span style="color:gray">-</span>'
+                    color = '#2ca02c' if val <= 0 else ('#f0a500' if val <= 10 else '#d62728')
+                    sign  = '+' if val > 0 else ''
+                    return '<span style="color:' + color + ';font-weight:600">' + sign + f'{val:.1f}%</span>'
+
+                def _rv_lt(val):
+                    if pd.isna(val): return '<span style="color:gray">-</span>'
+                    lt_vals_rv = ranking_vendor_data['avg_lead_time'].dropna()
+                    lt_min_rv  = lt_vals_rv.min() if len(lt_vals_rv) > 0 else 1
+                    color = '#2ca02c' if val <= lt_min_rv * 1.3 else ('#f0a500' if val <= lt_min_rv * 2 else '#d62728')
+                    return '<span style="color:' + color + ';font-weight:600">' + str(int(val)) + ' hari</span>'
+
+                def _rv_ontime(val, jml):
+                    if pd.isna(val) or jml == 0: return '<span style="color:gray">-</span>'
+                    color = '#2ca02c' if val >= 90 else ('#f0a500' if val >= 70 else '#d62728')
+                    return '<span style="color:' + color + ';font-weight:600">' + str(int(val)) + '%</span>'
+
+                def _rv_freq(val):
+                    pct   = val / max_po_rv if max_po_rv > 0 else 0
+                    bar_w = max(4, int(pct * 56))
+                    bar   = '<div style="width:' + str(bar_w) + 'px;height:8px;background:#1f77b4;border-radius:4px;display:inline-block;vertical-align:middle"></div>'
+                    return bar + '<span style="font-weight:600;margin-left:6px">' + str(int(val)) + 'x</span>'
+
+                BD  = 'border-bottom:1px solid rgba(128,128,128,0.2)'
+                P   = 'padding:8px 10px;' + BD
+                TH  = 'padding:8px 10px;font-size:13px;font-weight:600;'
+
+                rows_rv = []
+                for idx_r, row in ranking_vendor_data.iterrows():
+                    rank   = idx_r + 1
+                    vname  = str(row['vendor_name'])
+                    vname  = (vname[:40] + '…') if len(vname) > 40 else vname
+                    medal  = '🥇' if rank == 1 else ('🥈' if rank == 2 else ('🥉' if rank == 3 else str(rank)))
+                    tr = (
+                        '<tr>'
+                        + '<td style="' + P + 'text-align:center;font-weight:700">' + medal + '</td>'
+                        + '<td style="' + P + 'font-size:13px">' + vname + '</td>'
+                        + '<td style="' + P + 'text-align:center;font-weight:600">' + str(int(row['jumlah_material'])) + '</td>'
+                        + '<td style="' + P + '">' + _rv_nilai(row['total_nilai_po']) + '</td>'
+                        + '<td style="' + P + 'text-align:center">' + _rv_pct_oe(row['pct_vs_oe']) + '</td>'
+                        + '<td style="' + P + 'text-align:center">' + _rv_lt(row['avg_lead_time']) + '</td>'
+                        + '<td style="' + P + 'text-align:center">' + _rv_ontime(row['pct_ontime'], row['jml_delivery_ada']) + '</td>'
+                        + '<td style="' + P + '">' + _rv_freq(row['jumlah_po']) + '</td>'
+                        + '</tr>'
+                    )
+                    rows_rv.append(tr)
+
+                thead_rv = (
+                    '<thead><tr style="border-bottom:2px solid rgba(128,128,128,0.4)">'
+                    + '<th style="' + TH + 'text-align:center">#</th>'
+                    + '<th style="' + TH + 'text-align:left">Vendor</th>'
+                    + '<th style="' + TH + 'text-align:center">Jml<br><small style="font-weight:400">Material</small></th>'
+                    + '<th style="' + TH + 'text-align:left">Total Nilai PO<br><small style="font-weight:400">(IDR)</small></th>'
+                    + '<th style="' + TH + 'text-align:center">% vs OE<br><small style="font-weight:400">(rata-rata)</small></th>'
+                    + '<th style="' + TH + 'text-align:center">Avg Lead Time<br><small style="font-weight:400">(PR→PO)</small></th>'
+                    + '<th style="' + TH + 'text-align:center">% On-Time<br><small style="font-weight:400">Delivery</small></th>'
+                    + '<th style="' + TH + 'text-align:center">Frekuensi<br><small style="font-weight:400">(jml PO)</small></th>'
+                    + '</tr></thead>'
+                )
+                tabel_rv_html = (
+                    '<table style="width:100%;border-collapse:collapse;font-size:14px">'
+                    + thead_rv
+                    + '<tbody>' + ''.join(rows_rv) + '</tbody>'
+                    + '</table>'
+                    + '<p style="font-size:12px;margin-top:8px">'
+                    + '🟢 Baik &nbsp;|&nbsp; 🟡 Perhatikan &nbsp;|&nbsp; 🔴 Perlu Evaluasi'
+                    + ' &nbsp;|&nbsp; - = data tidak tersedia &nbsp;|&nbsp; Diurutkan: Total Nilai PO terbesar'
+                    + '</p>'
+                )
+                st.markdown(tabel_rv_html, unsafe_allow_html=True)
+
+                # Download tabel sebagai CSV
+                csv_rv = ranking_vendor_data.drop(columns=['jml_ontime','jml_delivery_ada']).rename(columns={
+                    'vendor_name':    'Vendor',
+                    'jumlah_po':      'Jml PO',
+                    'jumlah_material':'Jml Material',
+                    'total_nilai_po': 'Total Nilai PO (IDR)',
+                    'pct_vs_oe':      '% vs OE',
+                    'avg_lead_time':  'Avg Lead Time (hari)',
+                    'pct_ontime':     '% On-Time Delivery',
+                }).to_csv(index=False)
+                st.download_button(
+                    label="Download sebagai CSV",
+                    icon=":material/download:",
+                    data=csv_rv,
+                    file_name=f"ranking_vendor_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                )
+        else:
+            st.info("Tidak ada data vendor untuk filter yang dipilih.")
+
+        st.markdown("---")
+
+        # ── ROW 4: Tabel Detail Evaluasi Harga ────────────────────────────────────
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:22px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
@@ -968,12 +1406,27 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
         konteks_lines.append(f"- Item PO Melebihi OE (Overspend): {po_over} item")
         konteks_lines.append(f"- Item PO Sesuai/Di Bawah OE: {po_under} item\n")
 
-        # 2. Data Top Overspend (Material yang paling rugi)
+        # 2. Data Top Overspend
         if 'overspend_data' in locals() and not overspend_data.empty:
             konteks_lines.append("## 2. TOP 10 MATERIAL OVERSPEND TERBESAR")
-            # Ambil kolom penting saja agar hemat token
             df_os_simple = overspend_data[['nama_material', 'total_overspend', 'persen_overspend']]
             konteks_lines.append(df_os_simple.to_csv(index=False))
+            konteks_lines.append("\n")
+
+        # 2b. Data Top Efisiensi
+        if 'efisien_data' in locals() and not efisien_data.empty:
+            konteks_lines.append("## 2b. TOP 10 MATERIAL EFISIENSI TERBESAR")
+            df_ef_simple = efisien_data[['nama_material', 'total_efisiensi', 'persen_efisiensi']]
+            konteks_lines.append(df_ef_simple.to_csv(index=False))
+            konteks_lines.append("\n")
+
+        # 2c. Ranking Vendor Keseluruhan (top 15)
+        if 'ranking_vendor_data' in locals() and not ranking_vendor_data.empty:
+            konteks_lines.append("## 2c. RANKING VENDOR KESELURUHAN (TOP 15)")
+            df_rv_simple = ranking_vendor_data[['vendor_name','jumlah_po','jumlah_material',
+                                                'total_nilai_po','pct_vs_oe',
+                                                'avg_lead_time','pct_ontime']].head(15)
+            konteks_lines.append(df_rv_simple.to_csv(index=False))
             konteks_lines.append("\n")
 
         # 3. Data Detail Harga (Ambil 15 teratas yang paling bermasalah)

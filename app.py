@@ -97,7 +97,7 @@ def render_login():
 
         st.markdown("""
                 <h2 style='font-size:24px; text-align:center; margin-left:18px;'>Monitoring Dashboard</h2>
-                <p style='color: #888; font-size:14px; margin-bottom:18px; text-align:center;'>Pengadaan PR-PO & SIPS</p>
+                <p style='color: #888; font-size:14px; margin-bottom:18px; text-align:center;'>Pengadaan Barang</p>
             </div>
         """, unsafe_allow_html=True)
 
