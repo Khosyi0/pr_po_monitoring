@@ -1007,7 +1007,17 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
                 lambda x: format_currency(x) if pd.notna(x) else ""
             )
-            st.dataframe(pr_without_po, use_container_width=True, height=300)
+            st.dataframe(
+                pr_without_po.rename(columns={
+                    'no_pr':          'No PR',
+                    'line_item_pr':   'Item',
+                    'tgl_create_pr':  'Tgl Dibuat',
+                    'department':     'Department',
+                    'bagian':         'Bagian',
+                    'total_estimasi': 'Estimasi (Rp)',
+                }),
+                use_container_width=True, height=300
+            )
         else:
             st.success("Kerja bagus! Semua PR telah diproses menjadi PO.")
 

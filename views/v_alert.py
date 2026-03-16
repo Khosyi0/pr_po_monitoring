@@ -98,7 +98,17 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             alert_pr_data['estimasi_pr'] = alert_pr_data['estimasi_pr'].apply(
                 lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
             )
-            st.dataframe(alert_pr_data, use_container_width=True, height=250)
+            st.dataframe(
+                alert_pr_data.rename(columns={
+                    'no_pr':        'No PR',
+                    'tgl_create_pr':'Tgl Dibuat',
+                    'department':   'Department',
+                    'bagian':       'Bagian',
+                    'estimasi_pr':  'Estimasi (Rp)',
+                    'umur_hari':    'Umur (Hari)',
+                }),
+                use_container_width=True, height=250
+            )
         else:
             st.success("Aman! Tidak ada PR Pending yang umurnya lebih dari 30 hari.")
 
@@ -188,7 +198,18 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             if not alert_po_data.empty:
                 alert_po_data['date_ordered']    = pd.to_datetime(alert_po_data['date_ordered']).dt.strftime('%Y-%m-%d')
                 alert_po_data['target_delivery'] = pd.to_datetime(alert_po_data['target_delivery']).dt.strftime('%Y-%m-%d')
-                st.dataframe(alert_po_data, use_container_width=True, height=400)
+                st.dataframe(
+                    alert_po_data.rename(columns={
+                        'nomor_po':       'No PO',
+                        'item_po':        'Item',
+                        'date_ordered':   'Tgl PO',
+                        'target_delivery':'Target Delivery',
+                        'vendor_name':    'Vendor',
+                        'on_time_delivery':'Status',
+                        'hari_terlambat': 'Terlambat (Hari)',
+                    }),
+                    use_container_width=True, height=400
+                )
             else:
                 st.success("Aman! Tidak ada PO yang terlambat dari jadwal.")
 

@@ -457,6 +457,66 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
 
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCROLL TO TOP BUTTON
+# ─────────────────────────────────────────────────────────────────────────────
+
+def inject_scroll_to_top():
+    """
+    Tombol scroll-to-top selalu visible di pojok kanan bawah.
+    Harus dipanggil SETELAH auth check (setelah st.stop()).
+    Pakai st.components.v1.html agar JS bisa akses window.parent DOM.
+    """
+    st.components.v1.html("""
+<style>
+/* Inject ke parent document */
+</style>
+<script>
+(function() {
+    var doc = window.parent.document;
+
+    // Hindari duplikat
+    if (doc.getElementById('stt-btn')) return;
+
+    // ── CSS ───────────────────────────────────────────────────────────────────
+    var s = doc.createElement('style');
+    s.id = 'stt-style';
+    s.textContent =
+        '#stt-btn{' +
+        '  position:fixed;bottom:28px;right:28px;z-index:99999;' +
+        '  width:40px;height:40px;border-radius:50%;' +
+        '  background:#ff4b4b;color:white;border:none;cursor:pointer;' +
+        '  box-shadow:0 4px 12px rgba(0,0,0,0.3);' +
+        '  display:flex;align-items:center;justify-content:center;' +
+        '  transition:background .2s,transform .2s,box-shadow .2s;' +
+        '}' +
+        '#stt-btn:hover{background:#e03c3c;transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,0.35);}' +
+        '#stt-btn:active{transform:translateY(0);}';
+    doc.head.appendChild(s);
+
+    // ── Tombol ────────────────────────────────────────────────────────────────
+    var btn = doc.createElement('button');
+    btn.id = 'stt-btn';
+    btn.title = 'Scroll ke atas';
+    btn.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16">' +
+        '<path fill-rule="evenodd" d="M7.646 4.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708L8 5.707l-5.646 5.647a.5.5 0 0 1-.708-.708z"/>' +
+        '</svg>';
+    doc.body.appendChild(btn);
+
+    // ── Klik: scroll section[data-testid="stMain"] ke atas ───────────────────
+    btn.addEventListener('click', function() {
+        var el = doc.querySelector('section[data-testid="stMain"]');
+        if (el) {
+            el.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+})();
+</script>
+""", height=0)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PETA SISTEM: LAZY LOAD — hanya dimuat saat user bertanya soal struktur
 # ─────────────────────────────────────────────────────────────────────────────

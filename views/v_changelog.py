@@ -20,6 +20,12 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "13 Mar 2026", "Versi": "v1.8.1", "Perubahan": """
+    - Menambahkan chart Top 10 Material: Efisiensi Terbesar di halaman Evaluasi Harga Barang
+    - Menambahkan chart Ranking Vendor Keseluruhan di halaman Evaluasi Harga Barang
+    - Menambahkan fitur tombol ke halaman atas ketika scroll terlalu bawah
+    - Menambahkan fitur sidebar bisa menjadi header
+    - Menambahkan firut konfirmasi ketika akan logout"""},
         {"Tanggal": "13 Mar 2026", "Versi": "v1.8", "Perubahan": """
     - Memperbarui perhitungan Produktivitas PR-PO pada halaman Dashboard Monitoring SAP
     - Menambahkan halaman Login demi keamanan data
@@ -236,5 +242,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.1"])):
             st.markdown(item["Perubahan"])

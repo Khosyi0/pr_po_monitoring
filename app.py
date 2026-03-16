@@ -164,6 +164,42 @@ init_state('sips_prev_bagian',    ['All'])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DIALOG KONFIRMASI LOGOUT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.dialog("Konfirmasi Logout")
+def dialog_logout():
+    # Paksa dialog ke tengah layar
+    st.markdown("""
+<style>
+div[data-testid="stDialog"] > div > div {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    margin: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align:center; font-size:15px; margin:8px 0 20px 0;'>"
+        "Yakin ingin keluar dari dashboard?</p>",
+        unsafe_allow_html=True
+    )
+    col_ya, col_tidak = st.columns(2)
+    with col_ya:
+        if st.button("Ya, Logout", icon=":material/logout:",
+                     use_container_width=True, type="primary",
+                     key="dlg_logout_ya"):
+            st.session_state.authenticated = False
+            st.rerun()
+    with col_tidak:
+        if st.button("Batal", icon=":material/close:",
+                     use_container_width=True, key="dlg_logout_tidak"):
+            st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HALAMAN: render functions
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -685,8 +721,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
 # ── Tombol Logout — selalu di paling bawah sidebar ───────────────────────────
 st.sidebar.markdown("---")
 if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout"):
-    st.session_state.authenticated = False
-    st.rerun()
+    dialog_logout()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEFAULT FILTER VALUES  (dipakai untuk sistem yang TIDAK aktif saat ini)
@@ -864,7 +899,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8 | "
+        f"Monitoring Dashboard - {system_label} | v1.8.1 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
