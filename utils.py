@@ -5,6 +5,7 @@ utils.py - Fungsi pembantu: format uang, CSS, dan filter kondisi SQL
 import streamlit as st
 import pandas as pd
 from google import genai
+from datetime import datetime
 import base64
 import os
 
@@ -245,6 +246,216 @@ def build_sips_where(date_from=None, date_to=None,
         nms = ", ".join(f"'{n}'" for n in selected_nama)
         wp.append(f"nama IN ({nms})")
     return " AND ".join(wp)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FILTER BAR — horizontal filter di atas konten halaman
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_filter_bar(mode: str, load_data_fn) -> dict:
+    """
+    Render filter bar horizontal di atas konten halaman.
+
+    mode : 'sap'  → filter SAP  (Bagian, Dept, P.Group, Date Range)
+           'sips' → filter SIPS (Bagian, Nama, Date Range)
+
+    Mengembalikan dict berisi nilai filter aktif.
+    """
+    current_year  = datetime.now().year
+    default_start = datetime(current_year, 1, 1).date()
+
+    # Tanggal terakhir data diambil — update sesuai ETL terbaru
+    DATA_UPDATE_SAP  = "28 Februari 2026"
+    DATA_UPDATE_SIPS = "28 Februari 2026"
+
+    def _init(k, v):
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+    def _all_logic(key):
+        cur = st.session_state[key]
+        if not cur:
+            st.session_state[key] = ['All']
+        elif 'All' in cur and len(cur) > 1:
+            st.session_state[key] = [x for x in cur if x != 'All']
+
+    def _label(text):
+        st.markdown(
+            f"<p style='font-size:12px;font-weight:600;margin:0 0 2px 0;opacity:0.8'>{text}</p>",
+            unsafe_allow_html=True
+        )
+
+    def _spacer():
+        st.markdown(
+            "<p style='font-size:12px;margin:0 0 2px 0;opacity:0'>&nbsp;</p>",
+            unsafe_allow_html=True
+        )
+
+    if mode == 'sap':
+        # ── Load options ───────────────────────────────────────────────────────
+        try:
+            dept_df = load_data_fn(
+                "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
+            )
+            bagian_df = load_data_fn("""
+                SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete
+                 WHERE bagian_pr IS NOT NULL AND bagian_pr != 'UNKNOWN'
+                UNION
+                SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete
+                 WHERE bagian_po IS NOT NULL AND bagian_po != 'UNKNOWN'
+                ORDER BY 1
+            """)
+            pg_df = load_data_fn("""
+                SELECT DISTINCT purchasing_group FROM purchase_requisitions
+                 WHERE purchasing_group IS NOT NULL
+                UNION
+                SELECT DISTINCT purchasing_group FROM purchase_orders
+                 WHERE purchasing_group IS NOT NULL
+                ORDER BY 1
+            """)
+            opts_dept   = ['All'] + dept_df['department_code'].tolist()
+            opts_bagian = ['All'] + bagian_df['bagian'].tolist()
+            opts_pg     = ['All'] + pg_df['purchasing_group'].tolist()
+        except Exception:
+            opts_dept = opts_bagian = opts_pg = ['All']
+
+        # Init session state TANPA value= di widget (cegah warning duplikat)
+        _init('fb_bagian',    ['All'])
+        _init('fb_dept',      ['All'])
+        _init('fb_pgroup',    ['All'])
+        _init('fb_date_from',  default_start)
+        _init('fb_date_to',    datetime.now().date())
+
+        c_bag, c_dept, c_pg, c_from, c_to, c_btn = st.columns([2, 2, 2, 1.5, 1.5, 0.8])
+
+        with c_bag:
+            _label("Bagian")
+            st.multiselect("Bagian", options=opts_bagian, key="fb_bagian",
+                           on_change=_all_logic, args=("fb_bagian",),
+                           label_visibility="collapsed")
+        with c_dept:
+            _label("Department")
+            st.multiselect("Department", options=opts_dept, key="fb_dept",
+                           on_change=_all_logic, args=("fb_dept",),
+                           label_visibility="collapsed")
+        with c_pg:
+            _label("Purchasing Group")
+            st.multiselect("P.Group", options=opts_pg, key="fb_pgroup",
+                           on_change=_all_logic, args=("fb_pgroup",),
+                           label_visibility="collapsed")
+        with c_from:
+            _label("Dari")
+            st.date_input("Dari", key="fb_date_from",
+                          label_visibility="collapsed")
+        with c_to:
+            _label("Sampai")
+            st.date_input("Sampai", key="fb_date_to",
+                          label_visibility="collapsed")
+        with c_btn:
+            _spacer()
+            if st.button("", icon=":material/refresh:", help="Refresh Data",
+                         use_container_width=True, key="fb_refresh_sap"):
+                st.cache_data.clear()
+                st.rerun()
+
+        # ── Info data update + divider ─────────────────────────────────────────
+        st.markdown(
+            f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
+            f"Data SAP per <b>{DATA_UPDATE_SAP}</b> &nbsp;·&nbsp; "
+            f"Data SIPS per <b>{DATA_UPDATE_SIPS}</b>"
+            f"</p>",
+            unsafe_allow_html=True
+        )
+        st.markdown("---")
+
+        return dict(
+            date_from           = st.session_state.fb_date_from,
+            date_to             = st.session_state.fb_date_to,
+            selected_bagian     = st.session_state.fb_bagian,
+            selected_department = st.session_state.fb_dept,
+            selected_p_group    = st.session_state.fb_pgroup,
+            exclude_bagian      = False,
+        )
+
+    else:  # mode == 'sips'
+        try:
+            bagian_df = load_data_fn(
+                "SELECT DISTINCT bagian FROM sips_employees WHERE bagian IS NOT NULL ORDER BY bagian"
+            )
+            opts_bagian_sips = ['All'] + bagian_df['bagian'].tolist()
+        except Exception:
+            opts_bagian_sips = ['All']
+
+        # Init session state TANPA value= di widget (cegah warning duplikat)
+        _init('fb_sips_bagian',    ['All'])
+        _init('fb_sips_nama',      ['All'])
+        _init('fb_sips_date_from',  default_start)
+        _init('fb_sips_date_to',    datetime.now().date())
+
+        def _bagian_sips_changed():
+            _all_logic("fb_sips_bagian")
+            st.session_state.fb_sips_nama = ['All']
+
+        # Load nama berdasarkan bagian dipilih
+        try:
+            sel_bag = st.session_state.fb_sips_bagian
+            if 'All' not in sel_bag and sel_bag:
+                bsql = "', '".join(sel_bag)
+                nama_df = load_data_fn(
+                    f"SELECT DISTINCT nama FROM sips_employees WHERE bagian IN ('{bsql}') ORDER BY nama"
+                )
+            else:
+                nama_df = load_data_fn(
+                    "SELECT DISTINCT nama FROM sips_employees ORDER BY nama"
+                )
+            opts_nama = ['All'] + nama_df['nama'].tolist()
+        except Exception:
+            opts_nama = ['All']
+
+        c_bag, c_nama, c_from, c_to, c_btn = st.columns([2, 2.5, 1.5, 1.5, 0.8])
+
+        with c_bag:
+            _label("Bagian")
+            st.multiselect("Bagian", options=opts_bagian_sips, key="fb_sips_bagian",
+                           on_change=_bagian_sips_changed, label_visibility="collapsed")
+        with c_nama:
+            _label("Nama")
+            st.multiselect("Nama", options=opts_nama, key="fb_sips_nama",
+                           on_change=_all_logic, args=("fb_sips_nama",),
+                           label_visibility="collapsed")
+        with c_from:
+            _label("Dari")
+            st.date_input("Dari", key="fb_sips_date_from",
+                          label_visibility="collapsed")
+        with c_to:
+            _label("Sampai")
+            st.date_input("Sampai", key="fb_sips_date_to",
+                          label_visibility="collapsed")
+        with c_btn:
+            _spacer()
+            if st.button("", icon=":material/refresh:", help="Refresh Data",
+                         use_container_width=True, key="fb_refresh_sips"):
+                st.cache_data.clear()
+                st.rerun()
+
+        # ── Info data update + divider ─────────────────────────────────────────
+        st.markdown(
+            f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
+            f"Data SAP per <b>{DATA_UPDATE_SAP}</b> &nbsp;·&nbsp; "
+            f"Data SIPS per <b>{DATA_UPDATE_SIPS}</b>"
+            f"</p>",
+            unsafe_allow_html=True
+        )
+        st.markdown("---")
+
+        return dict(
+            date_from       = st.session_state.fb_sips_date_from,
+            date_to         = st.session_state.fb_sips_date_to,
+            selected_bagian = st.session_state.fb_sips_bagian,
+            selected_nama   = st.session_state.fb_sips_nama,
+        )
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PETA SISTEM: LAZY LOAD — hanya dimuat saat user bertanya soal struktur

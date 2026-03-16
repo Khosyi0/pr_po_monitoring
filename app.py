@@ -28,7 +28,7 @@ _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data
-from utils import inject_css, build_filter_conditions, build_bagian_conditions
+from utils import inject_css, build_filter_conditions, build_bagian_conditions, render_filter_bar
 from context_builder import build_global_context
 
 
@@ -148,6 +148,7 @@ def init_state(key, value):
         st.session_state[key] = value
 
 init_state('show_changelog',      False)
+init_state('filter_mode',          'sidebar')  # 'sidebar' atau 'topbar'
 # SAP filters
 init_state('filter_bagian',       ['All'])
 init_state('prev_filter_bagian',  ['All'])
@@ -372,25 +373,69 @@ sips_date_to             = datetime.now().date()
 sips_selected_nama       = ['All']
 sips_selected_bagian     = ['All']
 
-# ── Header filter ─────────────────────────────────────────────────────────────
+# ── Info data terakhir diambil ────────────────────────────────────────────────
 st.sidebar.markdown("""
-    <h2 style='display:flex; align-items:center; font-size:20px;
-               color:var(--text-color); margin-top:4px; margin-bottom:4px;'>
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-             fill="currentColor" viewBox="0 0 16 16" style="margin-right:8px;">
-            <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0
-                     1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0
-                     0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5z"/>
-        </svg>
-        Filters
-    </h2>
-    <hr style='margin:4px 0 12px 0; border-color:rgba(128,128,128,0.3);'>
+    <div style='
+        background: rgba(31, 119, 180, 0.08);
+        border: 1px solid rgba(31, 119, 180, 0.25);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+    '>
+        <p style='font-size:11px; color:var(--text-color); opacity:0.7; margin:0 0 4px 0;
+                  display:flex; align-items:center; gap:5px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0
+                         0 .496-.868L8 8.71z"/>
+                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m7-8A7 7 0 1 1 1 8a7 7 0
+                         0 1 14 0"/>
+            </svg>
+            Data terakhir diperbarui
+        </p>
+        <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:0;'>
+            SAP &nbsp;→&nbsp; 28 Februari 2026
+        </p>
+        <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
+            SIPS &nbsp;→&nbsp; 28 Februari 2026
+        </p>
+    </div>
 """, unsafe_allow_html=True)
 
+# ── Toggle filter mode + header ──────────────────────────────────────────────
+_mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
+_mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
+
+col_fh, col_toggle = st.sidebar.columns([3, 2])
+with col_fh:
+    st.markdown("""
+        <h2 style='display:flex; align-items:center; font-size:20px;
+                   color:var(--text-color); margin-top:4px; margin-bottom:4px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                 fill="currentColor" viewBox="0 0 16 16" style="margin-right:8px;">
+                <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0
+                         1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0
+                         0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5z"/>
+            </svg>
+            Filters
+        </h2>
+    """, unsafe_allow_html=True)
+with col_toggle:
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    if st.button(_mode_label, help=_mode_help, use_container_width=True,
+                 key="btn_toggle_filter_mode"):
+        st.session_state.filter_mode = (
+            'topbar' if st.session_state.filter_mode == 'sidebar' else 'sidebar'
+        )
+        st.rerun()
+
+st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,128,0.3);'>",
+                    unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS PR-PO SAP
+# FILTERS PR-PO SAP / SIPS — hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if not is_sips:
+if st.session_state.filter_mode == 'sidebar' and not is_sips:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
         bagian_data  = load_data("""
@@ -525,10 +570,7 @@ if not is_sips:
     except Exception as e:
         st.sidebar.error(f"Error loading filters: {e}")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# FILTERS SIPS
-# ══════════════════════════════════════════════════════════════════════════════
-else:
+elif st.session_state.filter_mode == 'sidebar' and is_sips:
     try:
         # Nama difilter berdasarkan Bagian yang dipilih
         if 'All' not in sips_selected_bagian and sips_selected_bagian:
@@ -750,6 +792,57 @@ st.session_state['_sips_view_args'] = dict(
     info_filter       = teks_filter_sips,
     global_context    = global_context,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FILTER BAR — top bar mode, dirender sekali sebelum konten halaman
+# ─────────────────────────────────────────────────────────────────────────────
+
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog:
+    if is_sips:
+        render_filter_bar('sips', load_data)
+        sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
+        sips_date_to         = st.session_state.get('fb_sips_date_to',    sips_date_to)
+        sips_selected_bagian = st.session_state.get('fb_sips_bagian',     ['All'])
+        sips_selected_nama   = st.session_state.get('fb_sips_nama',       ['All'])
+    else:
+        render_filter_bar('sap', load_data)
+        date_from           = st.session_state.get('fb_date_from',   date_from)
+        date_to             = st.session_state.get('fb_date_to',     date_to)
+        selected_department = st.session_state.get('fb_dept',        ['All'])
+        selected_p_group    = st.session_state.get('fb_pgroup',      ['All'])
+        selected_bagian     = st.session_state.get('fb_bagian',      ['All'])
+        filter_conditions   = build_filter_conditions(
+            date_from, date_to, selected_department, False, selected_p_group, False
+        )
+        bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, False)
+
+    # Rebuild teks filter & view args dengan nilai terbaru
+    teks_filter_sap = f"""
+- Tanggal: {date_from} s.d {date_to}
+- Department: {', '.join(selected_department)}
+- Purchasing Group: {', '.join(selected_p_group)}
+- Bagian: {', '.join(selected_bagian)}
+"""
+    teks_filter_sips = f"""
+- Tanggal: {sips_date_from} s.d {sips_date_to}
+- Bagian: {', '.join(sips_selected_bagian)}
+- Nama: {', '.join(sips_selected_nama)}
+"""
+    st.session_state['_view_args'].update(dict(
+        filter_conditions = filter_conditions,
+        bagian_pr_cond    = bagian_pr_cond,
+        bagian_po_cond    = bagian_po_cond,
+        info_filter       = teks_filter_sap,
+        date_from         = date_from,
+        date_to           = date_to,
+    ))
+    st.session_state['_sips_view_args'].update(dict(
+        date_from       = sips_date_from,
+        date_to         = sips_date_to,
+        selected_nama   = sips_selected_nama,
+        selected_bagian = sips_selected_bagian,
+        info_filter     = teks_filter_sips,
+    ))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTING
