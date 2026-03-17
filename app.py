@@ -55,7 +55,7 @@ st.set_page_config(
 inject_css()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AUTH — cek sebelum apapun dirender
+# AUTH: cek sebelum apapun dirender
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_login():
@@ -134,12 +134,12 @@ def render_login():
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Blok akses — stop di sini jika belum login
+# Blok akses: stop di sini jika belum login
 if not st.session_state.authenticated:
     render_login()
     st.stop()
 
-# Scroll-to-top — dipanggil setelah auth agar tidak tampil di halaman login
+# Scroll-to-top: dipanggil setelah auth agar tidak tampil di halaman login
 inject_scroll_to_top()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -460,7 +460,25 @@ with col_fh:
         </h2>
     """, unsafe_allow_html=True)
 with col_toggle:
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.markdown('<div id="toggle-anchor"></div>', unsafe_allow_html=True)
+    st.markdown("""
+        <style>
+        /* Mengecilkan ukuran font pada tombol di dalam kolom ini */
+        div[data-testid="stColumn"]:has(#toggle-anchor) button p,
+        div[data-testid="stColumn"]:has(#toggle-anchor) button span,
+        div[data-testid="column"]:has(#toggle-anchor) button p,
+        div[data-testid="column"]:has(#toggle-anchor) button span {
+            font-size: 12px !important;
+        }
+        div[data-testid="stColumn"]:has(#toggle-anchor) button,
+        div[data-testid="column"]:has(#toggle-anchor) button {
+            padding-top: 0px !important;
+            padding-bottom: 0px !important;
+            min-height: 28px !important;
+            margin-top: -13px !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     if st.button(_mode_label, help=_mode_help, use_container_width=True,
                  key="btn_toggle_filter_mode"):
         st.session_state.filter_mode = (
@@ -472,7 +490,7 @@ st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,1
                     unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS PR-PO SAP / SIPS — hanya tampil jika mode sidebar
+# FILTERS PR-PO SAP / SIPS: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 if st.session_state.filter_mode == 'sidebar' and not is_sips:
     try:
@@ -721,7 +739,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
     except Exception as e:
         st.sidebar.error(f"Error loading SIPS filters: {e}")
 
-# ── Tombol Logout — selalu di paling bawah sidebar ───────────────────────────
+# ── Tombol Logout: selalu di paling bawah sidebar ───────────────────────────
 st.sidebar.markdown("---")
 if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout"):
     dialog_logout()
@@ -832,7 +850,7 @@ st.session_state['_sips_view_args'] = dict(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FILTER BAR — top bar mode, dirender sekali sebelum konten halaman
+# FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # ─────────────────────────────────────────────────────────────────────────────
 
 if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog:

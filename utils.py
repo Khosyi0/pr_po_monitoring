@@ -476,7 +476,7 @@ def inject_scroll_to_top():
 <style>
 #stt-btn {
     position: fixed;
-    bottom: 28px;
+    bottom: 56px;
     right: 28px;
     z-index: 99999;
     width: 40px;
