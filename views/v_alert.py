@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, render_chat_analyst
 
-
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
@@ -117,7 +116,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         # ══════════════════════════════════════════════════════════════════════
         # ALERT 2 & 3: PO Overdue & Aging PO
         # ══════════════════════════════════════════════════════════════════════
-        # Menggunakan gap="large" agar antar kolom ada jarak bernapas
         col_alert1, col_alert2 = st.columns([1.5, 1], gap="large")
 
         with col_alert1:
@@ -408,7 +406,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 total_po   = po_status_data['jumlah_po'].sum()
                 total_item = po_status_data['jumlah_item'].sum()
 
-                # Build HTML tabel ringkasan
                 TH = 'padding:8px 12px;font-size:14px;font-weight:600;'
                 P  = 'padding:8px 12px;border-bottom:1px solid rgba(128,128,128,0.2);font-size:14px;'
                 thead = (
@@ -436,7 +433,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                         + '</tr>'
                     )
 
-                # Baris total
                 rows_parts.append(
                     '<tr style="border-top:2px solid rgba(128,128,128,0.4);font-weight:700">'
                     + f'<td style="padding:8px 12px;font-size:14px">Total</td>'

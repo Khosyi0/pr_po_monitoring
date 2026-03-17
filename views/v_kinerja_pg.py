@@ -3,11 +3,11 @@ v_kinerja_pg.py - Halaman Kinerja Purchasing Group
 """
 import streamlit as st
 import pandas as pd
+import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst
-
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
@@ -136,8 +136,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             t_efis       = t_oe - t_real
             t_efis_pct   = (t_efis / t_oe * 100) if t_oe > 0 else 0
             avg_lt        = pg_po_kpi['avg_lead_time_overall'][0]
-        
-            # MENGGUNAKAN PR_WITH_PO AGAR SINKRON DENGAN DASHBOARD
             konversi_pct = (pr_with_po / t_item_pr * 100) if t_item_pr > 0 else 0
             delta_efis = "efisien" if t_efis >= 0 else "over budget"
             lt_label   = f"{avg_lt} Hari" if pd.notna(avg_lt) else "N/A"
@@ -168,13 +166,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     if st.session_state[kpi["key"]]:
                         st.info(kpi["formula"])
 
-
-        # ── TAB: OVERVIEW | TENDER TYPE | KECEPATAN PROSES ───────────────────
-        # ── Inject JS: simpan & pulihkan tab aktif via localStorage ─────────
-        # Streamlit versi lama tidak support key= di st.tabs().
-        # JS ini menyimpan tab yang diklik ke localStorage dan memulihkannya
-        # setelah rerun, sehingga tab tidak kembali ke tab 1 saat tombol ditekan.
-        import streamlit.components.v1 as components
+        # ── TAB: OVERVIEW | BREAKDOWN ───────────────────
         components.html("""
         <script>
         (function() {
@@ -217,22 +209,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         # TAB 1: OVERVIEW PER PURCHASING GROUP
         # ══════════════════════════════════════════════════════════════════════
         with tab1:
-
-            # ── Query: hitung jml_item_pr & pr_with_po dari pr_items ────────
-            # bagian_pr di pr_items berisi 'BARUM'/'ALPATA'/'BB/BD/BP' (hasil ETL classify_bagian),
-            # BUKAN kode purchasing group (B01, B05, dst).
-            # Oleh karena itu kita TIDAK bisa JOIN pr_items ke purchase_orders via purchasing_group.
-            #
-            # Strategi: gunakan dua sub-query terpisah berdasarkan filter bagian_pr / bagian_po,
-            # lalu gabung di Python via merge pada kolom 'purchasing_group' dari PO.
-            #
-            # jml_item_pr & pr_with_po diambil dari pr_items yang sudah terfilter bagian_pr,
-            # lalu di-GROUP BY purchasing_group yang diambil dari po_items (via no_pr+line_item_pr).
-            # PR yang belum punya PO sama sekali akan tetap terlewat, ini trade-off yang wajar
-            # karena kita tidak tahu purchasing_group-nya jika PR belum di-assign ke PO.
             bagian_pr_cond_pri = bagian_pr_cond.replace('bagian_pr', 'pri.bagian_pr')
 
-            # Sub-query A: PR stats per purchasing_group (ambil pg dari po_items via link no_pr)
             pg_pr_query = f"""
             SELECT
                 COALESCE(poh.purchasing_group, 'Unassigned')                         AS purchasing_group,
@@ -253,7 +231,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
             """
 
-            # Sub-query B: PO stats per purchasing_group (sama seperti sebelumnya)
             pg_query = f"""
             SELECT
                 COALESCE(poh.purchasing_group, 'Unassigned')                         AS purchasing_group,
@@ -297,7 +274,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 pg_po_data = load_data(pg_query)
                 pg_pr_data = load_data(pg_pr_query)
 
-            # Merge: PO sebagai base, PR di-join untuk kolom konversi
             if not pg_po_data.empty:
                 if not pg_pr_data.empty:
                     pg_data = pg_po_data.merge(
@@ -345,7 +321,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     lambda x: f"{format_number(x)} Hari" if pd.notna(x) else "N/A")
                 df_display['konversi_pct'] = df_display['konversi_pct'].apply(lambda x: f"{format_number(x, decimals=1)}%")
 
-                # Susun urutan kolom: Item PO → Item PR → pr_with_po → % PR→PO → sisanya
                 col_order = [
                     'purchasing_group',
                     'jml_item_po', 'jml_item_pr', 'pr_with_po', 'konversi_pct',
@@ -376,7 +351,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
                 # ── Row 1: Nilai OE vs PO + Efisiensi % ──────────────────────
                 col1, col2 = st.columns(2)
-
                 with col1:
                     title_col, btn_col = st.columns([9, 1])
                     with title_col:
@@ -516,7 +490,6 @@ Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group terseb
 
                 # ── Row 2: Lead Time ──────────────────────────────────────────
                 col1, col2 = st.columns(2)
-
                 with col1:
                     title_col, btn_col = st.columns([9, 1])
                     with title_col:
@@ -662,7 +635,7 @@ PR dgn PO   = COUNT(DISTINCT no_pr || '-' || line_item_pr)
         with tab2:
             st.markdown("Breakdown pengadaan berdasarkan **jenis tender** dan **Turn Around**, lengkap dengan analisis kecepatan proses dan tren lead time.")
 
-            # ── KPI Kecepatan (pindahan dari tab 3) ──────────────────────────
+            # ── KPI Kecepatan ──────────────────────────
             speed_kpi_query = f"""
             SELECT
                 ROUND(AVG(poi.pr_po_days)::numeric, 1)                               AS avg_lt_overall,
@@ -810,7 +783,6 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
                             st.button(icon, key=f"btn_{kpi['key']}", help="Hide Formula" if is_open else "Show Formula",
                                       on_click=toggle_state, kwargs={"state_key": kpi["key"]})
 
-                # JS warna delta On-Time & Terlambat
                 import streamlit.components.v1 as _comp
                 _ontime_color = "#09ab3b" if spd_ontime_pct >= 80 else ("#ffa500" if spd_ontime_pct >= 60 else "#ff4b4b")
                 _comp.html(f"""
@@ -850,10 +822,7 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
 
             st.markdown("---")
 
-            # ── ROW 1: Kontrak vs Non-Kontrak (kiri) | Turn Around (kanan) ──
             col1, col2 = st.columns(2)
-
-            # ── Kiri: Breakdown Kontrak vs Non-Kontrak ────────────────────
             with col1:
                 title_col, btn_col = st.columns([9, 1])
                 with title_col:
@@ -958,7 +927,6 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                     kontrak_global = load_data(kontrak_global_query)
 
                 if not kontrak_data.empty:
-                    # Ringkasan global, pakai query global agar AVG tidak terdistorsi (mean-of-means)
                     kontrak_sum = kontrak_global if not kontrak_global.empty else kontrak_data.groupby('jenis_kontrak').agg(
                         jml_item       =('jml_item',        'sum'),
                         total_realisasi=('total_realisasi', 'sum'),
@@ -976,7 +944,6 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                                 delta=f"{int(row['jml_item']):,} item | {lt}"
                             )
 
-                    # Chart stacked bar
                     kontrak_data['label'] = kontrak_data['total_realisasi'].apply(format_idr_short)
                     fig_k = px.bar(
                         kontrak_data,
@@ -1162,14 +1129,10 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                     use_container_width=True, height=280
                 )
 
-
-            # Download data kontrak
             if not kontrak_data.empty:
                 st.markdown("---")
 
-                # ── ROW 2: Lead Time Kontrak (kiri) | Tren Lead Time per Bulan (kanan) ──
                 col1, col2 = st.columns(2)
-
                 with col1:
                     title_col, btn_col = st.columns([9, 1])
                     with title_col:

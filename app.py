@@ -31,7 +31,6 @@ from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 
-
 # Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
@@ -53,10 +52,6 @@ st.set_page_config(
 )
 
 inject_css()
-
-# ─────────────────────────────────────────────────────────────────────────────
-# AUTH: cek sebelum apapun dirender
-# ─────────────────────────────────────────────────────────────────────────────
 
 def render_login():
     """Tampilkan halaman login. Panggil st.stop() setelah ini jika belum auth."""
@@ -129,7 +124,6 @@ def render_login():
             </p>
         """, unsafe_allow_html=True)
 
-
 # Inisialisasi state auth
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -151,7 +145,8 @@ def init_state(key, value):
         st.session_state[key] = value
 
 init_state('show_changelog',      False)
-init_state('filter_mode',          'sidebar')  # 'sidebar' atau 'topbar'
+init_state('filter_mode',          'sidebar')
+init_state('filter_mode',          'sidebar')
 # SAP filters
 init_state('filter_bagian',       ['All'])
 init_state('prev_filter_bagian',  ['All'])
@@ -164,7 +159,6 @@ init_state('sips_filter_nama',    ['All'])
 init_state('sips_prev_nama',      ['All'])
 init_state('sips_filter_bagian',  ['All'])
 init_state('sips_prev_bagian',    ['All'])
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DIALOG KONFIRMASI LOGOUT
@@ -200,7 +194,6 @@ div[data-testid="stDialog"] > div > div {
         if st.button("Batal", icon=":material/close:",
                      use_container_width=True, key="dlg_logout_tidak"):
             st.rerun()
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HALAMAN: render functions
@@ -259,7 +252,6 @@ active_div = "2" if is_sips else "1"
 
 st.markdown(f"""
 <style>
-
 /* ── Judul "Main Menu" ───────────────────────────────────────────────── */
 [data-testid="stSidebarNav"]::before {{
     content: "☰  Main Menu";
@@ -271,10 +263,8 @@ st.markdown(f"""
     border-bottom: 1px solid rgba(128,128,128,0.2);
     margin-bottom: 4px;
 }}
-
 /* ── Section headers → satu baris pill toggle ────────────────────────── */
 [data-testid="stSidebarNavSeparator"] {{ display: none; }}
-
 [data-testid="stSidebarNavItems"] {{
     display: flex !important;
     flex-wrap: wrap !important;
@@ -282,13 +272,11 @@ st.markdown(f"""
     padding: 6px 10px 2px 10px !important;
     align-items: center !important;
 }}
-
 [data-testid="stSidebarNavItems"] > div:has(> p) {{
     display: inline-flex !important;
     width: auto !important;
     margin: 0 !important;
 }}
-
 /* Tiap label section = pill */
 [data-testid="stSidebarNavItems"] > div > p {{
     font-size: 13px !important;
@@ -305,7 +293,6 @@ st.markdown(f"""
     color: var(--text-color) !important;
     opacity: 0.6 !important;
 }}
-
 /* Pill aktif */
 [data-testid="stSidebarNavItems"] > div:nth-of-type({active_div}) > p {{
     background: #ff4b4b !important;
@@ -313,7 +300,6 @@ st.markdown(f"""
     opacity: 1 !important;
     border-color: #ff4b4b !important;
 }}
-
 /* Nav link div block */
 [data-testid="stSidebarNavItems"] > div:has(> a) {{
     width: 100% !important;
@@ -321,7 +307,6 @@ st.markdown(f"""
     padding: 0 !important;
     margin: 0 !important;
 }}
-
 /* ── Nav link style ──────────────────────────────────────────────────── */
 [data-testid="stSidebarNav"] a {{
     border-radius: 8px;
@@ -352,7 +337,6 @@ st.markdown(f"""
 [data-testid="stSidebarNav"] span[data-testid="stSidebarNavLinkText"] {{
     font-size: 15px;
 }}
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -364,10 +348,8 @@ st.components.v1.html("""
         var doc = window.parent.document;
         var navItems = doc.querySelector('[data-testid="stSidebarNavItems"]');
         if (!navItems) { setTimeout(makeHeadersClickable, 200); return; }
-
         var divs = navItems.children;
         var sections = [];
-
         for (var i = 0; i < divs.length; i++) {
             var p = divs[i].querySelector('p');
             var a = divs[i].querySelector('a');
@@ -378,7 +360,6 @@ st.components.v1.html("""
                 }
             }
         }
-
         sections.forEach(function(s) {
             if (s.p.dataset.clickable) return;
             s.p.dataset.clickable = '1';
@@ -441,6 +422,8 @@ st.sidebar.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# ── Theme toggle + Filter mode toggle ────────────────────────────────────────
+
 # ── Toggle filter mode + header ──────────────────────────────────────────────
 _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
 _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
@@ -463,7 +446,6 @@ with col_toggle:
     st.markdown('<div id="toggle-anchor"></div>', unsafe_allow_html=True)
     st.markdown("""
         <style>
-        /* Mengecilkan ukuran font pada tombol di dalam kolom ini */
         div[data-testid="stColumn"]:has(#toggle-anchor) button p,
         div[data-testid="stColumn"]:has(#toggle-anchor) button span,
         div[data-testid="column"]:has(#toggle-anchor) button p,
@@ -629,7 +611,6 @@ if st.session_state.filter_mode == 'sidebar' and not is_sips:
 
 elif st.session_state.filter_mode == 'sidebar' and is_sips:
     try:
-        # Nama difilter berdasarkan Bagian yang dipilih
         if 'All' not in sips_selected_bagian and sips_selected_bagian:
             bagian_sql = "', '".join(sips_selected_bagian)
             nama_data = load_data(f"""

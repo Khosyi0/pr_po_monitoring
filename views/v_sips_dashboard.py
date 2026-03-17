@@ -8,7 +8,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # CSS (dari file user yang diperbarui)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +139,6 @@ def section_header(title, subtitle=""):
         </div>
     """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # RENDER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -233,7 +231,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         po_proses     = float(r['po_proses']    or 0)
         po_closed     = float(r['po_closed']    or 0)
         on_budget_cnt = int(r['on_budget_count']or 0)
-
         po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
         pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
         oe_total      = oe_proses + oe_closed
@@ -603,9 +600,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 if st.session_state[kpi["key"]]:
                     st.info(kpi["formula"])
 
-        # ─────────────────────────────────────────────────────────────────────────
-        # CHARTS
-        # ─────────────────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────────────────
+    # CHARTS
+    # ─────────────────────────────────────────────────────────────────────────
 
     COLORS = {
         "Open":      "#6c8ebf",
@@ -617,7 +614,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
     
     col1, col2 = st.columns(2)
-
     # ── KIRI: LINE CHART TREND ──
     with col1:
         title_col, btn_col = st.columns([9, 1])
@@ -761,7 +757,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
 
     col_l, col_r = st.columns(2)
-
     # ── KIRI: HORIZONTAL BAR % ON TIME ──
     with col_l:
         title_col, btn_col = st.columns([9, 1])
@@ -994,10 +989,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
     st.caption("Jumlah item PO yang diterbitkan dengan dasar Outline Agreement (Kontrak) per karyawan.")
 
     if 'nama' in df_chart.columns and 'outline_agreement' in df_chart.columns:
-        # Filter hanya data yang sudah menjadi PO
         df_po = df_chart[df_chart['is_po'] == 1].copy()
-        
-        # Tandai jika ada outline agreement (1 = ya, 0 = tidak)
         df_po['is_kontrak'] = (df_po['outline_agreement'].notna() & (df_po['outline_agreement'].astype(str).str.strip() != '')).astype(int)
         
         kontrak_df = (df_po.groupby('nama')
@@ -1006,10 +998,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
                       .reset_index())
         
         if not kontrak_df.empty:
-            # Hitung PO Non-Kontrak
             kontrak_df['PO_Non_Kontrak'] = kontrak_df['Total_PO'] - kontrak_df['PO_Kontrak']
-            
-            # Sortir dari yang total PO-nya paling besar ke kecil (ascending karena ini horizontal bar)
             kontrak_df = kontrak_df.sort_values('Total_PO', ascending=True)
 
             fig_kontrak = go.Figure()

@@ -9,7 +9,6 @@ from datetime import datetime
 import calendar
 from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, idr_axis
 
-
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
@@ -109,17 +108,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         total_po         = int(po_kpi['total_po'][0] or 0)
         pr_with_po       = int(pr_kpi['pr_with_po'][0] or 0)
         pr_without       = int(pr_kpi['pr_without_po'][0] or 0)
-        
-        # Angka murni PR untuk KPI "Total Estimasi PR"
         estimasi_pr_all  = float(pr_kpi['total_estimasi'][0] or 0)
-        
-        # Angka Apple-to-Apple untuk KPI "Total Savings"
         oe_po_val        = float(po_kpi['total_oe_po'][0] or 0)
         po_amount_val    = float(po_kpi['total_po_amount'][0] or 0)
-        
         savings          = oe_po_val - po_amount_val
         savings_pct      = ((savings / oe_po_val) * 100) if oe_po_val > 0 else 0.0
-        
         _alt             = po_kpi['avg_lead_time'][0]
         avg_lt_val       = float(_alt) if _alt is not None else 0.0
         total_po_dist    = int(po_kpi['total_po_distinct'][0] or 0)

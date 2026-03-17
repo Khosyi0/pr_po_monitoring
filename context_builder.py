@@ -13,7 +13,6 @@ import streamlit as st
 from datetime import datetime, timedelta
 from utils import format_idr, format_number
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # FINGERPRINT FILTER: untuk mendeteksi perubahan filter
 # ─────────────────────────────────────────────────────────────────────────────
@@ -25,10 +24,8 @@ def _fingerprint_sap(date_from, date_to, selected_department,
             f"|{sorted(selected_p_group)}|{exclude_purchasing_group}"
             f"|{sorted(selected_bagian)}|{exclude_bagian}")
 
-
 def _fingerprint_sips(date_from, date_to, selected_nama, selected_bagian) -> str:
     return f"{date_from}|{date_to}|{sorted(selected_nama)}|{sorted(selected_bagian)}"
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # QUERY KPI SAP: hanya agregat
@@ -49,7 +46,6 @@ def _fetch_sap_context(load_data, filter_conditions,
             m_to   = re.search(r"first_full_release <= '([^']+)'", filter_conditions)
             date_from = m_from.group(1) if m_from else '2026-01-01'
             date_to   = m_to.group(1)   if m_to   else '2026-12-31'
-
 
         # PR query: filter by first_full_release (hanya PR yang sudah full release di periode tsb)
         pr_q = f"""
@@ -149,7 +145,6 @@ def _fetch_sap_context(load_data, filter_conditions,
     except Exception as e:
         return f"## [SAP] Konteks tidak tersedia\nError: {e}\n"
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # QUERY KPI SIPS: hanya agregat
 # ─────────────────────────────────────────────────────────────────────────────
@@ -240,7 +235,6 @@ def _fetch_sips_context(load_data, date_from, date_to,
 
     except Exception as e:
         return f"## [SIPS] Konteks tidak tersedia\nError: {e}\n"
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FUNGSI UTAMA: dipanggil dari app.py setiap render

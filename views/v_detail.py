@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst
 
-
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         # ── DATA TABLE ───────────────────────────────────
         st.markdown("""

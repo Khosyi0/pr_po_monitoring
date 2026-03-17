@@ -8,6 +8,7 @@ from google import genai
 from datetime import datetime
 import base64
 import os
+import numpy as np
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FORMAT ANGKA & RUPIAH (STANDAR INDONESIA)
@@ -18,13 +19,11 @@ def format_number(x, decimals=0) -> str:
     if x is None or pd.isna(x):
         return "0"
     
-    # Gunakan format bawaan python dulu (koma untuk ribuan, titik untuk desimal)
     if decimals > 0:
         raw_formatted = f"{float(x):,.{decimals}f}"
     else:
         raw_formatted = f"{int(x):,}"
         
-    # Tukar koma menjadi titik, dan titik menjadi koma
     formatted = raw_formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
     return formatted
 
@@ -33,7 +32,6 @@ def format_currency(x) -> str:
     if x is None or pd.isna(x) or x == 0:
         return "Rp 0"
     return f"Rp {format_number(x)}"
-
 
 def format_idr(x) -> str:
     """Format angka menjadi string Rupiah dengan suffix T/M/Jt."""
@@ -50,13 +48,11 @@ def format_idr(x) -> str:
     else:
         return format_currency(x)
 
-    # Format 2 desimal
     formatted = f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
     if formatted.endswith(',00'):
         formatted = formatted[:-3]
 
     return f"Rp {formatted} {suffix}"
-
 
 def format_idr_short(x) -> str:
     """Format angka ringkas untuk label chart (1 desimal)."""
@@ -73,24 +69,13 @@ def format_idr_short(x) -> str:
     else:
         return format_number(x)
 
-    # Format 1 desimal
     formatted = f"{val:,.1f}".replace(',', 'X').replace('.', ',').replace('X', '.')
     if formatted.endswith(',0'):
         formatted = formatted[:-2]
 
     return f"{formatted} {suffix}"
 
-
 def idr_axis(max_val, n_ticks=6) -> dict:
-    """
-    Hasilkan dict konfigurasi axis Plotly dengan tickvals & ticktext format IDR Indonesia.
-    Gunakan sebagai: fig.update_layout(xaxis=idr_axis(max_val), yaxis=idr_axis(max_val))
-    atau: fig.update_xaxes(**idr_axis(max_val))
-
-    Contoh output ticktext: '0', '20 Jt', '40 Jt', '1,5 M', '2 M', dsb.
-    """
-    import numpy as np
-
     if max_val is None or max_val <= 0:
         return {}
 
@@ -113,8 +98,7 @@ def idr_axis(max_val, n_ticks=6) -> dict:
             s = "Rb"
         else:
             return str(int(v))
-
-        # Hilangkan desimal jika bulat
+        
         txt = f"{val:,.1f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         if txt.endswith(',0'):
             txt = txt[:-2]
@@ -127,7 +111,6 @@ def idr_axis(max_val, n_ticks=6) -> dict:
         ticktext=ticktext,
         range=[0, max_val],
     )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CUSTOM CSS
@@ -151,7 +134,6 @@ def inject_css():
     }
 </style>
 """, unsafe_allow_html=True)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FILTER SQL BUILDER
@@ -189,7 +171,6 @@ def build_filter_conditions(
 
     return " AND ".join(conditions)
 
-
 def build_po_filter_conditions(date_from, date_to, bagian_po_cond='1=1') -> str:
     """Bangun WHERE clause untuk query PO langsung dari tabel po_items + purchase_orders.
     Filter tanggal berdasarkan date_ordered (bukan tgl_create_pr).
@@ -199,7 +180,6 @@ def build_po_filter_conditions(date_from, date_to, bagian_po_cond='1=1') -> str:
         f"poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}' "
         f"AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}"
     )
-
 
 def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
     """Kembalikan tuple (bagian_pr_cond, bagian_po_cond) untuk filter bagian."""
@@ -214,7 +194,6 @@ def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
         return pr, po
     return "1=1", "1=1"
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # SIPS WHERE CLAUSE BUILDER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -225,7 +204,7 @@ def build_sips_where(date_from=None, date_to=None,
     """
     Bangun WHERE clause untuk query vw_sips.
     - Filter tanggal menggunakan tgl_disposisi_buyer (konsisten dengan ETL &
-      kolom BULAN DISPO di Excel) — bukan requisition_date.
+      kolom BULAN DISPO di Excel), bukan requisition_date.
       Alasan: ETL menentukan bulan_import dari tgl_disposisi_buyer sebagai
       anchor utama, sehingga filter dashboard harus mengikuti kolom yang sama
       agar Total PR / Total PO sesuai dengan rekapan Excel atasan.
@@ -247,9 +226,8 @@ def build_sips_where(date_from=None, date_to=None,
         wp.append(f"nama IN ({nms})")
     return " AND ".join(wp)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# FILTER BAR — horizontal filter di atas konten halaman
+# FILTER BAR: horizontal filter di atas konten halaman
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_filter_bar(mode: str, load_data_fn) -> dict:
@@ -264,7 +242,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
     current_year  = datetime.now().year
     default_start = datetime(current_year, 1, 1).date()
 
-    # Tanggal terakhir data diambil — update sesuai ETL terbaru
+    # Tanggal terakhir data diambil, update sesuai ETL terbaru
     DATA_UPDATE_SAP  = "28 Februari 2026"
     DATA_UPDATE_SIPS = "28 Februari 2026"
 
@@ -455,11 +433,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
             selected_nama   = st.session_state.fb_sips_nama,
         )
 
-
-
-
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # SCROLL TO TOP BUTTON
 # ─────────────────────────────────────────────────────────────────────────────
@@ -477,7 +450,7 @@ def inject_scroll_to_top():
 #stt-btn {
     position: fixed;
     bottom: 56px;
-    right: 28px;
+    right: 24px;
     z-index: 99999;
     width: 40px;
     height: 40px;
@@ -510,7 +483,7 @@ def inject_scroll_to_top():
 </button>
 """, unsafe_allow_html=True)
 
-    # Event listener via iframe — mengakses window.parent.document
+    # Event listener via iframe, mengakses window.parent.document
     # untuk scroll section[data-testid="stMain"] yang terbukti dari debug
     st.components.v1.html("""
 <script>
@@ -534,9 +507,8 @@ def inject_scroll_to_top():
 </script>
 """, height=0)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# PETA SISTEM: LAZY LOAD — hanya dimuat saat user bertanya soal struktur
+# PETA SISTEM: LAZY LOAD: hanya dimuat saat user bertanya soal struktur
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Kata kunci yang mengindikasikan pertanyaan tentang struktur/letak di dashboard
@@ -559,10 +531,9 @@ def _butuh_peta_sistem(user_input: str) -> bool:
     teks = user_input.lower()
     return any(k in teks for k in _TRIGGER_PETA)
 
-
 def _fetch_peta_sistem(load_data_fn) -> str:
     """
-    Ambil Peta Sistem dari database (lazy — hanya dipanggil saat dibutuhkan).
+    Ambil Peta Sistem dari database (lazy, hanya dipanggil saat dibutuhkan).
     Hasil di-cache di st.session_state selama sesi berlangsung.
     """
     # Cache di session_state agar tidak query DB berulang dalam satu sesi
@@ -597,9 +568,8 @@ def _fetch_peta_sistem(load_data_fn) -> str:
         return result
 
     except Exception as e:
-        # Tabel belum ada atau error — kembalikan string kosong, tidak crash
+        # Tabel belum ada atau error, kembalikan string kosong, tidak crash
         return ""
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # KOMPONEN AI ANALYST (GEMINI)
@@ -644,9 +614,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
     if "chat_memory" not in st.session_state:
         st.session_state.chat_memory = []
 
-    # =========================================================
     # 3. KOTAK PERCAKAPAN SCROLLABLE (Tinggi Tetap 400px)
-    # =========================================================
     chat_box = st.container(height=400)
     
     # Render histori yang sudah ada ke dalam kotak tersebut
@@ -663,9 +631,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
             with st.chat_message(msg["role"], avatar=avatar_img):
                 st.markdown(msg["content"])
 
-    # =========================================================
     # 4. KOTAK INPUT (Inline, diam di tempat)
-    # =========================================================
     # Menggunakan form agar teks otomatis terhapus (clear) setelah dikirim
     with st.form(key=f"chat_form_{nama_halaman}", clear_on_submit=True):
         col_input, col_btn = st.columns([9, 1]) # Proporsi 90% input, 10% tombol
@@ -679,9 +645,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
         with col_btn:
             submit_btn = st.form_submit_button("Kirim", icon=":material/send:")
 
-    # =========================================================
     # 5. LOGIKA EKSEKUSI API
-    # =========================================================
     if submit_btn and user_input:
         
         # Simpan pertanyaan user ke memori
@@ -697,7 +661,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
                 with st.spinner("Tunggu, Melati sedang menganalisis data..."):
                     try:
                         # -------------------------------------------------------------
-                        # PETA SISTEM — lazy load, hanya jika pertanyaan menyinggung
+                        # PETA SISTEM: lazy load, hanya jika pertanyaan menyinggung
                         # struktur / letak chart / navigasi dashboard
                         # -------------------------------------------------------------
                         if _butuh_peta_sistem(user_input) and load_data_fn is not None:

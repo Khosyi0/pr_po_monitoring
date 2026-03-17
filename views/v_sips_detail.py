@@ -7,7 +7,6 @@ import pandas as pd
 from datetime import datetime
 from utils import build_sips_where, format_number, render_chat_analyst
 
-
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
 
     # ── Header ────────────────────────────────────────────────────────────────

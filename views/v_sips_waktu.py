@@ -1,15 +1,6 @@
 """
 v_sips_waktu.py - Analisis Waktu Proses SIPS
 
-Timeline nyata dari data Excel:
-  [Requisition Date (I)] --<Waktu Pra-Disposisi>--> [Tgl Disposisi Buyer (K)] --<PR-PO (N)>--> [Tanggal PO (L)]
-                                                                                 <Realisasi SLA (T, hari kerja)>
-
-Kolom waktu:
-  PR-PO         = Disposisi Buyer -> Tgl PO, hari KERJA
-  Standard SLA  = target: Agreement 12H / Urgent 24H / TA-Investasi 48H / Normal 57H
-  Realisasi SLA = Disposisi -> PO hari KERJA (rata-rata 8H lebih pendek dari N)
-  Nilai SLA     = 1 ontime - 0 miss - '-' belum PO (exclude dari analisis)
 """
 
 import streamlit as st
@@ -18,10 +9,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from utils import format_number, render_chat_analyst, build_sips_where
 
-
 def toggle_state(state_key):
     st.session_state[state_key] = not st.session_state[state_key]
-
 
 LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
               font_color="gray", margin=dict(t=16, b=16, l=10, r=10), separators=",.")
@@ -63,7 +52,6 @@ def kpi_card(icon, label, value, delta="", dc="n"):
     return (f'<div class="wt-card"><div class="wt-icon">{svg(icon)}</div>'
             f'<div class="wt-body"><p class="wt-lbl">{label}</p>'
             f'<p class="wt-val">{value}</p>{d}</div></div>')
-
 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
@@ -146,6 +134,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         pct_ontime   = float(r['pct_ontime'] or 0.0)
         cnt_miss     = int(r['cnt_miss'] or 0)
     
+    # ══════════════════════════════════════════════════════════════════════════
     # BAGIAN 1: KPI Ringkasan
     # ══════════════════════════════════════════════════════════════════════════
     st.markdown("""
@@ -159,7 +148,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     # ── Baris 1: Rata-rata PR-PO | Rata-rata Realisasi SLA | Waktu Pra-Disposisi ──
     col1, col2, col3 = st.columns(3)
-
     with col1:
         c_card, c_btn = st.columns([10, 2])
         with c_card:
@@ -426,19 +414,16 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
     if df.empty:
             st.info("Tidak ada data untuk filter yang dipilih.")
     else:
-        # Grouping & Kalkulasi data
         decomp = df.groupby("nama").agg(
             realisasi=("realisasi_sla", "mean"),
             pr_po=("pr_po_days", "mean")
         ).round(1).reset_index()
 
         if not decomp.empty:
-            # Menghitung selisih, menggunakan .clip(lower=0) untuk mencegah nilai negatif jika ada anomali data
             decomp["selisih"] = (decomp["pr_po"] - decomp["realisasi"]).clip(lower=0).round(1)
             decomp["total"] = decomp["realisasi"] + decomp["selisih"]
             decomp = decomp.sort_values("total", ascending=True)
 
-            # Pembuatan Chart
             fig = go.Figure()
             fig.add_bar(y=decomp["nama"], x=decomp["realisasi"], name="Rata-rata Realisasi SLA",
                         orientation="h", marker_color="#f0a500")
@@ -886,7 +871,6 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
             jumlah_pr=("realisasi_sla", "count")
         ).reset_index()
 
-        # Buang jika ada purchasing group yang kosong
         pg_df = pg_df[pg_df["purchasing_group"].notna() & (pg_df["purchasing_group"].str.strip() != "")]
 
         if not pg_df.empty:
@@ -962,7 +946,6 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
         df_pg_simple['avg_realisasi'] = df_pg_simple['avg_realisasi'].round(1)
         konteks_lines.append(df_pg_simple.to_csv(index=False))
         konteks_lines.append("\n")
-
 
     # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
     suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Analisis Waktu Proses SIPS)\n" + "\n".join(konteks_lines)
