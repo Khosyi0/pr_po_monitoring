@@ -28,7 +28,7 @@ _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data
-from utils import inject_css, build_filter_conditions, build_bagian_conditions, render_filter_bar, inject_scroll_to_top
+from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 
 # Views - PR-PO SAP
@@ -765,6 +765,11 @@ filter_conditions = build_filter_conditions(
 )
 bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, exclude_bagian)
 
+# Kondisi terpisah untuk dept & purchasing_group — dipakai oleh query yang
+# JOIN langsung ke po_items / purchase_orders (bukan via vw_pr_po_complete)
+dept_cond = build_dept_cond('poi.department_code', selected_department, exclude_dept)
+pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   exclude_purchasing_group)
+
 teks_filter_sap = f"""
 - Tanggal: {date_from} s.d {date_to}
 - Department: {', '.join(selected_department)} (Exclude: {exclude_dept})
@@ -812,6 +817,8 @@ st.session_state['_view_args'] = dict(
     filter_conditions = filter_conditions,
     bagian_pr_cond    = bagian_pr_cond,
     bagian_po_cond    = bagian_po_cond,
+    dept_cond         = dept_cond,
+    pg_cond           = pg_cond,
     load_data         = load_data,
     info_filter       = teks_filter_sap,
     global_context    = global_context,
@@ -852,6 +859,8 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
             date_from, date_to, selected_department, False, selected_p_group, False
         )
         bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, False)
+        dept_cond = build_dept_cond('poi.department_code', selected_department, False)
+        pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   False)
 
     # Rebuild teks filter & view args dengan nilai terbaru
     teks_filter_sap = f"""
@@ -869,6 +878,8 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         filter_conditions = filter_conditions,
         bagian_pr_cond    = bagian_pr_cond,
         bagian_po_cond    = bagian_po_cond,
+        dept_cond         = dept_cond,
+        pg_cond           = pg_cond,
         info_filter       = teks_filter_sap,
         date_from         = date_from,
         date_to           = date_to,

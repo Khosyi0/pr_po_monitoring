@@ -194,6 +194,65 @@ def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
         return pr, po
     return "1=1", "1=1"
 
+def build_dept_cond(col: str, selected_department, exclude_dept) -> str:
+    """Bangun kondisi SQL filter Department untuk kolom tertentu.
+
+    Dipakai pada query yang tidak JOIN ke vw_pr_po_complete, misalnya query
+    langsung ke po_items (kolom `poi.department_code`) atau purchase_requisitions.
+
+    Parameters
+    ----------
+    col : str
+        Nama kolom department beserta alias tabel, misal ``'poi.department_code'``
+        atau ``'pr.department_code'``.
+    selected_department : list
+        Daftar department yang dipilih. ``['All']`` berarti tidak ada filter.
+    exclude_dept : bool
+        ``True`` → exclude department yang dipilih; ``False`` → include.
+
+    Returns
+    -------
+    str
+        Kondisi SQL siap pakai, misal ``"poi.department_code IN ('TA','TB')"``
+        atau ``'1=1'`` jika tidak ada filter.
+    """
+    if selected_department and 'All' not in selected_department:
+        dept_list = "','".join(selected_department)
+        if exclude_dept:
+            return f"({col} NOT IN ('{dept_list}') OR {col} IS NULL)"
+        else:
+            return f"{col} IN ('{dept_list}')"
+    return "1=1"
+
+def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
+    """Bangun kondisi SQL filter Purchasing Group untuk kolom tertentu.
+
+    Dipakai pada query yang tidak JOIN ke vw_pr_po_complete, misalnya query
+    langsung ke purchase_orders (kolom ``'poh.purchasing_group'``).
+
+    Parameters
+    ----------
+    col : str
+        Nama kolom purchasing_group beserta alias tabel, misal
+        ``'poh.purchasing_group'`` atau ``'poi.purchasing_group'``.
+    selected_p_group : list
+        Daftar purchasing group yang dipilih. ``['All']`` berarti tidak ada filter.
+    exclude_purchasing_group : bool
+        ``True`` → exclude group yang dipilih; ``False`` → include.
+
+    Returns
+    -------
+    str
+        Kondisi SQL siap pakai atau ``'1=1'`` jika tidak ada filter.
+    """
+    if selected_p_group and 'All' not in selected_p_group:
+        pg_list = "','".join(selected_p_group)
+        if exclude_purchasing_group:
+            return f"({col} NOT IN ('{pg_list}') OR {col} IS NULL)"
+        else:
+            return f"{col} IN ('{pg_list}')"
+    return "1=1"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SIPS WHERE CLAUSE BUILDER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -450,7 +509,7 @@ def inject_scroll_to_top():
 #stt-btn {
     position: fixed;
     bottom: 56px;
-    right: 24px;
+    right: 18px;
     z-index: 99999;
     width: 40px;
     height: 40px;

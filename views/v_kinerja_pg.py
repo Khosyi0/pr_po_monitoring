@@ -12,6 +12,10 @@ from utils import format_idr, format_idr_short, format_number, format_currency, 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        dept_cond   = kwargs.get('dept_cond', '1=1')
+        pg_cond     = kwargs.get('pg_cond',   '1=1')
+        
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
         
         # Fungsi helper untuk tombol toggle formula
         def toggle_state(state_key):
@@ -104,6 +108,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
           AND poi.estimasi_pr IS NOT NULL AND poi.estimasi_pr > 0
           AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
           AND {bagian_po_poh}
+          AND {dept_cond}
+          AND {pg_cond}
         """
 
         # PO KPI: filter by date_ordered langsung dari tabel po_items
@@ -120,6 +126,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
           AND {bagian_po_poh}
+          AND {dept_cond}
+          AND {pg_cond}
         """
 
         with st.spinner("Memuat KPI..."):
@@ -266,6 +274,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+              AND {dept_cond}
+              AND {pg_cond}
             GROUP BY COALESCE(poh.purchasing_group, 'Unassigned')
             ORDER BY nilai_oe DESC
             """
@@ -651,6 +661,8 @@ PR dgn PO   = COUNT(DISTINCT no_pr || '-' || line_item_pr)
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND poi.pr_po_days IS NOT NULL
               AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+              AND {dept_cond}
+              AND {pg_cond}
             """
 
             with st.spinner("Memuat KPI kecepatan..."):
@@ -883,6 +895,8 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                     AND poi.first_full_release IS NOT NULL
                     AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND {dept_cond}
+                    AND {pg_cond}
                 GROUP BY
                     CASE
                         WHEN poi.contract_no IS NOT NULL
@@ -912,6 +926,8 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                     AND poi.first_full_release IS NOT NULL
                     AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND {dept_cond}
+                    AND {pg_cond}
                 GROUP BY
                     CASE
                         WHEN poi.contract_no IS NOT NULL
@@ -1024,6 +1040,8 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                     AND poi.first_full_release IS NOT NULL
                     AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND {dept_cond}
+                    AND {pg_cond}
                 GROUP BY COALESCE(poh.purchasing_group, 'Unassigned'),
                          CASE
                              WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
@@ -1046,6 +1064,8 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                     AND poi.first_full_release IS NOT NULL
                     AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                    AND {dept_cond}
+                    AND {pg_cond}
                 GROUP BY
                     CASE
                         WHEN LEFT(COALESCE(poi.department_code, ''), 2) = 'TA' THEN 'TA'
@@ -1256,6 +1276,8 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
                     WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                       AND poi.pr_po_days IS NOT NULL
                       AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                      AND {dept_cond}
+                      AND {pg_cond}
                     GROUP BY 1, 2
                     ORDER BY 1, 2
                     """
@@ -1325,6 +1347,8 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
                 WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
                   AND poi.pr_po_days IS NOT NULL
                   AND ({bagian_po_cond.replace('bagian_po', 'poh.bagian_po')})
+                  AND {dept_cond}
+                  AND {pg_cond}
                 GROUP BY COALESCE(poh.purchasing_group, 'Unassigned'),
                          CASE
                              WHEN poi.contract_no IS NOT NULL

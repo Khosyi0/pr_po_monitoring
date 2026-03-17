@@ -12,6 +12,8 @@ from utils import format_idr, format_idr_short, format_number, format_currency, 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        dept_cond   = kwargs.get('dept_cond', '1=1')
+        pg_cond     = kwargs.get('pg_cond',   '1=1')
         
         def toggle_state(state_key):
             st.session_state[state_key] = not st.session_state[state_key]
@@ -1078,6 +1080,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND {bagian_po_poi}
+              AND {dept_cond}
+              AND {pg_cond}
             GROUP BY 1
             """
             with st.spinner("Memuat delivery performance..."):
@@ -1145,7 +1149,11 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 abc_indicator,
                 SUM(total_amount_local_curr) AS total_value
             FROM vw_pr_po_complete
-            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}' AND abc_indicator IS NOT NULL AND {bagian_po_cond}
+            WHERE date_ordered >= '{date_from}' AND date_ordered <= '{date_to}'
+              AND abc_indicator IS NOT NULL
+              AND {bagian_po_cond}
+              AND ({dept_cond.replace('poi.department_code', 'department_code')})
+              AND ({pg_cond.replace('poh.purchasing_group', 'purchasing_group')})
             GROUP BY abc_indicator
             ORDER BY abc_indicator
             """

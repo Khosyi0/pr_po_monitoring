@@ -11,6 +11,8 @@ from utils import format_idr, format_idr_short, format_number, format_currency, 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        dept_cond   = kwargs.get('dept_cond', '1=1')
+        pg_cond     = kwargs.get('pg_cond',   '1=1')
 
         # Fungsi helper untuk tombol toggle formula
         def toggle_state(state_key):
@@ -53,6 +55,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         AND poi.quantity_pr IS NOT NULL
         AND poi.total_amount_local_curr IS NOT NULL
         AND {bagian_po_poi}
+        AND {dept_cond}
+        AND {pg_cond}
         """
         # PO metrics
         harga_kpi_query = f"""
@@ -69,6 +73,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         LEFT JOIN vw_pr_po_complete v ON poi.nomor_po = v.nomor_po AND poi.item_po = v.item_po
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
           AND {bagian_po_poi}
+          AND {dept_cond}
+          AND {pg_cond}
           AND poi.total_amount_local_curr IS NOT NULL
         """
         with st.spinner("Memuat KPI harga..."):
@@ -314,6 +320,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
         AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
         AND poi.total_amount_local_curr > 0
         AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+        AND {dept_cond}
+        AND {pg_cond}
         GROUP BY poi.material_no, m.description, poi.description
         ORDER BY jumlah_po DESC
         LIMIT 50
@@ -418,6 +426,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
             AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
             AND poi.total_amount_local_curr > (poi.estimasi_pr * poi.quantity_pr)
             AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+            AND {dept_cond}
+            AND {pg_cond}
             GROUP BY poi.material_no, m.description
             ORDER BY total_overspend DESC
             LIMIT 10
@@ -521,6 +531,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
             AND poi.quantity_pr IS NOT NULL AND poi.quantity_pr > 0
             AND poi.total_amount_local_curr < (poi.estimasi_pr * poi.quantity_pr)
             AND ({bagian_po_cond.replace('bagian_po', 'poi.bagian_po')})
+            AND {dept_cond}
+            AND {pg_cond}
             GROUP BY poi.material_no, m.description
             ORDER BY total_efisiensi DESC
             LIMIT 10
@@ -746,6 +758,10 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 if selected_mat is None:
                     st.info("Tidak ada data historis yang tersedia.")
                 else:
+                    # Filter bagian/dept/pg tetap diterapkan agar tren konsisten
+                    # dengan filter aktif. Filter tanggal sengaja tidak dibatasi
+                    # agar seluruh histori harga terbaca dengan baik.
+                    _trend_bagian = bagian_po_cond.replace('bagian_po', 'bagian_po')
                     trend_harga_query = f"""
                     SELECT
                         DATE_TRUNC('month', date_ordered)::DATE                                  AS bulan,
@@ -758,6 +774,9 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     AND qty_po > 0
                     AND total_amount_local_curr > 0
                     AND nomor_po IS NOT NULL
+                    AND ({_trend_bagian})
+                    AND ({dept_cond.replace('poi.department_code', 'department_code')})
+                    AND ({pg_cond.replace('poh.purchasing_group', 'purchasing_group')})
                     GROUP BY 1
                     ORDER BY 1
                     """
@@ -969,6 +988,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
           AND v.vendor_name IS NOT NULL
           AND poi.total_amount_local_curr IS NOT NULL
           AND {bagian_po_poi}
+          AND {dept_cond}
+          AND {pg_cond}
         GROUP BY v.vendor_name
         ORDER BY total_nilai_po DESC
         LIMIT 50
@@ -1323,7 +1344,9 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
         AND v.nomor_po IS NOT NULL
         AND v.oe IS NOT NULL AND v.oe > 0
         AND v.qty_po > 0
-        AND ({bagian_po_cond})
+        AND ({bagian_po_cond.replace('bagian_po', 'v.bagian_po')})
+        AND ({dept_cond.replace('poi.department_code', 'v.department_code')})
+        AND ({pg_cond.replace('poh.purchasing_group', 'v.purchasing_group')})
         GROUP BY v.material_no, m.description, v.pr_description, m.material_group
         ORDER BY persen_selisih_avg DESC NULLS LAST
         LIMIT 100
@@ -1430,7 +1453,6 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Evaluasi Harga)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
-
 
         # Render kolom chat di paling bawah halaman
         render_chat_analyst(

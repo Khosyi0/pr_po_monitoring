@@ -9,6 +9,10 @@ from datetime import datetime
 from utils import format_idr, format_idr_short, render_chat_analyst
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
+
+        info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+        dept_cond   = kwargs.get('dept_cond', '1=1')
+        pg_cond     = kwargs.get('pg_cond',   '1=1')
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
         date_from   = kwargs.get('date_from')
@@ -188,6 +192,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
             AND poh.date_ordered::DATE >= '{date_from}'
             AND poh.date_ordered::DATE <= '{date_to}'
+            AND {dept_cond}
+            AND {pg_cond}
             ORDER BY hari_terlambat DESC, poh.nomor_po, poi.item_po
             """
             with st.spinner("Memuat PO overdue..."):
@@ -270,6 +276,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
             AND poh.date_ordered::DATE >= '{date_from}'
             AND poh.date_ordered::DATE <= '{date_to}'
+            AND {dept_cond}
+            AND {pg_cond}
             GROUP BY 1
             ORDER BY 1
             """
@@ -350,6 +358,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         WHERE poh.date_ordered::DATE >= '{date_from}'
           AND poh.date_ordered::DATE <= '{date_to}'
           AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+          AND {dept_cond}
+          AND {pg_cond}
         GROUP BY 1
         ORDER BY
             CASE COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)')
