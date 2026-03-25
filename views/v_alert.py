@@ -1,5 +1,5 @@
 """
-v_alert.py - Halaman Alert
+v_alert.py - Halaman Alert SAP
 """
 import streamlit as st
 import pandas as pd
@@ -27,7 +27,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 <svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 12px;">
                     <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
                 </svg>
-                Warning & Action Required
+                Warning & Action Required - SAP
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("<p style='font-size: 18px; color: gray;'>Halaman ini menampilkan anomali data dan dokumen yang membutuhkan tindakan segera!</p>", unsafe_allow_html=True)
@@ -462,6 +462,176 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         else:
             st.info("Tidak ada data PO Status untuk filter yang dipilih.")
 
+        # ── Tabel List PO per Status ──────────────────────────────────────────
+        if not po_status_data.empty:
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+            # Pilihan status untuk filter tabel
+            available_statuses = po_status_data['po_status'].tolist()
+            status_labels = {
+                'A':        '🔵 A — Aktif / Dalam Proses',
+                'B':        '🟢 B — Selesai / Closed',
+                '(kosong)': '⚪ (kosong) — Belum Ditentukan',
+            }
+
+            title_col2, btn_col2 = st.columns([10, 1])
+            with title_col2:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:22px; margin-bottom: 0px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor"
+                             viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                            <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0
+                                     1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5
+                                     0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
+                        </svg>
+                        List PO per Status
+                    </h1>
+                """, unsafe_allow_html=True)
+            with btn_col2:
+                key_list_po = "show_formula_list_po_status"
+                if key_list_po not in st.session_state:
+                    st.session_state[key_list_po] = False
+                is_open_lp = st.session_state[key_list_po]
+                st.button(
+                    ":material/visibility_off:" if is_open_lp else ":material/visibility:",
+                    key=f"btn_{key_list_po}",
+                    help="Hide Formula" if is_open_lp else "Show Formula",
+                    on_click=toggle_state, kwargs={"state_key": key_list_po}
+                )
+
+            if st.session_state.get(key_list_po, False):
+                st.info("""\
+**List PO per Status**: Tabel detail semua PO untuk status yang dipilih.
+
+**Kolom yang ditampilkan:**
+| Kolom | Keterangan |
+|---|---|
+| `Nomor PO` | Nomor Purchase Order |
+| `Tgl PO` | Tanggal PO diterbitkan (`Date Ordered`) |
+| `PO Status` | Status PO: A (aktif), B (closed), atau kosong |
+| `Vendor` | Nama vendor pemasok |
+| `Purchasing Group` | Purchasing Group penerbit PO |
+| `Jumlah Item` | Jumlah item/baris dalam PO tersebut |
+| `Total Nilai (Rp)` | Total nilai realisasi PO dalam Rupiah |
+| `Delivery Completed` | Apakah semua barang sudah diterima (X = ya) |
+
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PO Deletion Flag** selain `L`
+- Filter **PO Status** sesuai yang dipilih
+                """)
+
+            st.caption("Pilih status untuk menampilkan daftar PO yang termasuk dalam kategori tersebut.")
+
+            # Pills pemilih status — default pilih semua yang tersedia
+            pill_opts = [s for s in ['A', 'B', '(kosong)'] if s in available_statuses]
+            pill_labels = [status_labels.get(s, s) for s in pill_opts]
+
+            selected_status_pill = st.pills(
+                "Filter Status PO",
+                options=pill_opts,
+                format_func=lambda s: status_labels.get(s, s),
+                selection_mode="multi",
+                default=pill_opts,
+                key="pill_po_status_filter",
+                label_visibility="collapsed",
+            )
+
+            # Fallback jika tidak ada yang dipilih
+            active_statuses = selected_status_pill if selected_status_pill else pill_opts
+
+            # Query list PO
+            status_in_sql = ", ".join(
+                f"''" if s == '(kosong)' else f"'{s}'"
+                for s in active_statuses
+            )
+            # Bangun kondisi WHERE untuk status kosong vs berisi
+            status_where_parts = []
+            for s in active_statuses:
+                if s == '(kosong)':
+                    status_where_parts.append("COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)') = '(kosong)'")
+                else:
+                    status_where_parts.append(f"TRIM(poh.po_status) = '{s}'")
+            status_where = "(" + " OR ".join(status_where_parts) + ")" if status_where_parts else "1=0"
+
+            list_po_query = f"""
+            SELECT
+                poh.nomor_po,
+                poh.date_ordered::DATE                                          AS tgl_po,
+                COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)')           AS po_status,
+                v.vendor_name,
+                poh.purchasing_group,
+                COUNT(poi.item_po)                                              AS jumlah_item,
+                COALESCE(SUM(poi.total_amount_local_curr), 0)                   AS total_nilai,
+                MAX(COALESCE(poh.delivery_completed, ''))                       AS delivery_completed
+            FROM purchase_orders poh
+            JOIN po_items poi ON poh.nomor_po = poi.nomor_po
+            LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+            WHERE poh.date_ordered::DATE >= '{date_from}'
+              AND poh.date_ordered::DATE <= '{date_to}'
+              AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+              AND {dept_cond}
+              AND {pg_cond}
+              AND {status_where}
+            GROUP BY poh.nomor_po, poh.date_ordered, poh.po_status, v.vendor_name,
+                     poh.purchasing_group, poh.delivery_completed
+            ORDER BY poh.date_ordered DESC, poh.nomor_po
+            LIMIT 500
+            """
+
+            with st.spinner("Memuat list PO..."):
+                list_po_data = load_data(list_po_query)
+
+            if not list_po_data.empty:
+                badge_color_map = {'A': '#1f77b4', 'B': '#09ab3b', '(kosong)': '#888888'}
+
+                # Format kolom
+                df_display_po = list_po_data.copy()
+                df_display_po['tgl_po'] = pd.to_datetime(
+                    df_display_po['tgl_po'], errors='coerce'
+                ).dt.strftime('%Y-%m-%d')
+                df_display_po['total_nilai'] = df_display_po['total_nilai'].apply(
+                    lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                )
+
+                count_label = f"Menampilkan **{len(df_display_po):,}** PO"
+                if len(df_display_po) == 500:
+                    count_label += " *(limit 500, gunakan filter untuk mempersempit hasil)*"
+                st.caption(count_label)
+
+                st.dataframe(
+                    df_display_po.rename(columns={
+                        'nomor_po':           'Nomor PO',
+                        'tgl_po':             'Tgl PO',
+                        'po_status':          'PO Status',
+                        'vendor_name':        'Vendor',
+                        'purchasing_group':   'Purchasing Group',
+                        'jumlah_item':        'Jumlah Item',
+                        'total_nilai':        'Total Nilai (Rp)',
+                        'delivery_completed': 'Delivery Completed',
+                    }),
+                    use_container_width=True,
+                    height=380,
+                )
+
+                # Download CSV
+                csv_list_po = list_po_data.copy()
+                csv_list_po['tgl_po'] = pd.to_datetime(
+                    csv_list_po['tgl_po'], errors='coerce'
+                ).dt.strftime('%Y-%m-%d')
+                csv_list_po['total_nilai'] = csv_list_po['total_nilai'].apply(
+                    lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                )
+                st.download_button(
+                    label="Download sebagai CSV",
+                    icon=":material/download:",
+                    data=csv_list_po.to_csv(index=False),
+                    file_name=f"list_po_status_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.info("Tidak ada PO untuk status yang dipilih.")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -509,14 +679,24 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         else:
             konteks_lines.append("## 4. MONITORING PO STATUS\nTidak ada data PO Status.\n")
 
+        # 5. List PO per Status
+        if 'list_po_data' in locals() and not list_po_data.empty:
+            konteks_lines.append(f"## 5. LIST PO PER STATUS (Top 20 terbaru)")
+            df_list_simple = list_po_data[['nomor_po', 'tgl_po', 'po_status', 'vendor_name',
+                                           'purchasing_group', 'jumlah_item', 'total_nilai']].head(20)
+            konteks_lines.append(df_list_simple.to_csv(index=False))
+            konteks_lines.append("\n")
+        else:
+            konteks_lines.append("## 5. LIST PO PER STATUS\nTidak ada data list PO.\n")
+
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
 
-        # Render chat di bawah halaman Alert
+        # Render chat di bawah halaman Alert SAP
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="Halaman Alert (Warning & Action Required)",
+            nama_halaman="Halaman Alert (Warning & Action Required - SAP)",
             load_data_fn=load_data,
         )

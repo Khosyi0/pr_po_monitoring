@@ -38,7 +38,7 @@ from views import v_summary
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
 # Views - SIPS
-from views import v_sips_dashboard, v_sips_detail, v_sips_waktu
+from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -211,6 +211,7 @@ def _render_alert():        v_alert.render(**st.session_state.get('_view_args', 
 def _render_sips_dashboard(): v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_detail():    v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_alert():     v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
@@ -226,13 +227,13 @@ pg = st.navigation(
             st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
             st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
             st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
-            st.Page(_render_alert,     title="Halaman Alert",            icon=":material/assignment_late:"),
+            st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
         ],
         "SIPS": [
             st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
             st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
             st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
-            # Tambah halaman SIPS lain di sini
+            st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
         ],
     },
     position="sidebar",
@@ -240,7 +241,7 @@ pg = st.navigation(
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES = {"Rangkuman KPI Pengadaan Barang"}
-SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS"}
+SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
 is_sips      = current_page in SIPS_TITLES
