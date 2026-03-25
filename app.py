@@ -31,6 +31,9 @@ from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 
+# Views - Summary (Baru)
+from views import v_summary
+
 # Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
@@ -199,6 +202,7 @@ div[data-testid="stDialog"] > div > div {
 # HALAMAN: render functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _render_summary():      v_summary.render(**st.session_state.get('_summary_view_args', {}))
 def _render_dashboard():    v_dashboard.render(**st.session_state.get('_view_args', {}))
 def _render_detail():       v_detail.render(**st.session_state.get('_view_args', {}))
 def _render_evaluasi():     v_evaluasi.render(**st.session_state.get('_view_args', {}))
@@ -214,6 +218,9 @@ def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_
 
 pg = st.navigation(
     {
+        "Executive Summary": [
+            st.Page(_render_summary, title="Rangkuman KPI", icon=":material/monitoring:"),
+        ],
         "PR-PO SAP": [
             st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
             st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
@@ -232,8 +239,10 @@ pg = st.navigation(
 )
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
+SUMMARY_TITLES = {"Rangkuman KPI Pengadaan Barang"}
 SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS"}
 current_page = pg.title
+is_summary   = current_page in SUMMARY_TITLES
 is_sips      = current_page in SIPS_TITLES
 
 # Tutup changelog otomatis saat navigasi
@@ -247,8 +256,13 @@ if current_page != st.session_state.last_page:
 # CSS: section headers menjadi toggle pill SAP / SIPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Pill aktif: div ke-1 = PR-PO SAP, div ke-2 = SIPS
-active_div = "2" if is_sips else "1"
+# Pill aktif: div ke-1 = Summary, div ke-2 = PR-PO SAP, div ke-3 = SIPS
+if is_summary:
+    active_div = "1"
+elif is_sips:
+    active_div = "3"
+else:
+    active_div = "2"
 
 st.markdown(f"""
 <style>
@@ -379,8 +393,13 @@ st.components.v1.html("""
 # Default values (dipakai jika filter tidak ter-render / error)
 current_year = datetime.now().year
 default_start_date = datetime(current_year, 1, 1).date()
+
+# Tanggal terakhir data diperbarui — sesuaikan setiap kali ETL baru dijalankan
+DATA_UPDATE_SAP  = datetime(2026, 2, 28).date()
+DATA_UPDATE_SIPS = datetime(2026, 2, 28).date()
+
 date_from                = default_start_date
-date_to                  = datetime.now().date()
+date_to                  = DATA_UPDATE_SAP
 selected_department      = ['All']
 selected_p_group         = ['All']
 selected_bagian          = ['All']
@@ -389,12 +408,12 @@ exclude_purchasing_group = False
 exclude_bagian           = False
 default_sips_start_date  = datetime(current_year, 1, 1).date()
 sips_date_from           = default_sips_start_date
-sips_date_to             = datetime.now().date()
+sips_date_to             = DATA_UPDATE_SIPS
 sips_selected_nama       = ['All']
 sips_selected_bagian     = ['All']
 
 # ── Info data terakhir diambil ────────────────────────────────────────────────
-st.sidebar.markdown("""
+st.sidebar.markdown(f"""
     <div style='
         background: rgba(31, 119, 180, 0.08);
         border: 1px solid rgba(31, 119, 180, 0.25);
@@ -414,10 +433,10 @@ st.sidebar.markdown("""
             Data terakhir diperbarui
         </p>
         <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:0;'>
-            SAP &nbsp;→&nbsp; 28 Februari 2026
+            SAP &nbsp;→&nbsp; {DATA_UPDATE_SAP.strftime('%d %B %Y')}
         </p>
         <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
-            SIPS &nbsp;→&nbsp; 28 Februari 2026
+            SIPS &nbsp;→&nbsp; {DATA_UPDATE_SIPS.strftime('%d %B %Y')}
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -474,7 +493,11 @@ st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,1
 # ══════════════════════════════════════════════════════════════════════════════
 # FILTERS PR-PO SAP / SIPS: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.filter_mode == 'sidebar' and not is_sips:
+if st.session_state.filter_mode == 'sidebar' and is_summary:
+    st.sidebar.info("📌 Filter data untuk Rangkuman KPI akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
+    st.sidebar.markdown("<br>", unsafe_allow_html=True) # Spacer
+
+elif st.session_state.filter_mode == 'sidebar' and not is_sips:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
         bagian_data  = load_data("""
@@ -587,8 +610,9 @@ if st.session_state.filter_mode == 'sidebar' and not is_sips:
 
         # ── Date Range ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+        <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered' 
+           style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
@@ -596,11 +620,11 @@ if st.session_state.filter_mode == 'sidebar' and not is_sips:
                          1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
                          1 0 0 0 1-1V4z"/>
             </svg>
-            Date Range
+            Date Range ⓘ
         </p>
         """, unsafe_allow_html=True)
         date_from = st.sidebar.date_input("SAP From", value=default_start_date)
-        date_to   = st.sidebar.date_input("SAP To",   value=datetime.now().date())
+        date_to   = st.sidebar.date_input("SAP To",   value=DATA_UPDATE_SAP)
 
         if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
             st.cache_data.clear()
@@ -698,8 +722,9 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
 
         # ── Date Range SIPS ───────────────────────────────────────────────────
         st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px;'>
+        <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer' 
+           style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
@@ -707,11 +732,11 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
                          1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
                          1 0 0 0 1-1V4z"/>
             </svg>
-            Date Range
+            Date Range ⓘ
         </p>
         """, unsafe_allow_html=True)
         sips_date_from = st.sidebar.date_input("SIPS From", value=default_start_date)
-        sips_date_to   = st.sidebar.date_input("SIPS To", value=datetime.now().date())
+        sips_date_to   = st.sidebar.date_input("SIPS To", value=DATA_UPDATE_SIPS)
 
         if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="sips_refresh"):
             st.cache_data.clear()
@@ -731,7 +756,7 @@ if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout")
 
 _default_start_date = datetime(current_year, 1, 1).date()
 _default_date_from = _default_start_date
-_default_date_to   = datetime.now().date()
+_default_date_to   = DATA_UPDATE_SAP
 
 # Default SAP (dipakai saat halaman SIPS aktif)
 _default_filter_sap = build_filter_conditions(
@@ -811,6 +836,11 @@ global_context = build_global_context(
     default_sips_selected_nama = _default_sips_nama,
     default_sips_selected_bagian = _default_sips_bagian,
     default_teks_filter_sips  = _default_teks_sips,
+)
+
+st.session_state['_summary_view_args'] = dict(
+    load_data = load_data,
+    global_context = global_context,
 )
 
 st.session_state['_view_args'] = dict(
@@ -912,7 +942,7 @@ with col_foot1:
     system_label = "SIPS" if is_sips else "PR-PO SAP"
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8 | "
+        f"Monitoring Dashboard - {system_label} | v1.8.1 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True

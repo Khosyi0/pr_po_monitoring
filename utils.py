@@ -302,8 +302,9 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
     default_start = datetime(current_year, 1, 1).date()
 
     # Tanggal terakhir data diambil, update sesuai ETL terbaru
-    DATA_UPDATE_SAP  = "28 Februari 2026"
-    DATA_UPDATE_SIPS = "28 Februari 2026"
+    from datetime import date as _date
+    DATA_UPDATE_SAP  = _date(2026, 2, 28)
+    DATA_UPDATE_SIPS = _date(2026, 2, 28)
 
     def _init(k, v):
         if k not in st.session_state:
@@ -316,9 +317,13 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         elif 'All' in cur and len(cur) > 1:
             st.session_state[key] = [x for x in cur if x != 'All']
 
-    def _label(text):
+    def _label(text, tooltip=None):
+        title_attr = f" title='{tooltip}'" if tooltip else ""
+        cursor_style = " cursor:help;" if tooltip else ""
+        icon = " <span style='font-size:10px; opacity:0.7;'>ⓘ</span>" if tooltip else ""
+        
         st.markdown(
-            f"<p style='font-size:12px;font-weight:600;margin:0 0 2px 0;opacity:0.8'>{text}</p>",
+            f"<p{title_attr} style='font-size:12px;font-weight:600;margin:0 0 2px 0;opacity:0.8;{cursor_style}'>{text}{icon}</p>",
             unsafe_allow_html=True
         )
 
@@ -361,7 +366,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         _init('fb_dept',      ['All'])
         _init('fb_pgroup',    ['All'])
         _init('fb_date_from',  default_start)
-        _init('fb_date_to',    datetime.now().date())
+        _init('fb_date_to',    DATA_UPDATE_SAP)
 
         c_bag, c_dept, c_pg, c_from, c_to, c_btn = st.columns([2, 2, 2, 1.5, 1.5, 0.8])
 
@@ -381,13 +386,11 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                            on_change=_all_logic, args=("fb_pgroup",),
                            label_visibility="collapsed")
         with c_from:
-            _label("Dari")
-            st.date_input("Dari", key="fb_date_from",
-                          label_visibility="collapsed")
+            _label("Dari", tooltip="PR SAP: 1st Full Release&#10;PO SAP: Date Ordered")
+            st.date_input("Dari", key="fb_date_from", label_visibility="collapsed")
         with c_to:
-            _label("Sampai")
-            st.date_input("Sampai", key="fb_date_to",
-                          label_visibility="collapsed")
+            _label("Sampai", tooltip="PR SAP: 1st Full Release&#10;PO SAP: Date Ordered")
+            st.date_input("Sampai", key="fb_date_to", label_visibility="collapsed")
         with c_btn:
             _spacer()
             if st.button("", icon=":material/refresh:", help="Refresh Data",
@@ -398,8 +401,8 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         # ── Info data update + divider ─────────────────────────────────────────
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
-            f"Data SAP per <b>{DATA_UPDATE_SAP}</b> &nbsp;·&nbsp; "
-            f"Data SIPS per <b>{DATA_UPDATE_SIPS}</b>"
+            f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
+            f"Data SIPS per <b>{DATA_UPDATE_SIPS.strftime('%d %B %Y')}</b>"
             f"</p>",
             unsafe_allow_html=True
         )
@@ -427,7 +430,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         _init('fb_sips_bagian',    ['All'])
         _init('fb_sips_nama',      ['All'])
         _init('fb_sips_date_from',  default_start)
-        _init('fb_sips_date_to',    datetime.now().date())
+        _init('fb_sips_date_to',    DATA_UPDATE_SIPS)
 
         def _bagian_sips_changed():
             _all_logic("fb_sips_bagian")
@@ -461,13 +464,11 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                            on_change=_all_logic, args=("fb_sips_nama",),
                            label_visibility="collapsed")
         with c_from:
-            _label("Dari")
-            st.date_input("Dari", key="fb_sips_date_from",
-                          label_visibility="collapsed")
+            _label("Dari", tooltip="Data SIPS: Tanggal Disposisi Buyer")
+            st.date_input("Dari", key="fb_sips_date_from", label_visibility="collapsed")
         with c_to:
-            _label("Sampai")
-            st.date_input("Sampai", key="fb_sips_date_to",
-                          label_visibility="collapsed")
+            _label("Sampai", tooltip="Data SIPS: Tanggal Disposisi Buyer")
+            st.date_input("Sampai", key="fb_sips_date_to", label_visibility="collapsed")
         with c_btn:
             _spacer()
             if st.button("", icon=":material/refresh:", help="Refresh Data",
@@ -478,8 +479,8 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         # ── Info data update + divider ─────────────────────────────────────────
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
-            f"Data SAP per <b>{DATA_UPDATE_SAP}</b> &nbsp;·&nbsp; "
-            f"Data SIPS per <b>{DATA_UPDATE_SIPS}</b>"
+            f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
+            f"Data SIPS per <b>{DATA_UPDATE_SIPS.strftime('%d %B %Y')}</b>"
             f"</p>",
             unsafe_allow_html=True
         )
