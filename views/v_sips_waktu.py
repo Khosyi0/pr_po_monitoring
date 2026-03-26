@@ -56,7 +56,8 @@ def kpi_card(icon, label, value, delta="", dc="n"):
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
 
-    info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+    info_filter     = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+    selected_pgroup = kwargs.get('selected_pgroup', ['All'])
 
     st.markdown("""
     <h1 style='display:flex;align-items:center;font-size:60px;'>
@@ -73,6 +74,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup,
         extra=["nilai_sla IS NOT NULL", "status IN ('Closed','Proses PO')"]
     )
 

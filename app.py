@@ -162,6 +162,8 @@ init_state('sips_filter_nama',    ['All'])
 init_state('sips_prev_nama',      ['All'])
 init_state('sips_filter_bagian',  ['All'])
 init_state('sips_prev_bagian',    ['All'])
+init_state('sips_filter_pgroup',  ['All'])
+init_state('sips_prev_pgroup',    ['All'])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DIALOG KONFIRMASI LOGOUT
@@ -412,6 +414,7 @@ sips_date_from           = default_sips_start_date
 sips_date_to             = DATA_UPDATE_SIPS
 sips_selected_nama       = ['All']
 sips_selected_bagian     = ['All']
+sips_selected_pgroup     = ['All']
 
 # ── Info data terakhir diambil ────────────────────────────────────────────────
 st.sidebar.markdown(f"""
@@ -697,6 +700,44 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             st.session_state.sips_filter_nama = ['All']
             st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
 
+        # ── Filter Purchasing Group SIPS ──────────────────────────────────────
+        try:
+            pg_sips_data = load_data("""
+                SELECT DISTINCT purchasing_group FROM sips_data
+                WHERE purchasing_group IS NOT NULL ORDER BY purchasing_group
+            """)
+            options_pgroup_sips = ['All'] + pg_sips_data['purchasing_group'].tolist()
+        except Exception:
+            options_pgroup_sips = ['All']
+
+        def update_pgroup_sips_logic():
+            cur, prv = st.session_state.sips_filter_pgroup, st.session_state.sips_prev_pgroup
+            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_pgroup = ['All']
+            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_pgroup = [x for x in cur if x != 'All']
+            elif not cur:                             st.session_state.sips_filter_pgroup = ['All']
+            st.session_state.sips_prev_pgroup = st.session_state.sips_filter_pgroup
+
+        st.sidebar.markdown("""
+        <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                 fill="currentColor" viewBox="0 0 16 16">
+                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
+                         0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355
+                         .68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1
+                         1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
+            </svg>
+            Purchasing Group
+        </p>
+        """, unsafe_allow_html=True)
+        st.sidebar.multiselect("Purchasing Group SIPS",
+            options=options_pgroup_sips,
+            key="sips_filter_pgroup",
+            on_change=update_pgroup_sips_logic,
+            label_visibility="collapsed"
+        )
+        sips_selected_pgroup = st.session_state.sips_filter_pgroup
+
         # ── Filter Bagian ─────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -721,7 +762,6 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             key="sips_filter_bagian", on_change=update_bagian_sips_logic, label_visibility="collapsed")
         sips_selected_bagian = st.session_state.sips_filter_bagian
 
-        # ── Date Range SIPS ───────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer' 
            style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -776,6 +816,7 @@ _default_sips_bagian     = ['All']
 _default_teks_sips = f"""
 - Tanggal: {_default_date_from} s.d {_default_date_to}
 - Bagian: All
+- Purchasing Group: All
 - Nama: All
 """
 
@@ -806,6 +847,7 @@ teks_filter_sap = f"""
 teks_filter_sips = f"""
 - Tanggal: {sips_date_from} s.d {sips_date_to}
 - Bagian: {', '.join(sips_selected_bagian)}
+- Purchasing Group: {', '.join(sips_selected_pgroup)}
 - Nama: {', '.join(sips_selected_nama)}
 """
 
@@ -864,6 +906,7 @@ st.session_state['_sips_view_args'] = dict(
     date_to           = sips_date_to,
     selected_nama     = sips_selected_nama,
     selected_bagian   = sips_selected_bagian,
+    selected_pgroup   = sips_selected_pgroup,
     info_filter       = teks_filter_sips,
     global_context    = global_context,
 )
@@ -878,6 +921,7 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
         sips_date_to         = st.session_state.get('fb_sips_date_to',    sips_date_to)
         sips_selected_bagian = st.session_state.get('fb_sips_bagian',     ['All'])
+        sips_selected_pgroup = st.session_state.get('fb_sips_pgroup',     ['All'])
         sips_selected_nama   = st.session_state.get('fb_sips_nama',       ['All'])
     else:
         render_filter_bar('sap', load_data)
@@ -903,6 +947,7 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
     teks_filter_sips = f"""
 - Tanggal: {sips_date_from} s.d {sips_date_to}
 - Bagian: {', '.join(sips_selected_bagian)}
+- Purchasing Group: {', '.join(sips_selected_pgroup)}
 - Nama: {', '.join(sips_selected_nama)}
 """
     st.session_state['_view_args'].update(dict(
@@ -920,6 +965,7 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         date_to         = sips_date_to,
         selected_nama   = sips_selected_nama,
         selected_bagian = sips_selected_bagian,
+        selected_pgroup = sips_selected_pgroup,
         info_filter     = teks_filter_sips,
     ))
 

@@ -9,6 +9,8 @@ from utils import build_sips_where, format_number, render_chat_analyst
 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
 
+    selected_pgroup = kwargs.get('selected_pgroup', ['All'])
+
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:60px;'>
@@ -56,6 +58,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup,
         extra=extra
     )
 

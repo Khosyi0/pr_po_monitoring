@@ -259,6 +259,7 @@ def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
 
 def build_sips_where(date_from=None, date_to=None,
                      selected_nama=None, selected_bagian=None,
+                     selected_pgroup=None,
                      extra: list = None) -> str:
     """
     Bangun WHERE clause untuk query vw_sips.
@@ -268,6 +269,7 @@ def build_sips_where(date_from=None, date_to=None,
       anchor utama, sehingga filter dashboard harus mengikuti kolom yang sama
       agar Total PR / Total PO sesuai dengan rekapan Excel atasan.
     - Filter bagian hanya aktif jika selected_bagian bukan ['All']
+    - Filter purchasing_group hanya aktif jika selected_pgroup bukan ['All']
     - Sertakan extra=['nilai_sla IS NOT NULL'] dsb. jika perlu kondisi tambahan
     """
     wp = ["1=1"]
@@ -280,6 +282,9 @@ def build_sips_where(date_from=None, date_to=None,
     if selected_bagian and "All" not in selected_bagian:
         bg = ", ".join(f"'{b}'" for b in selected_bagian)
         wp.append(f"bagian IN ({bg})")
+    if selected_pgroup and "All" not in selected_pgroup:
+        pg = ", ".join(f"'{p}'" for p in selected_pgroup)
+        wp.append(f"purchasing_group IN ({pg})")
     if selected_nama and "All" not in selected_nama:
         nms = ", ".join(f"'{n}'" for n in selected_nama)
         wp.append(f"nama IN ({nms})")
@@ -428,6 +433,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
 
         # Init session state TANPA value= di widget (cegah warning duplikat)
         _init('fb_sips_bagian',    ['All'])
+        _init('fb_sips_pgroup',    ['All'])
         _init('fb_sips_nama',      ['All'])
         _init('fb_sips_date_from',  default_start)
         _init('fb_sips_date_to',    DATA_UPDATE_SIPS)
@@ -452,8 +458,22 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         except Exception:
             opts_nama = ['All']
 
-        c_bag, c_nama, c_from, c_to, c_btn = st.columns([2, 2.5, 1.5, 1.5, 0.8])
+        # Load purchasing group SIPS
+        try:
+            pg_sips_df = load_data_fn(
+                "SELECT DISTINCT purchasing_group FROM sips_data WHERE purchasing_group IS NOT NULL ORDER BY purchasing_group"
+            )
+            opts_pgroup_sips = ['All'] + pg_sips_df['purchasing_group'].tolist()
+        except Exception:
+            opts_pgroup_sips = ['All']
 
+        c_pg, c_bag, c_nama, c_from, c_to, c_btn = st.columns([1.5, 1.5, 2, 1.3, 1.3, 0.8])
+
+        with c_pg:
+            _label("P. Group")
+            st.multiselect("P. Group", options=opts_pgroup_sips, key="fb_sips_pgroup",
+                           on_change=_all_logic, args=("fb_sips_pgroup",),
+                           label_visibility="collapsed")
         with c_bag:
             _label("Bagian")
             st.multiselect("Bagian", options=opts_bagian_sips, key="fb_sips_bagian",
@@ -490,6 +510,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
             date_from       = st.session_state.fb_sips_date_from,
             date_to         = st.session_state.fb_sips_date_to,
             selected_bagian = st.session_state.fb_sips_bagian,
+            selected_pgroup = st.session_state.fb_sips_pgroup,
             selected_nama   = st.session_state.fb_sips_nama,
         )
 

@@ -146,7 +146,8 @@ def section_header(title, subtitle=""):
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
 
-    info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+    info_filter      = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+    selected_pgroup  = kwargs.get('selected_pgroup', ['All'])
 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown("""
@@ -170,7 +171,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     # ── WHERE clause ──────────────────────────────────────────────────────────
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
-        selected_nama=selected_nama, selected_bagian=selected_bagian
+        selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup
     )
 
     # ── Query KPI ─────────────────────────────────────────────────────────────

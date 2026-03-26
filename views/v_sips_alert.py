@@ -2,23 +2,24 @@
 v_sips_alert.py - Halaman Alert SIPS
 Menampilkan PR SIPS yang pending (belum jadi PO) beserta aging-nya.
 """
-
+ 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
-
-
+ 
+ 
 def toggle_state(state_key):
     st.session_state[state_key] = not st.session_state[state_key]
-
-
+ 
+ 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
-
-    info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
-
+ 
+    info_filter     = kwargs.get('info_filter', 'Tidak ada filter spesifik')
+    selected_pgroup = kwargs.get('selected_pgroup', ['All'])
+ 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:55px; margin-bottom: 0px;'>
@@ -39,11 +40,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     )
     st.markdown("---")
     st.markdown("<br>", unsafe_allow_html=True)
-
+ 
     # ── WHERE clause dasar (tanpa filter status agar bisa ambil semua status) ─
     where_all = build_sips_where(
         date_from=date_from, date_to=date_to,
-        selected_nama=selected_nama, selected_bagian=selected_bagian
+        selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup
     )
 
     # ══════════════════════════════════════════════════════════════════════════
