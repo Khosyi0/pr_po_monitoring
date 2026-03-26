@@ -632,6 +632,391 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             else:
                 st.info("Tidak ada PO untuk status yang dipilih.")
 
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # GRAFIK PO TERLAMBAT
+        # ══════════════════════════════════════════════════════════════════════
+        title_col, btn_col = st.columns([10, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:30px; margin-bottom: 0px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-graph-down-arrow" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
+                        <path fill-rule="evenodd" d="M0 0h1v15h15v1H0zm10 11.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 0-1 0v2.6l-3.613-4.417a.5.5 0 0 0-.74-.037L7.06 8.233 3.404 3.206a.5.5 0 0 0-.808.588l4 5.5a.5.5 0 0 0 .758.06l2.609-2.61L13.445 11H10.5a.5.5 0 0 0-.5.5"/>
+                    </svg>
+                    Grafik PO Terlambat
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            key_grafik_terlambat = "show_formula_grafik_terlambat"
+            if key_grafik_terlambat not in st.session_state:
+                st.session_state[key_grafik_terlambat] = False
+            is_open = st.session_state[key_grafik_terlambat]
+            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_grafik_terlambat}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_grafik_terlambat})
+
+        st.caption("Visualisasi PO yang sudah melewati delivery date berdasarkan keterlambatan, purchasing group, dan vendor.")
+
+        if st.session_state.get(key_grafik_terlambat, False):
+            st.info("""\
+**Grafik PO Terlambat**: Menampilkan visualisasi PO yang sudah melewati delivery date namun barang belum diterima semua (`on_time_delivery = 'IN PROGRESS'` dan `del_date_po < hari ini`).
+
+**Tiga chart yang ditampilkan:**
+| Chart | Keterangan |
+|---|---|
+| Distribusi Keterlambatan (Bucket) | Jumlah item PO berdasarkan rentang hari terlambat: 1-7, 8-30, 31-60, >60 hari |
+| Top 10 Purchasing Group Terlambat | PG dengan jumlah item PO terlambat terbanyak |
+| Top 10 Vendor Terlambat | Vendor dengan jumlah item PO terlambat terbanyak, membantu evaluasi performa vendor |
+
+**Formula Excel:** (PO SAP)
+- Filter **Delivery Completed** kosong / bukan `X`
+- Filter **Del Date PO** sebelum hari ini
+- Tambah kolom `=TODAY()-Del Date PO`
+- Kelompokkan per rentang hari
+            """)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        grafik_terlambat_query = f"""
+        SELECT
+            poi.nomor_po,
+            poi.item_po,
+            poh.purchasing_group,
+            v.vendor_name,
+            poi.del_date_po,
+            (CURRENT_DATE - poi.del_date_po::DATE)  AS hari_terlambat,
+            poi.total_amount_local_curr
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+        WHERE poi.del_date_po::DATE < CURRENT_DATE
+          AND poi.on_time_delivery = 'IN PROGRESS'
+          AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+          AND poh.date_ordered::DATE >= '{date_from}'
+          AND poh.date_ordered::DATE <= '{date_to}'
+          AND {dept_cond}
+          AND {pg_cond}
+        """
+
+        with st.spinner("Memuat grafik PO terlambat..."):
+            grafik_terlambat_data = load_data(grafik_terlambat_query)
+
+        if not grafik_terlambat_data.empty:
+            col_dist, col_pg, col_vendor = st.columns(3)
+
+            # ── Chart 1: Distribusi bucket keterlambatan ──
+            with col_dist:
+                st.markdown("**Distribusi Keterlambatan**")
+                grafik_terlambat_data['bucket'] = pd.cut(
+                    grafik_terlambat_data['hari_terlambat'],
+                    bins=[0, 7, 30, 60, float('inf')],
+                    labels=['1–7 Hari', '8–30 Hari', '31–60 Hari', '> 60 Hari'],
+                    right=True
+                )
+                bucket_counts = (grafik_terlambat_data['bucket']
+                                 .value_counts()
+                                 .reindex(['1–7 Hari', '8–30 Hari', '31–60 Hari', '> 60 Hari'])
+                                 .reset_index())
+                bucket_counts.columns = ['bucket', 'jumlah']
+                fig_dist = px.bar(
+                    bucket_counts, x='bucket', y='jumlah',
+                    text_auto=True,
+                    color='jumlah',
+                    color_continuous_scale=[[0, '#09ab3b'], [0.33, '#f0a500'], [1, '#e03c3c']],
+                    labels={'bucket': 'Rentang Keterlambatan', 'jumlah': 'Jumlah Item PO'},
+                )
+                fig_dist.update_coloraxes(showscale=False)
+                fig_dist.update_traces(textposition='outside')
+                fig_dist.update_layout(
+                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='gray',
+                    xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
+                    yaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
+                )
+                st.plotly_chart(fig_dist, use_container_width=True)
+
+            # ── Chart 2: Top 10 Purchasing Group terlambat ──
+            with col_pg:
+                st.markdown("**Top 10 Purchasing Group**")
+                pg_late = (grafik_terlambat_data
+                           .groupby('purchasing_group')
+                           .agg(jumlah=('item_po', 'count'),
+                                avg_hari=('hari_terlambat', 'mean'))
+                           .reset_index()
+                           .sort_values('jumlah', ascending=False)
+                           .head(10))
+                pg_late['avg_hari'] = pg_late['avg_hari'].round(1)
+                pg_late = pg_late.sort_values('jumlah', ascending=True)
+                fig_pg_late = px.bar(
+                    pg_late, x='jumlah', y='purchasing_group', orientation='h',
+                    text='jumlah',
+                    color='avg_hari',
+                    color_continuous_scale=[[0, '#f0a500'], [1, '#e03c3c']],
+                    labels={'jumlah': 'Jml Item PO', 'purchasing_group': 'P. Group',
+                            'avg_hari': 'Avg Hari Terlambat'},
+                    custom_data=['avg_hari'],
+                )
+                fig_pg_late.update_traces(
+                    textposition='outside',
+                    hovertemplate='<b>%{y}</b><br>Jumlah: %{x}<br>Avg Terlambat: %{customdata[0]:.1f} hari<extra></extra>'
+                )
+                fig_pg_late.update_coloraxes(colorbar=dict(title='Avg Hari'))
+                fig_pg_late.update_layout(
+                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='gray',
+                    xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
+                    yaxis=dict(title=''),
+                )
+                st.plotly_chart(fig_pg_late, use_container_width=True)
+
+            # ── Chart 3: Top 10 Vendor terlambat ──
+            with col_vendor:
+                st.markdown("**Top 10 Vendor Terlambat**")
+                vendor_late = (grafik_terlambat_data
+                               .dropna(subset=['vendor_name'])
+                               .groupby('vendor_name')
+                               .agg(jumlah=('item_po', 'count'),
+                                    avg_hari=('hari_terlambat', 'mean'))
+                               .reset_index()
+                               .sort_values('jumlah', ascending=False)
+                               .head(10))
+                vendor_late['avg_hari'] = vendor_late['avg_hari'].round(1)
+                vendor_late['label']    = vendor_late['vendor_name'].str[:22]
+                vendor_late = vendor_late.sort_values('jumlah', ascending=True)
+                fig_vnd_late = px.bar(
+                    vendor_late, x='jumlah', y='label', orientation='h',
+                    text='jumlah',
+                    color='avg_hari',
+                    color_continuous_scale=[[0, '#f0a500'], [1, '#e03c3c']],
+                    labels={'jumlah': 'Jml Item PO', 'label': 'Vendor',
+                            'avg_hari': 'Avg Hari Terlambat'},
+                    custom_data=['avg_hari', 'vendor_name'],
+                )
+                fig_vnd_late.update_traces(
+                    textposition='outside',
+                    hovertemplate='<b>%{customdata[1]}</b><br>Jumlah: %{x}<br>Avg Terlambat: %{customdata[0]:.1f} hari<extra></extra>'
+                )
+                fig_vnd_late.update_coloraxes(colorbar=dict(title='Avg Hari'))
+                fig_vnd_late.update_layout(
+                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='gray',
+                    xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
+                    yaxis=dict(title=''),
+                )
+                st.plotly_chart(fig_vnd_late, use_container_width=True)
+
+            # Ringkasan metrik di bawah chart
+            total_item_late  = len(grafik_terlambat_data)
+            avg_hari_late    = grafik_terlambat_data['hari_terlambat'].mean()
+            max_hari_late    = grafik_terlambat_data['hari_terlambat'].max()
+            total_val_late   = grafik_terlambat_data['total_amount_local_curr'].sum()
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total Item PO Terlambat", f"{total_item_late:,}")
+            m2.metric("Rata-rata Keterlambatan", f"{avg_hari_late:.1f} Hari")
+            m3.metric("Keterlambatan Terpanjang", f"{int(max_hari_late)} Hari")
+            m4.metric("Total Nilai PO Terlambat", format_idr(total_val_late))
+
+        else:
+            st.success("Bagus! Tidak ada PO yang melewati delivery date saat ini.")
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════════════════
+        # TABEL PO OUTSTANDING (belum GR, belum melewati due date)
+        # ══════════════════════════════════════════════════════════════════════
+        title_col, btn_col = st.columns([10, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:30px; margin-bottom: 0px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-hourglass-split" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
+                        <path d="M2.5 15a.5.5 0 1 1 0-1h1v-1a4.5 4.5 0 0 1 2.557-4.06c.29-.139.443-.377.443-.59v-.7c0-.213-.154-.451-.443-.59A4.5 4.5 0 0 1 3.5 3V2h-1a.5.5 0 0 1 0-1h11a.5.5 0 0 1 0 1h-1v1a4.5 4.5 0 0 1-2.557 4.06c-.29.139-.443.377-.443.59v.7c0 .213.154.451.443.59A4.5 4.5 0 0 1 12.5 13v1h1a.5.5 0 0 1 0 1zm2-13v1a3.5 3.5 0 0 0 1.989 3.158c.533.256 1.011.791 1.011 1.342v.7c0 .55-.478 1.086-1.011 1.342A3.5 3.5 0 0 0 4.5 13v1h7v-1a3.5 3.5 0 0 0-1.989-3.158C8.978 9.586 8.5 9.051 8.5 8.5v-.7c0-.55.478-1.086 1.011-1.342A3.5 3.5 0 0 0 11.5 3V2z"/>
+                    </svg>
+                    PO Outstanding (Belum GR, Belum Jatuh Tempo)
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            key_po_outstanding = "show_formula_po_outstanding"
+            if key_po_outstanding not in st.session_state:
+                st.session_state[key_po_outstanding] = False
+            is_open = st.session_state[key_po_outstanding]
+            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+            tooltip = "Hide Formula" if is_open else "Show Formula"
+            st.button(icon, key=f"btn_{key_po_outstanding}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_po_outstanding})
+
+        st.caption("PO yang barangnya belum diterima (IN PROGRESS) namun masih dalam batas delivery date — perlu dipantau agar tidak berubah menjadi overdue.")
+
+        if st.session_state.get(key_po_outstanding, False):
+            st.info("""\
+**PO Outstanding (Belum GR, Belum Jatuh Tempo)**: Menampilkan PO yang kondisinya:
+- `on_time_delivery = 'IN PROGRESS'` → barang belum diterima semua
+- `del_date_po >= hari ini` → delivery date belum terlewati
+
+Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah menjadi overdue.
+
+**Kolom yang ditampilkan:**
+| Kolom | Keterangan |
+|---|---|
+| `Nomor PO` | Nomor Purchase Order |
+| `Item` | Item/baris PO |
+| `Tgl PO` | Tanggal PO diterbitkan |
+| `Target Delivery` | Tanggal delivery yang disepakati |
+| `Sisa Hari` | Berapa hari lagi sebelum jatuh tempo (makin kecil = makin mendesak) |
+| `Vendor` | Nama vendor |
+| `P. Group` | Purchasing Group |
+| `Nilai PO (Rp)` | Nilai realisasi item PO |
+| `Status Pengiriman` | Status pengiriman saat ini |
+
+**Formula Excel:** (PO SAP)
+- Filter **Delivery Completed** kosong / bukan `X`
+- Filter **Del Date PO** lebih besar sama dengan hari ini
+- Tambah kolom `=Del Date PO - TODAY()` untuk menghitung sisa hari
+
+**Catatan:** Urutkan berdasarkan sisa hari terkecil untuk mengetahui PO mana yang paling mendesak di-follow up.
+            """)
+
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        # Filter sisa hari — pills untuk memilih rentang
+        sisa_hari_opts = ["Semua", "≤ 7 Hari", "8–14 Hari", "15–30 Hari", "> 30 Hari"]
+        selected_sisa = st.pills(
+            "Filter Sisa Hari",
+            options=sisa_hari_opts,
+            default="Semua",
+            key="pill_po_outstanding_sisa",
+            label_visibility="collapsed",
+        )
+        if not selected_sisa:
+            selected_sisa = "Semua"
+
+        # Bangun kondisi sisa hari
+        if selected_sisa == "≤ 7 Hari":
+            sisa_cond = "AND (poi.del_date_po::DATE - CURRENT_DATE) <= 7"
+        elif selected_sisa == "8–14 Hari":
+            sisa_cond = "AND (poi.del_date_po::DATE - CURRENT_DATE) BETWEEN 8 AND 14"
+        elif selected_sisa == "15–30 Hari":
+            sisa_cond = "AND (poi.del_date_po::DATE - CURRENT_DATE) BETWEEN 15 AND 30"
+        elif selected_sisa == "> 30 Hari":
+            sisa_cond = "AND (poi.del_date_po::DATE - CURRENT_DATE) > 30"
+        else:
+            sisa_cond = ""
+
+        outstanding_query = f"""
+        SELECT
+            poh.nomor_po,
+            poi.item_po,
+            poh.date_ordered::DATE                          AS tgl_po,
+            poi.del_date_po                                 AS target_delivery,
+            (poi.del_date_po::DATE - CURRENT_DATE)::INT    AS sisa_hari,
+            v.vendor_name,
+            poh.purchasing_group,
+            poi.description                                 AS deskripsi,
+            poi.total_amount_local_curr                     AS nilai_po,
+            poi.on_time_delivery                            AS status_pengiriman
+        FROM po_items poi
+        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+        WHERE poi.del_date_po::DATE >= CURRENT_DATE
+          AND poi.on_time_delivery = 'IN PROGRESS'
+          AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+          AND poh.date_ordered::DATE >= '{date_from}'
+          AND poh.date_ordered::DATE <= '{date_to}'
+          AND {dept_cond}
+          AND {pg_cond}
+          {sisa_cond}
+        ORDER BY sisa_hari ASC, poh.nomor_po, poi.item_po
+        LIMIT 500
+        """
+
+        with st.spinner("Memuat PO Outstanding..."):
+            outstanding_data = load_data(outstanding_query)
+
+        if not outstanding_data.empty:
+            # KPI ringkasan outstanding
+            total_outstanding  = len(outstanding_data)
+            kritis_7           = int((outstanding_data['sisa_hari'] <= 7).sum())
+            perlu_pantau       = int(((outstanding_data['sisa_hari'] > 7) & (outstanding_data['sisa_hari'] <= 30)).sum())
+            total_val_outs     = outstanding_data['nilai_po'].sum()
+
+            ok1, ok2, ok3, ok4 = st.columns(4)
+            ok1.metric("Total Item PO Outstanding", f"{total_outstanding:,}")
+            ok2.metric("Kritis (≤ 7 Hari)", f"{kritis_7:,}", delta="Perlu follow-up segera" if kritis_7 > 0 else "Aman", delta_color="inverse" if kritis_7 > 0 else "normal")
+            ok3.metric("Perlu Pantau (8–30 Hari)", f"{perlu_pantau:,}")
+            ok4.metric("Total Nilai Outstanding", format_idr(total_val_outs))
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # Format kolom untuk tampilan
+            df_outs_display = outstanding_data.copy()
+            df_outs_display['tgl_po']          = pd.to_datetime(df_outs_display['tgl_po'], errors='coerce').dt.strftime('%Y-%m-%d')
+            df_outs_display['target_delivery'] = pd.to_datetime(df_outs_display['target_delivery'], errors='coerce').dt.strftime('%Y-%m-%d')
+            df_outs_display['nilai_po']        = df_outs_display['nilai_po'].apply(
+                lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+            )
+            df_outs_display['deskripsi']       = df_outs_display['deskripsi'].str[:50]
+
+            # 1. RENAME DATAFRAME TERLEBIH DAHULU
+            df_outs_renamed = df_outs_display.rename(columns={
+                'nomor_po':         'Nomor PO',
+                'item_po':          'Item',
+                'tgl_po':           'Tgl PO',
+                'target_delivery':  'Target Delivery',
+                'sisa_hari':        'Sisa Hari',  # Nama baru
+                'vendor_name':      'Vendor',
+                'purchasing_group': 'P. Group',
+                'deskripsi':        'Deskripsi',
+                'nilai_po':         'Nilai PO (Rp)',
+                'status_pengiriman':'Status Pengiriman',
+            })
+
+            # Warnai sisa hari berdasarkan urgensi
+            def _color_sisa(val):
+                try:
+                    v = int(val)
+                    if v <= 7:   return "color: #e03c3c; font-weight:700"
+                    if v <= 14:  return "color: #f0a500; font-weight:600"
+                    if v <= 30:  return "color: #1f77b4"
+                    return ""
+                except:
+                    return ""
+
+            # 2. TERAPKAN STYLE PADA DATAFRAME YANG SUDAH DI-RENAME (Gunakan subset 'Sisa Hari')
+            styled_outs = df_outs_renamed.style.map(_color_sisa, subset=['Sisa Hari'])
+
+            count_label_outs = f"Menampilkan **{total_outstanding:,}** item PO outstanding"
+            if total_outstanding == 500:
+                count_label_outs += " *(limit 500, gunakan filter untuk mempersempit)*"
+            st.caption(count_label_outs)
+
+            # 3. RENDER DATAFRAME
+            st.dataframe(
+                styled_outs,
+                use_container_width=True,
+                height=380,
+            )
+
+            # Download CSV
+            csv_outs = outstanding_data.copy()
+            csv_outs['tgl_po']          = pd.to_datetime(csv_outs['tgl_po'], errors='coerce').dt.strftime('%Y-%m-%d')
+            csv_outs['target_delivery'] = pd.to_datetime(csv_outs['target_delivery'], errors='coerce').dt.strftime('%Y-%m-%d')
+            csv_outs['nilai_po']        = csv_outs['nilai_po'].apply(
+                lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+            )
+            st.download_button(
+                label="Download PO Outstanding sebagai CSV",
+                icon=":material/download:",
+                data=csv_outs.to_csv(index=False),
+                file_name=f"po_outstanding_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+            )
+        else:
+            st.success("Tidak ada PO outstanding dalam filter yang dipilih.")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -688,6 +1073,29 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             konteks_lines.append("\n")
         else:
             konteks_lines.append("## 5. LIST PO PER STATUS\nTidak ada data list PO.\n")
+
+        # 6. Grafik PO Terlambat
+        if 'grafik_terlambat_data' in locals() and not grafik_terlambat_data.empty:
+            konteks_lines.append(f"## 6. GRAFIK PO TERLAMBAT (Total: {len(grafik_terlambat_data)} item)")
+            summary_late = grafik_terlambat_data.groupby('purchasing_group').agg(
+                jumlah=('item_po', 'count'),
+                avg_hari=('hari_terlambat', 'mean')
+            ).reset_index().sort_values('jumlah', ascending=False).head(10)
+            summary_late['avg_hari'] = summary_late['avg_hari'].round(1)
+            konteks_lines.append(summary_late.to_csv(index=False))
+            konteks_lines.append("")
+        else:
+            konteks_lines.append("## 6. GRAFIK PO TERLAMBAT\nTidak ada PO yang melewati delivery date.\n")
+
+        # 7. PO Outstanding
+        if 'outstanding_data' in locals() and not outstanding_data.empty:
+            konteks_lines.append(f"## 7. PO OUTSTANDING (Belum GR, Belum Jatuh Tempo) (Total: {len(outstanding_data)} item)")
+            df_outs_ai = outstanding_data[['nomor_po', 'item_po', 'target_delivery', 'sisa_hari',
+                                           'vendor_name', 'purchasing_group', 'nilai_po']].head(20)
+            konteks_lines.append(df_outs_ai.to_csv(index=False))
+            konteks_lines.append("")
+        else:
+            konteks_lines.append("## 7. PO OUTSTANDING\nTidak ada PO outstanding dalam filter ini.\n")
 
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)

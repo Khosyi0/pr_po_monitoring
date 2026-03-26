@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
 from utils import format_number, render_chat_analyst, build_sips_where
 
 def toggle_state(state_key):
@@ -897,6 +898,171 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # BAGIAN 9: Resume OTOBOS per Individu
+    # ══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-check-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M15.854 5.146a.5.5 0 0 1 0 .708l-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 0 1 .708-.708L12.5 7.793l2.646-2.647a.5.5 0 0 1 .708 0"/>
+                    <path d="M1 14s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1zm5-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6"/>
+                </svg>
+                Resume OTOBOS per Individu
+            </h1>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Ringkasan ketepatan waktu per karyawan × jenis kontrak (seperti Ringkasan Kecepatan per PG × Jenis Tender)</p>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        key_otobos = "show_formula_otobos"
+        if key_otobos not in st.session_state:
+            st.session_state[key_otobos] = False
+        is_open = st.session_state[key_otobos]
+        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
+        tooltip = "Hide Formula" if is_open else "Show Formula"
+        st.button(icon, key=f"btn_{key_otobos}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_otobos})
+
+    if st.session_state.get(key_otobos, False):
+        st.info("""\
+**Resume OTOBOS per Individu**: Tabel ringkasan ketepatan waktu setiap karyawan dibreakdown berdasarkan jenis kontrak (Agreement vs Non-Agreement).
+
+**Kolom yang ditampilkan:**
+| Kolom | Keterangan |
+|---|---|
+| Nama | Nama buyer |
+| Jenis Kontrak | Agreement (dengan Outline Agreement) / Non-Agreement |
+| Total PO | Jumlah PO yang diselesaikan (Closed + Proses PO) |
+| On Time | Jumlah PO yang selesai tepat waktu (Nilai SLA = 1) |
+| Terlambat | Jumlah PO yang melebihi Standard SLA (Nilai SLA = 0) |
+| % On Time | Persentase ketepatan waktu |
+| Avg Realisasi SLA | Rata-rata hari kerja dari Disposisi ke PO |
+| Avg Standard SLA | Rata-rata target SLA yang berlaku |
+| Avg Headroom | Rata-rata sisa waktu (Standard − Realisasi) |
+
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Pisahkan berdasarkan **Kontrak/Non kontrak** (Agreement vs Non-Agreement)
+- Hitung % On Time: `Nilai SLA = 1` dibagi **Total PO**
+- Hitung Avg Headroom: rata-rata dari `Standard SLA − Realisasi SLA`
+
+Warna % On Time: 🟢 ≥ 90% · 🟡 75–89% · 🔴 < 75%
+""")
+
+    st.caption("Ketepatan waktu per karyawan dan jenis pengadaan, serupa dengan Ringkasan Kecepatan PG × Jenis Tender di halaman SAP.")
+
+    if df.empty:
+        st.info("Tidak ada data untuk filter yang dipilih.")
+    else:
+        # Klasifikasi jenis kontrak
+        df_otobos = df.copy()
+        df_otobos["jenis_kontrak"] = df_otobos["kontrak_status"].apply(
+            lambda v: "Agreement" if (pd.notna(v) and str(v).strip().lower() not in ("", "nan", "non agreement", "non-agreement"))
+            else "Non-Agreement"
+        )
+
+        otobos = (df_otobos.groupby(["nama", "jenis_kontrak"])
+                  .agg(
+                      total_po    = ("nilai_sla", "count"),
+                      on_time     = ("nilai_sla", lambda x: (pd.to_numeric(x, errors="coerce") == 1).sum()),
+                      terlambat   = ("nilai_sla", lambda x: (pd.to_numeric(x, errors="coerce") == 0).sum()),
+                      avg_real    = ("realisasi_sla", "mean"),
+                      avg_std     = ("standar_sla", "mean"),
+                      avg_headroom= ("headroom", "mean"),
+                  )
+                  .reset_index())
+
+        if not otobos.empty:
+            otobos["pct_ontime"] = (otobos["on_time"] / otobos["total_po"].replace(0, float("nan")) * 100).round(1).fillna(0)
+            otobos["avg_real"]     = otobos["avg_real"].round(1)
+            otobos["avg_std"]      = otobos["avg_std"].round(1)
+            otobos["avg_headroom"] = otobos["avg_headroom"].round(1)
+            otobos = otobos.sort_values(["nama", "jenis_kontrak"]).reset_index(drop=True)
+
+            # ── HTML Table dengan warna on-time ──────────────────────────────────
+            BD = "border-bottom:1px solid rgba(128,128,128,0.2)"
+            P  = f"padding:8px 10px;{BD};font-size:13px;"
+            TH = "padding:8px 10px;font-size:13px;font-weight:600;"
+
+            def _pct_color(v):
+                c = "#09ab3b" if v >= 90 else ("#f0a500" if v >= 75 else "#e03c3c")
+                return f'<span style="color:{c};font-weight:700">{format_number(v, decimals=1)}%</span>'
+
+            def _headroom_color(v):
+                c = "#09ab3b" if v >= 0 else "#e03c3c"
+                return f'<span style="color:{c};font-weight:600">{v:+.1f} H</span>'
+
+            def _badge_kontrak(v):
+                c = "#1f77b4" if v == "Agreement" else "#ff7f0e"
+                return (f'<span style="background:{c};color:#fff;padding:2px 8px;'
+                        f'border-radius:10px;font-size:11px;font-weight:600">{v}</span>')
+
+            thead = (
+                '<thead><tr style="border-bottom:2px solid rgba(128,128,128,0.4)">'
+                + f'<th style="{TH}text-align:left">Nama</th>'
+                + f'<th style="{TH}text-align:center">Jenis Kontrak</th>'
+                + f'<th style="{TH}text-align:center">Total PO</th>'
+                + f'<th style="{TH}text-align:center">On Time</th>'
+                + f'<th style="{TH}text-align:center">Terlambat</th>'
+                + f'<th style="{TH}text-align:center">% On Time</th>'
+                + f'<th style="{TH}text-align:center">Avg Real SLA</th>'
+                + f'<th style="{TH}text-align:center">Avg Std SLA</th>'
+                + f'<th style="{TH}text-align:center">Avg Headroom</th>'
+                + '</tr></thead>'
+            )
+
+            rows_html = []
+            prev_nama = None
+            for _, row in otobos.iterrows():
+                nama_cell = (f'<td style="{P}font-weight:600">{row["nama"]}</td>'
+                             if row["nama"] != prev_nama
+                             else f'<td style="{P}opacity:0.35">{row["nama"]}</td>')
+                prev_nama = row["nama"]
+                rows_html.append(
+                    "<tr>"
+                    + nama_cell
+                    + f'<td style="{P}text-align:center">{_badge_kontrak(row["jenis_kontrak"])}</td>'
+                    + f'<td style="{P}text-align:center;font-weight:600">{int(row["total_po"])}</td>'
+                    + f'<td style="{P}text-align:center">{int(row["on_time"])}</td>'
+                    + f'<td style="{P}text-align:center">{int(row["terlambat"])}</td>'
+                    + f'<td style="{P}text-align:center">{_pct_color(row["pct_ontime"])}</td>'
+                    + f'<td style="{P}text-align:center">{row["avg_real"]} H</td>'
+                    + f'<td style="{P}text-align:center">{row["avg_std"]} H</td>'
+                    + f'<td style="{P}text-align:center">{_headroom_color(row["avg_headroom"])}</td>'
+                    + "</tr>"
+                )
+
+            tabel_html = (
+                '<table style="width:100%;border-collapse:collapse">'
+                + thead + '<tbody>' + ''.join(rows_html) + '</tbody>'
+                + '</table>'
+                + '<p style="font-size:12px;margin-top:8px">'
+                + '🟢 On Time ≥ 90% &nbsp;|&nbsp; 🟡 75–89% &nbsp;|&nbsp; 🔴 < 75%'
+                + ' &nbsp;|&nbsp; Headroom: + = lebih cepat, - = melewati SLA'
+                + '</p>'
+            )
+            st.markdown(tabel_html, unsafe_allow_html=True)
+
+            # Download CSV
+            csv_otobos = otobos.rename(columns={
+                "nama": "Nama", "jenis_kontrak": "Jenis Kontrak",
+                "total_po": "Total PO", "on_time": "On Time",
+                "terlambat": "Terlambat", "pct_ontime": "% On Time",
+                "avg_real": "Avg Realisasi SLA (H)", "avg_std": "Avg Standard SLA (H)",
+                "avg_headroom": "Avg Headroom (H)",
+            }).to_csv(index=False)
+            st.download_button(
+                label="Download Resume OTOBOS sebagai CSV",
+                icon=":material/download:",
+                data=csv_otobos,
+                file_name=f"resume_otobos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("Tidak ada data untuk filter yang dipilih.")
+
     # =====================================================================
     # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
     # =====================================================================
@@ -947,6 +1113,14 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
         df_pg_simple = pg_df[['purchasing_group', 'avg_realisasi', 'jumlah_pr']].sort_values('avg_realisasi', ascending=False)
         df_pg_simple['avg_realisasi'] = df_pg_simple['avg_realisasi'].round(1)
         konteks_lines.append(df_pg_simple.to_csv(index=False))
+        konteks_lines.append("\n")
+
+
+    # 6. Resume OTOBOS per Individu
+    if 'otobos' in locals() and not otobos.empty:
+        konteks_lines.append("## 6. RESUME OTOBOS PER INDIVIDU (Nama × Jenis Kontrak)")
+        df_otobos_ai = otobos[["nama", "jenis_kontrak", "total_po", "on_time", "terlambat", "pct_ontime", "avg_real", "avg_headroom"]]
+        konteks_lines.append(df_otobos_ai.to_csv(index=False))
         konteks_lines.append("\n")
 
     # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem

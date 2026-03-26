@@ -222,7 +222,7 @@ def _render_sips_alert():     v_sips_alert.render(**st.session_state.get('_sips_
 pg = st.navigation(
     {
         "Executive Summary": [
-            st.Page(_render_summary, title="Rangkuman KPI", icon=":material/monitoring:"),
+            st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
         ],
         "PR-PO SAP": [
             st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
@@ -242,7 +242,7 @@ pg = st.navigation(
 )
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES = {"Rangkuman KPI Pengadaan Barang"}
+SUMMARY_TITLES = {"Executive Summary Pengadaan Barang"}
 SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
@@ -498,7 +498,7 @@ st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,1
 # FILTERS PR-PO SAP / SIPS: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 if st.session_state.filter_mode == 'sidebar' and is_summary:
-    st.sidebar.info("📌 Filter data untuk Rangkuman KPI akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
+    st.sidebar.info("📌 Filter data untuk Executive Summary akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True) # Spacer
 
 elif st.session_state.filter_mode == 'sidebar' and not is_sips:

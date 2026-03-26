@@ -1,7 +1,7 @@
 import streamlit as st
 
 def render(**kwargs):
-    st.title("📈 Rangkuman KPI")
+    st.title("📈 Executive Summary")
     st.info("Halaman ini masih dalam tahap pengembangan. Nantinya akan berisi rangkuman metrik gabungan dari sistem **PR-PO SAP** dan **SIPS** untuk keperluan rapat evaluasi/pimpinan.")
     
     st.markdown("---")
