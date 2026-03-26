@@ -20,6 +20,19 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+         {"Tanggal": "26 Mar 2026", "Versi": "v1.8.2", "Perubahan": """
+    - Menambahkan chart Ringkasan Kecpeatan per Purchasing Group x Jenis Tender di halaman Analisis Waktu Proses SIPS
+    - Menambahkan Halaman Alert SIPS:
+        - PR Pending Mendekati Kadaluarsa (> 30 Hari)
+        - Rekap Aging PR Pending (Open)
+        - Beban Pending per Karyawan
+        - Monitoring Status PR SIPS
+    - Menambahkan template halaman Executive Summary
+    - Mengubah tanggal filter jadi maksimal sesuai dengan data diupdate
+    - Menambahkan beberapa chart di Halaman Alert SAP
+        - List PO per Status
+        - Grafik PO Terlambat
+        - PO Outstanding (Belum GR, Belum Jatuh Tempo)"""},
         {"Tanggal": "13 Mar 2026", "Versi": "v1.8.1", "Perubahan": """
     - Menambahkan chart Top 10 Material: Efisiensi Terbesar di halaman Evaluasi Harga Barang
     - Menambahkan chart Ranking Vendor Keseluruhan di halaman Evaluasi Harga Barang
@@ -242,5 +255,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.1"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.2"])):
             st.markdown(item["Perubahan"])
