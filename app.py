@@ -552,10 +552,27 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
             elif not cur:                             st.session_state.filter_pgroup = ['All']
             st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
 
+        # Pastikan session state selalu valid (tidak pernah kosong)
+        if not st.session_state.get('filter_dept'):
+            st.session_state.filter_dept = ['All']
+        if not st.session_state.get('filter_pgroup'):
+            st.session_state.filter_pgroup = ['All']
+        if not st.session_state.get('filter_bagian'):
+            st.session_state.filter_bagian = ['All']
+
+        # Sinkronkan session state dengan options yang tersedia
+        _dept_opts = ['All'] + departments['department_code'].tolist()
+        if not any(v in _dept_opts for v in st.session_state.filter_dept):
+            st.session_state.filter_dept = ['All']
+        if not any(v in options_p_group for v in st.session_state.filter_pgroup):
+            st.session_state.filter_pgroup = ['All']
+        if not any(v in options_bagian for v in st.session_state.filter_bagian):
+            st.session_state.filter_bagian = ['All']
+
         # ── Department ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                  margin:0 0 2px 0; display:flex; align-items:center; gap:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M3 0a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3v-3.5a.5.5 0 0 1
@@ -569,10 +586,16 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
             Department
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect("Department",
-            options=['All'] + departments['department_code'].tolist(),
-            key="filter_dept", on_change=update_dept_logic, label_visibility="collapsed")
-        selected_department = st.session_state.filter_dept
+        _dept_default = [v for v in st.session_state.filter_dept if v in _dept_opts] or ['All']
+        _dept_sel = st.sidebar.multiselect(
+            "Department",
+            options=_dept_opts,
+            default=_dept_default,
+            on_change=update_dept_logic,
+            key="filter_dept",
+            label_visibility="collapsed"
+        )
+        selected_department = st.session_state.filter_dept or ['All']
         exclude_dept = False
         if 'All' not in selected_department and selected_department:
             exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
@@ -580,7 +603,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
         # ── Purchasing Group ──────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                  margin:8px 0 2px 0; display:flex; align-items:center; gap:6px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
                 <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
@@ -591,10 +614,16 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
             Purchasing Group
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect("Purchasing Group",
+        _pg_default = [v for v in st.session_state.filter_pgroup if v in options_p_group] or ['All']
+        _pg_sel = st.sidebar.multiselect(
+            "Purchasing Group",
             options=options_p_group,
-            key="filter_pgroup", on_change=update_pgroup_logic, label_visibility="collapsed")
-        selected_p_group = st.session_state.filter_pgroup
+            default=_pg_default,
+            on_change=update_pgroup_logic,
+            key="filter_pgroup",
+            label_visibility="collapsed"
+        )
+        selected_p_group = st.session_state.filter_pgroup or ['All']
         exclude_purchasing_group = False
         if 'All' not in selected_p_group and selected_p_group:
             exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
@@ -619,9 +648,17 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.pills("Bagian", options=options_bagian, selection_mode="multi",
-            key="filter_bagian", on_change=update_bagian_logic, label_visibility="collapsed")
-        selected_bagian = st.session_state.filter_bagian
+        _bagian_default = [v for v in st.session_state.filter_bagian if v in options_bagian] or ['All']
+        st.sidebar.pills(
+            "Bagian",
+            options=options_bagian,
+            default=_bagian_default,
+            selection_mode="multi",
+            key="filter_bagian",
+            on_change=update_bagian_logic,
+            label_visibility="collapsed"
+        )
+        selected_bagian = st.session_state.filter_bagian or ['All']
 
         # ── Date Range ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
@@ -672,6 +709,14 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             elif not cur:                             st.session_state.sips_filter_nama = ['All']
             st.session_state.sips_prev_nama = st.session_state.sips_filter_nama
 
+        # Pastikan session state SIPS selalu valid
+        if not st.session_state.get('sips_filter_nama'):
+            st.session_state.sips_filter_nama = ['All']
+        if not st.session_state.get('sips_filter_bagian'):
+            st.session_state.sips_filter_bagian = ['All']
+        if not st.session_state.get('sips_filter_pgroup'):
+            st.session_state.sips_filter_pgroup = ['All']
+
         # ── Filter Nama ───────────────────────────────────────────────────────
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -687,13 +732,17 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Nama
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect("Nama",
+        _nama_default = [v for v in st.session_state.sips_filter_nama if v in options_nama] or ['All']
+        sips_selected_nama = st.sidebar.multiselect(
+            "Nama",
             options=options_nama,
+            default=_nama_default,
             key="sips_filter_nama",
             on_change=update_nama_logic,
             label_visibility="collapsed"
         )
-        sips_selected_nama = st.session_state.sips_filter_nama
+        if not sips_selected_nama:
+            sips_selected_nama = ['All']
 
         bagian_data = load_data("""
             SELECT DISTINCT bagian FROM sips_employees
@@ -741,13 +790,17 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Purchasing Group
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.multiselect("Purchasing Group SIPS",
+        _pgsips_default = [v for v in st.session_state.sips_filter_pgroup if v in options_pgroup_sips] or ['All']
+        sips_selected_pgroup = st.sidebar.multiselect(
+            "Purchasing Group SIPS",
             options=options_pgroup_sips,
+            default=_pgsips_default,
             key="sips_filter_pgroup",
             on_change=update_pgroup_sips_logic,
             label_visibility="collapsed"
         )
-        sips_selected_pgroup = st.session_state.sips_filter_pgroup
+        if not sips_selected_pgroup:
+            sips_selected_pgroup = ['All']
 
         # ── Filter Bagian ─────────────────────────────────────────────────────
         st.sidebar.markdown("""
@@ -769,9 +822,18 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        st.sidebar.pills("Bagian SIPS", options=options_bagian_sips, selection_mode="multi",
-            key="sips_filter_bagian", on_change=update_bagian_sips_logic, label_visibility="collapsed")
-        sips_selected_bagian = st.session_state.sips_filter_bagian
+        _bagian_sips_default = [v for v in st.session_state.sips_filter_bagian if v in options_bagian_sips] or ['All']
+        sips_selected_bagian = st.sidebar.pills(
+            "Bagian SIPS",
+            options=options_bagian_sips,
+            default=_bagian_sips_default,
+            selection_mode="multi",
+            key="sips_filter_bagian",
+            on_change=update_bagian_sips_logic,
+            label_visibility="collapsed"
+        )
+        if not sips_selected_bagian:
+            sips_selected_bagian = ['All']
 
         st.sidebar.markdown("""
         <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer' 
