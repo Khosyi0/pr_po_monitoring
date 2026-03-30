@@ -20,7 +20,7 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
-         {"Tanggal": "26 Mar 2026", "Versi": "v1.8.2", "Perubahan": """
+        {"Tanggal": "26 Mar 2026", "Versi": "v1.8.2", "Perubahan": """
     - Menambahkan chart Ringkasan Kecpeatan per Purchasing Group x Jenis Tender di halaman Analisis Waktu Proses SIPS
     - Menambahkan Halaman Alert SIPS:
         - PR Pending Mendekati Kadaluarsa (> 30 Hari)
@@ -29,11 +29,12 @@ def render(**kwargs):
         - Monitoring Status PR SIPS
     - Menambahkan template halaman Executive Summary
     - Mengubah tanggal filter jadi maksimal sesuai dengan data diupdate
+    - Menambahkan filter Purchasing Group pada bagian SIPS
     - Menambahkan beberapa chart di Halaman Alert SAP
         - List PO per Status
         - Grafik PO Terlambat
         - PO Outstanding (Belum GR, Belum Jatuh Tempo)"""},
-        {"Tanggal": "13 Mar 2026", "Versi": "v1.8.1", "Perubahan": """
+        {"Tanggal": "17 Mar 2026", "Versi": "v1.8.1", "Perubahan": """
     - Menambahkan chart Top 10 Material: Efisiensi Terbesar di halaman Evaluasi Harga Barang
     - Menambahkan chart Ranking Vendor Keseluruhan di halaman Evaluasi Harga Barang
     - Menambahkan fitur tombol ke halaman atas ketika scroll terlalu bawah

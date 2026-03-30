@@ -282,18 +282,21 @@ st.markdown(f"""
 }}
 /* ── Section headers → satu baris pill toggle ────────────────────────── */
 [data-testid="stSidebarNavSeparator"] {{ display: none; }}
+
+/* Reset: semua item di dalam nav menjadi block full-width dulu */
 [data-testid="stSidebarNavItems"] {{
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 0 !important;
-    padding: 6px 10px 2px 10px !important;
-    align-items: center !important;
+    display: block !important;
+    padding: 4px 0 2px 0 !important;
 }}
-[data-testid="stSidebarNavItems"] > div:has(> p) {{
+
+/* Khusus div yang HANYA berisi <p> (label section, bukan nav link):
+   tampilkan sebagai baris flex agar beberapa pill bisa sejajar */
+[data-testid="stSidebarNavItems"] > div:has(> p):not(:has(> a)) {{
     display: inline-flex !important;
     width: auto !important;
-    margin: 0 !important;
+    margin: 0 6px 0 10px !important;
 }}
+
 /* Tiap label section = pill */
 [data-testid="stSidebarNavItems"] > div > p {{
     font-size: 13px !important;
@@ -310,6 +313,7 @@ st.markdown(f"""
     color: var(--text-color) !important;
     opacity: 0.6 !important;
 }}
+
 /* Pill aktif */
 [data-testid="stSidebarNavItems"] > div:nth-of-type({active_div}) > p {{
     background: #ff4b4b !important;
@@ -317,13 +321,15 @@ st.markdown(f"""
     opacity: 1 !important;
     border-color: #ff4b4b !important;
 }}
-/* Nav link div block */
+
+/* Div yang berisi nav link <a> → full width block */
 [data-testid="stSidebarNavItems"] > div:has(> a) {{
     width: 100% !important;
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
 }}
+
 /* ── Nav link style ──────────────────────────────────────────────────── */
 [data-testid="stSidebarNav"] a {{
     border-radius: 8px;
@@ -334,6 +340,8 @@ st.markdown(f"""
     text-decoration: none;
     color: var(--text-color) !important;
     transition: background-color 0.15s ease;
+    overflow: visible !important;
+    white-space: nowrap !important;
 }}
 [data-testid="stSidebarNav"] a:hover {{
     background-color: var(--secondary-background-color);
@@ -353,6 +361,9 @@ st.markdown(f"""
 }}
 [data-testid="stSidebarNav"] span[data-testid="stSidebarNavLinkText"] {{
     font-size: 15px;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    white-space: nowrap !important;
 }}
 </style>
 """, unsafe_allow_html=True)
