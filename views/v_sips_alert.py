@@ -285,7 +285,7 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
         if st.session_state.get(key_beban, False):
             st.info("""\
 **Beban Pending per Karyawan**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per karyawan,
-dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`realisasi_sla`).
+dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`standar_sla`).
 
 Bar 🟡 kuning (Nilai < 1) = **0** - Masih dalam batas SLA.
 Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan segera.
@@ -293,7 +293,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
 **Formula Excel:** (SIPS)
 - Filter **Status** selain `Closed` dan `Proses PO`
 - Filter **Nama** per karyawan
-- Tambah kolom `= (TODAY() - Tanggal Disposisi Buyer) / realisasi_sla`
+- Tambah kolom `= (TODAY() - Tanggal Disposisi Buyer) / standar_sla`
 - Kelompokkan output: 0 jika rasio < 1, dan 1 jika rasio >= 1
             """)
 
@@ -302,16 +302,16 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
         beban_query = f"""
         SELECT
             nama,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) < 1 THEN 1 END) AS pr_kuning,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) >= 1 THEN 1 END) AS pr_merah
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) AS pr_kuning,
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END) AS pr_merah
         FROM vw_sips
         WHERE {where_all}
           AND status NOT IN ('Closed', 'Proses PO')
           AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY nama
         ORDER BY (
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) < 1 THEN 1 END) + 
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) >= 1 THEN 1 END)
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) + 
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END)
         ) ASC
         """
 
