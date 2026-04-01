@@ -469,9 +469,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             # Pilihan status untuk filter tabel
             available_statuses = po_status_data['po_status'].tolist()
             status_labels = {
-                'A':        '🔵 A — Aktif / Dalam Proses',
-                'B':        '🟢 B — Selesai / Closed',
-                '(kosong)': '⚪ (kosong) — Belum Ditentukan',
+                'A':        '🔵 A - Aktif / Dalam Proses',
+                'B':        '🟢 B - Selesai / Closed',
+                '(kosong)': '⚪ (kosong) - Belum Ditentukan',
             }
 
             title_col2, btn_col2 = st.columns([10, 1])
@@ -523,7 +523,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
             st.caption("Pilih status untuk menampilkan daftar PO yang termasuk dalam kategori tersebut.")
 
-            # Pills pemilih status — default pilih semua yang tersedia
+            # Pills pemilih status - default pilih semua yang tersedia
             pill_opts = [s for s in ['A', 'B', '(kosong)'] if s in available_statuses]
             pill_labels = [status_labels.get(s, s) for s in pill_opts]
 
@@ -557,25 +557,25 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             list_po_query = f"""
             SELECT
                 poh.nomor_po,
+                poi.item_po,
                 poh.date_ordered::DATE                                          AS tgl_po,
+                poi.del_date_po                                                 AS due_date,
                 COALESCE(NULLIF(TRIM(poh.po_status), ''), '(kosong)')           AS po_status,
                 v.vendor_name,
                 poh.purchasing_group,
-                COUNT(poi.item_po)                                              AS jumlah_item,
-                COALESCE(SUM(poi.total_amount_local_curr), 0)                   AS total_nilai,
-                MAX(COALESCE(poh.delivery_completed, ''))                       AS delivery_completed
+                poi.description,
+                poi.total_amount_local_curr                                     AS nilai_item,
+                poi.on_time_delivery                                            AS delivery_completed
             FROM purchase_orders poh
             JOIN po_items poi ON poh.nomor_po = poi.nomor_po
             LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
             WHERE poh.date_ordered::DATE >= '{date_from}'
-              AND poh.date_ordered::DATE <= '{date_to}'
-              AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
-              AND {dept_cond}
-              AND {pg_cond}
-              AND {status_where}
-            GROUP BY poh.nomor_po, poh.date_ordered, poh.po_status, v.vendor_name,
-                     poh.purchasing_group, poh.delivery_completed
-            ORDER BY poh.date_ordered DESC, poh.nomor_po
+            AND poh.date_ordered::DATE <= '{date_to}'
+            AND {bagian_po_cond.replace('bagian_po', 'poi.bagian_po')}
+            AND {dept_cond}
+            AND {pg_cond}
+            AND {status_where}
+            ORDER BY poh.date_ordered DESC, poh.nomor_po, poi.item_po
             LIMIT 500
             """
 
@@ -583,18 +583,19 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 list_po_data = load_data(list_po_query)
 
             if not list_po_data.empty:
-                badge_color_map = {'A': '#1f77b4', 'B': '#09ab3b', '(kosong)': '#888888'}
-
-                # Format kolom
                 df_display_po = list_po_data.copy()
                 df_display_po['tgl_po'] = pd.to_datetime(
                     df_display_po['tgl_po'], errors='coerce'
                 ).dt.strftime('%Y-%m-%d')
-                df_display_po['total_nilai'] = df_display_po['total_nilai'].apply(
+                df_display_po['due_date'] = pd.to_datetime(
+                    df_display_po['due_date'], errors='coerce'
+                ).dt.strftime('%Y-%m-%d')
+                df_display_po['nilai_item'] = df_display_po['nilai_item'].apply(
                     lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
                 )
+                df_display_po['description'] = df_display_po['description'].str[:50] if 'description' in df_display_po.columns else ""
 
-                count_label = f"Menampilkan **{len(df_display_po):,}** PO"
+                count_label = f"Menampilkan **{len(df_display_po):,}** item PO"
                 if len(df_display_po) == 500:
                     count_label += " *(limit 500, gunakan filter untuk mempersempit hasil)*"
                 st.caption(count_label)
@@ -602,13 +603,15 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.dataframe(
                     df_display_po.rename(columns={
                         'nomor_po':           'Nomor PO',
+                        'item_po':            'Item',
                         'tgl_po':             'Tgl PO',
+                        'due_date':           'Due Date',
                         'po_status':          'PO Status',
                         'vendor_name':        'Vendor',
                         'purchasing_group':   'Purchasing Group',
-                        'jumlah_item':        'Jumlah Item',
-                        'total_nilai':        'Total Nilai (Rp)',
-                        'delivery_completed': 'Delivery Completed',
+                        'description':        'Deskripsi',
+                        'nilai_item':         'Nilai Item (Rp)',
+                        'delivery_completed': 'Status Pengiriman',
                     }),
                     use_container_width=True,
                     height=380,
@@ -619,7 +622,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 csv_list_po['tgl_po'] = pd.to_datetime(
                     csv_list_po['tgl_po'], errors='coerce'
                 ).dt.strftime('%Y-%m-%d')
-                csv_list_po['total_nilai'] = csv_list_po['total_nilai'].apply(
+                csv_list_po['nilai_item'] = csv_list_po['nilai_item'].apply(
                     lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
                 )
                 st.download_button(
@@ -849,7 +852,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             tooltip = "Hide Formula" if is_open else "Show Formula"
             st.button(icon, key=f"btn_{key_po_outstanding}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_po_outstanding})
 
-        st.caption("PO yang barangnya belum diterima (IN PROGRESS) namun masih dalam batas delivery date — perlu dipantau agar tidak berubah menjadi overdue.")
+        st.caption("PO yang barangnya belum diterima (IN PROGRESS) namun masih dalam batas delivery date - perlu dipantau agar tidak berubah menjadi overdue.")
 
         if st.session_state.get(key_po_outstanding, False):
             st.info("""\
@@ -882,7 +885,7 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-        # Filter sisa hari — pills untuk memilih rentang
+        # Filter sisa hari - pills untuk memilih rentang
         sisa_hari_opts = ["Semua", "≤ 7 Hari", "8–14 Hari", "15–30 Hari", "> 30 Hari"]
         selected_sisa = st.pills(
             "Filter Sisa Hari",
@@ -910,14 +913,14 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
         SELECT
             poh.nomor_po,
             poi.item_po,
-            poh.date_ordered::DATE                          AS tgl_po,
-            poi.del_date_po                                 AS target_delivery,
-            (poi.del_date_po::DATE - CURRENT_DATE)::INT    AS sisa_hari,
+            poh.date_ordered::DATE                                  AS tgl_po,
+            poi.del_date_po                                         AS target_delivery,
+            (poi.del_date_po::DATE - CURRENT_DATE)::INT             AS sisa_hari,
             v.vendor_name,
             poh.purchasing_group,
-            poi.description                                 AS deskripsi,
-            poi.total_amount_local_curr                     AS nilai_po,
-            poi.on_time_delivery                            AS status_pengiriman
+            poi.description                                         AS deskripsi,
+            poi.total_amount_local_curr                             AS nilai_po,
+            poi.on_time_delivery                                    AS status_pengiriman
         FROM po_items poi
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
         LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
@@ -1067,8 +1070,8 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
         # 5. List PO per Status
         if 'list_po_data' in locals() and not list_po_data.empty:
             konteks_lines.append(f"## 5. LIST PO PER STATUS (Top 20 terbaru)")
-            df_list_simple = list_po_data[['nomor_po', 'tgl_po', 'po_status', 'vendor_name',
-                                           'purchasing_group', 'jumlah_item', 'total_nilai']].head(20)
+            df_list_simple = list_po_data[['nomor_po', 'item_po', 'tgl_po', 'po_status', 'vendor_name',
+                                           'purchasing_group', 'nilai_item']].head(20)
             konteks_lines.append(df_list_simple.to_csv(index=False))
             konteks_lines.append("\n")
         else:

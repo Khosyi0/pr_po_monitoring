@@ -49,7 +49,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ALERT 1: PR Pending > 30 Hari (status Open)
+    # ALERT 1: PR Pending > 30 Hari (Selain Closed & Proses PO)
     # ══════════════════════════════════════════════════════════════════════════
     title_col, btn_col = st.columns([10, 1])
     with title_col:
@@ -76,11 +76,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             on_click=toggle_state, kwargs={"state_key": key_sips_pr}
         )
 
-    st.caption("Menampilkan PR SIPS berstatus Open yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
+    st.caption("Menampilkan PR SIPS berstatus selain 'Closed' dan 'Proses PO' yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
 
     if st.session_state.get(key_sips_pr, False):
         st.info("""\
-**PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR SIPS berstatus *Open* yang belum
+**PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR SIPS berstatus *selain Closed dan Proses PO* yang belum
 diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Disposisi Buyer**.
 
 **Kolom yang ditampilkan:**
@@ -97,7 +97,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
 | `Umur (Hari)` | Selisih hari dari Tanggal Disposisi hingga hari ini |
 
 **Formula Excel:** (SIPS)
-- Filter **Status** = `Open`
+- Filter **Status** selain `Closed` dan `Proses PO`
 - Tambah kolom `= TODAY() - Tanggal Disposisi Buyer`
 - Filter nilai > 30
         """)
@@ -117,7 +117,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         (CURRENT_DATE - tgl_disposisi_buyer)::INT       AS umur_hari
     FROM vw_sips
     WHERE {where_all}
-      AND status = 'Open'
+      AND status NOT IN ('Closed', 'Proses PO')
       AND tgl_disposisi_buyer IS NOT NULL
       AND (CURRENT_DATE - tgl_disposisi_buyer) > 30
     ORDER BY umur_hari DESC, nama, no_pr
@@ -196,7 +196,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
 
         if st.session_state.get(key_aging, False):
             st.info("""\
-**Rekap Aging PR Pending (Open)**: Bar chart jumlah PR Open yang belum diproses,
+**Rekap Aging PR Pending (Open)**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO),
 dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
 
 **Cara membaca chart:**
@@ -208,12 +208,12 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
 | > 60 Hari | 🔴 Kritis, eskalasi segera |
 
 **Formula Excel:** (SIPS)
-- Filter **Status** = `Open`
+- Filter **Status** selain `Closed` dan `Proses PO`
 - Tambah kolom `= TODAY() - Tanggal Disposisi Buyer`
 - Filter sesuai range yang diinginkan
             """)
 
-        st.caption("Jumlah PR Open berdasarkan lama menunggu sejak disposisi.")
+        st.caption("Jumlah PR Pending (selain Closed & Proses PO) berdasarkan lama menunggu sejak disposisi.")
 
         aging_query = f"""
         SELECT
@@ -226,7 +226,7 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
             COUNT(*) AS total_pr
         FROM vw_sips
         WHERE {where_all}
-          AND status = 'Open'
+          AND status NOT IN ('Closed', 'Proses PO')
           AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY 1
         ORDER BY MIN(CURRENT_DATE - tgl_disposisi_buyer)
@@ -284,33 +284,34 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
 
         if st.session_state.get(key_beban, False):
             st.info("""\
-**Beban Pending per Karyawan**: Bar chart jumlah PR Open yang belum diproses per karyawan,
-dibedakan berdasarkan apakah sudah melewati 30 hari atau belum.
+**Beban Pending per Karyawan**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per karyawan,
+dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`realisasi_sla`).
 
-Bar 🔴 merah = PR yang sudah > 30 hari menunggu → perlu perhatian lebih.
-Bar 🔵 biru = PR yang masih dalam batas wajar (≤ 30 hari).
+Bar 🟡 kuning (Nilai < 1) = **0** - Masih dalam batas SLA.
+Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan segera.
 
 **Formula Excel:** (SIPS)
-- Filter **Status** = `Open`
+- Filter **Status** selain `Closed` dan `Proses PO`
 - Filter **Nama** per karyawan
-- Tambah kolom `= TODAY() - Tanggal Disposisi Buyer`
+- Tambah kolom `= (TODAY() - Tanggal Disposisi Buyer) / realisasi_sla`
+- Kelompokkan output: 0 jika rasio < 1, dan 1 jika rasio >= 1
             """)
 
-        st.caption("Jumlah PR Open per buyer, merah = sudah > 30 hari.")
+        st.caption("Jumlah PR Pending per buyer berdasarkan rasio pencapaian SLA. 0 = Aman, 1 = Overdue.")
 
         beban_query = f"""
         SELECT
             nama,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 30 THEN 1 END) AS pr_normal,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) > 30  THEN 1 END) AS pr_kritis
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) < 1 THEN 1 END) AS pr_kuning,
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) >= 1 THEN 1 END) AS pr_merah
         FROM vw_sips
         WHERE {where_all}
-          AND status = 'Open'
+          AND status NOT IN ('Closed', 'Proses PO')
           AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY nama
         ORDER BY (
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 30 THEN 1 END) + 
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) > 30  THEN 1 END)
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) < 1 THEN 1 END) + 
+            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(realisasi_sla, 0) >= 1 THEN 1 END)
         ) ASC
         """
 
@@ -320,16 +321,16 @@ Bar 🔵 biru = PR yang masih dalam batas wajar (≤ 30 hari).
         if not beban_data.empty:
             fig_beban = go.Figure()
             fig_beban.add_bar(
-                y=beban_data['nama'], x=beban_data['pr_normal'],
-                name='≤ 30 Hari', orientation='h',
-                marker_color='#6c8ebf',
-                text=beban_data['pr_normal'].apply(lambda x: str(x) if x > 0 else ''),
+                y=beban_data['nama'], x=beban_data['pr_kuning'],
+                name='0 (Dalam SLA)', orientation='h',
+                marker_color='#f0a500', # Kuning
+                text=beban_data['pr_kuning'].apply(lambda x: str(x) if x > 0 else ''),
             )
             fig_beban.add_bar(
-                y=beban_data['nama'], x=beban_data['pr_kritis'],
-                name='> 30 Hari (Kritis)', orientation='h',
-                marker_color='#e03c3c',
-                text=beban_data['pr_kritis'].apply(lambda x: str(x) if x > 0 else ''),
+                y=beban_data['nama'], x=beban_data['pr_merah'],
+                name='1 (Overdue SLA)', orientation='h',
+                marker_color='#e03c3c', # Merah
+                text=beban_data['pr_merah'].apply(lambda x: str(x) if x > 0 else ''),
             )
             fig_beban.update_traces(textposition='inside', textfont=dict(color='white'))
             fig_beban.update_layout(

@@ -408,7 +408,7 @@ st.components.v1.html("""
 current_year = datetime.now().year
 default_start_date = datetime(current_year, 1, 1).date()
 
-# Tanggal terakhir data diperbarui — sesuaikan setiap kali ETL baru dijalankan
+# Tanggal terakhir data diperbarui - sesuaikan setiap kali ETL baru dijalankan
 DATA_UPDATE_SAP  = datetime(2026, 2, 28).date()
 DATA_UPDATE_SIPS = datetime(2026, 2, 28).date()
 
@@ -905,7 +905,7 @@ filter_conditions = build_filter_conditions(
 )
 bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, exclude_bagian)
 
-# Kondisi terpisah untuk dept & purchasing_group — dipakai oleh query yang
+# Kondisi terpisah untuk dept & purchasing_group - dipakai oleh query yang
 # JOIN langsung ke po_items / purchase_orders (bukan via vw_pr_po_complete)
 dept_cond = build_dept_cond('poi.department_code', selected_department, exclude_dept)
 pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   exclude_purchasing_group)
