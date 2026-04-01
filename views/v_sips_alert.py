@@ -334,7 +334,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             )
             fig_beban.update_traces(textposition='inside', textfont=dict(color='white'))
             fig_beban.update_layout(
-                barmode='stack',
+                barmode='group',
                 height=max(280, len(beban_data) * 44),
                 margin=dict(t=10, b=10, l=10, r=30),
                 legend=dict(orientation='h', yanchor='bottom', y=1.01),
