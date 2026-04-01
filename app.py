@@ -31,14 +31,17 @@ from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 
-# Views - Summary (Baru)
-from views import v_summary
+# Views - Executive Summary
+from views import v_summary, v_isu
 
 # Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
 # Views - SIPS
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
+
+# Views - Lainnya
+from views import v_tren_harga_bb, v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -205,6 +208,7 @@ div[data-testid="stDialog"] > div > div {
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_summary():      v_summary.render(**st.session_state.get('_summary_view_args', {}))
+def _render_isu():          v_isu.render(**st.session_state.get('_summary_view_args', {}))
 def _render_dashboard():    v_dashboard.render(**st.session_state.get('_view_args', {}))
 def _render_detail():       v_detail.render(**st.session_state.get('_view_args', {}))
 def _render_evaluasi():     v_evaluasi.render(**st.session_state.get('_view_args', {}))
@@ -214,6 +218,11 @@ def _render_sips_dashboard(): v_sips_dashboard.render(**st.session_state.get('_s
 def _render_sips_detail():    v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_alert():     v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
+def _render_tren_harga_bb():         v_tren_harga_bb.render(**st.session_state.get('_summary_view_args', {}))
+def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
+def _render_monitoring_sparepart_ln(): v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
+def _render_searching_ex_po():       v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
+def _render_monitoring_kontrak():    v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
@@ -223,6 +232,7 @@ pg = st.navigation(
     {
         "Executive Summary": [
             st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
+            st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
         ],
         "PR-PO SAP": [
             st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
@@ -237,16 +247,25 @@ pg = st.navigation(
             st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
             st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
         ],
+        "Lainnya": [
+            st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
+            st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
+            st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
+            st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
+            st.Page(_render_monitoring_kontrak,      title="Monitoring Kontrak",             icon=":material/contract:"),
+        ],
     },
     position="sidebar",
 )
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES = {"Executive Summary Pengadaan Barang"}
-SIPS_TITLES = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
+SUMMARY_TITLES = {"Executive Summary", "Isu"}
+SIPS_TITLES    = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
+LAINNYA_TITLES = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak"}
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
 is_sips      = current_page in SIPS_TITLES
+is_lainnya   = current_page in LAINNYA_TITLES
 
 # Tutup changelog otomatis saat navigasi
 if 'last_page' not in st.session_state:
@@ -259,11 +278,13 @@ if current_page != st.session_state.last_page:
 # CSS: section headers menjadi toggle pill SAP / SIPS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Pill aktif: div ke-1 = Summary, div ke-2 = PR-PO SAP, div ke-3 = SIPS
+# Pill aktif: div ke-1 = Summary, div ke-2 = PR-PO SAP, div ke-3 = SIPS, div ke-4 = Lainnya
 if is_summary:
     active_div = "1"
 elif is_sips:
     active_div = "3"
+elif is_lainnya:
+    active_div = "4"
 else:
     active_div = "2"
 
@@ -408,7 +429,7 @@ st.components.v1.html("""
 current_year = datetime.now().year
 default_start_date = datetime(current_year, 1, 1).date()
 
-# Tanggal terakhir data diperbarui - sesuaikan setiap kali ETL baru dijalankan
+# Tanggal terakhir data diperbarui — sesuaikan setiap kali ETL baru dijalankan
 DATA_UPDATE_SAP  = datetime(2026, 2, 28).date()
 DATA_UPDATE_SIPS = datetime(2026, 2, 28).date()
 
@@ -511,6 +532,10 @@ st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,1
 if st.session_state.filter_mode == 'sidebar' and is_summary:
     st.sidebar.info("📌 Filter data untuk Executive Summary akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True) # Spacer
+
+elif st.session_state.filter_mode == 'sidebar' and is_lainnya:
+    st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi.")
+    st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 elif st.session_state.filter_mode == 'sidebar' and not is_sips:
     try:
@@ -905,7 +930,7 @@ filter_conditions = build_filter_conditions(
 )
 bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, exclude_bagian)
 
-# Kondisi terpisah untuk dept & purchasing_group - dipakai oleh query yang
+# Kondisi terpisah untuk dept & purchasing_group — dipakai oleh query yang
 # JOIN langsung ke po_items / purchase_orders (bukan via vw_pr_po_complete)
 dept_cond = build_dept_cond('poi.department_code', selected_department, exclude_dept)
 pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   exclude_purchasing_group)
@@ -1059,7 +1084,7 @@ st.markdown("---")
 col_foot1, col_foot2 = st.columns([4, 1])
 
 with col_foot1:
-    system_label = "SIPS" if is_sips else "PR-PO SAP"
+    system_label = "SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP")
     st.markdown(
         f"<div style='color:#666; margin-top:10px;'>"
         f"Monitoring Dashboard - {system_label} | v1.8.2 | "
