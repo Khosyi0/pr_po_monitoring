@@ -430,8 +430,8 @@ current_year = datetime.now().year
 default_start_date = datetime(current_year, 1, 1).date()
 
 # Tanggal terakhir data diperbarui — sesuaikan setiap kali ETL baru dijalankan
-DATA_UPDATE_SAP  = datetime(2026, 2, 28).date()
-DATA_UPDATE_SIPS = datetime(2026, 2, 28).date()
+DATA_UPDATE_SAP  = datetime(2026, 3, 31).date()
+DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
 
 date_from                = default_start_date
 date_to                  = DATA_UPDATE_SAP
