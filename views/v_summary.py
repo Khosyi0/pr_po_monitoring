@@ -187,7 +187,7 @@ def render(load_data, **kwargs):
 
     current_year = datetime.now().year
     default_start = datetime(current_year, 1, 1).date()
-    DATA_UPDATE   = datetime(2026, 2, 28).date()
+    DATA_UPDATE   = datetime(2026, 3, 31).date()
 
     date_from = kwargs.get('date_from', default_start)
     date_to   = kwargs.get('date_to', DATA_UPDATE)
