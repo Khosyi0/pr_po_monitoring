@@ -427,7 +427,7 @@ def _render_feed(is_admin: bool):
     if not is_admin:
         st.markdown("""
             <div class="viewer-banner">
-                👁 &nbsp;Anda login sebagai <b>Viewer</b> — hanya dapat membaca isu.
+                👁 &nbsp;Anda login sebagai <b>Viewer</b>, hanya dapat membaca isu.
                 Hubungi administrator untuk membuat atau mengedit isu.
             </div>
         """, unsafe_allow_html=True)
