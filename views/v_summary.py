@@ -357,12 +357,11 @@ def render(load_data, **kwargs):
         ), unsafe_allow_html=True)
 
     with c6:
-        efis_color = "green" if savings_pct >= 5 else ("orange" if savings_pct >= 0 else "red")
         st.markdown(_card(
             ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)",
             f"{format_number(savings_pct, decimals=2)}%",
-            "Rata-rata penghematan dari nilai OE per item PO",
-            efis_color,
+            "Target: > 2%",
+            "green",
         ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -377,7 +376,8 @@ def render(load_data, **kwargs):
         st.markdown(_card(
             ICONS["house"], "Pengelolaan Anggaran Operasional",
             "-",
-            "Data anggaran belum tersedia",
+            "Target: ≤ 100%",
+            "green",
         ), unsafe_allow_html=True)
 
     with c8:
@@ -388,12 +388,11 @@ def render(load_data, **kwargs):
         ), unsafe_allow_html=True)
 
     with c9:
-        lt_color = "green" if avg_lt_val <= 30 else ("orange" if avg_lt_val <= 55 else "red")
         st.markdown(_card(
             ICONS["clock"], "Kecepatan Proses PO",
             f"{format_number(avg_lt_val, decimals=2)} Hari",
-            f"1st Full Release → Date Ordered · Target ≤ 55 hari",
-            lt_color,
+            "Target: ≤ 55 Hari",
+            "green",
         ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -405,28 +404,27 @@ def render(load_data, **kwargs):
     c10, c11, c12 = st.columns(3)
 
     with c10:
-        kirim_color = _pct_color(pct_kirim)
         st.markdown(_card(
             ICONS["truck"], "% Pengiriman Barang (GR/PO)",
             f"{format_number(pct_kirim, decimals=1)}%",
-            f"{format_number(po_delivered)} item GR dari {format_number(total_po)} item PO",
-            kirim_color,
+            "Target: > 80%",
+            "green",
         ), unsafe_allow_html=True)
 
     with c11:
-        tepat_color = _pct_color(ketepatan, good=90, warn=70)
         st.markdown(_card(
             ICONS["check_circle"], "Ketepatan Pengiriman Barang",
             f"{format_number(ketepatan, decimals=1)}%",
-            f"{format_number(po_ontime)} tepat waktu dari {format_number(po_del_tot)} yang selesai",
-            tepat_color,
+            "Target: > 90%",
+            "green",
         ), unsafe_allow_html=True)
 
     with c12:
         st.markdown(_card(
             ICONS["search"], "Pemenuhan SLA OTOBOS",
             "-",
-            "Data OTOBOS tidak tersedia di sistem ini",
+            "Target: > 90%",
+            "green",
         ), unsafe_allow_html=True)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -441,14 +439,16 @@ def render(load_data, **kwargs):
         st.markdown(_card(
             ICONS["lock"], "Pemenuhan Izin Impor",
             "-",
-            "Data izin impor tidak tersedia di sistem ini",
+            "Target: 100%",
+            "green",
         ), unsafe_allow_html=True)
 
     with c14:
         st.markdown(_card(
             ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang",
             "-",
-            "Data pembebasan barang tidak tersedia di sistem ini",
+            "Target: 80%",
+            "green",
         ), unsafe_allow_html=True)
 
     # ── Footer note ───────────────────────────────────────────────────────────
