@@ -30,6 +30,7 @@ _icon_b64  = _load_icon_b64(_ICON_PATH)
 from config_db import load_data
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
+from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
 # Views - Executive Summary
 from views import v_summary, v_isu
@@ -59,84 +60,19 @@ st.set_page_config(
 
 inject_css()
 
-def render_login():
-    """Tampilkan halaman login. Panggil st.stop() setelah ini jika belum auth."""
-    # Sembunyikan sidebar saat halaman login
-    st.markdown("""
-        <style>
-            [data-testid="stSidebar"] { display: none; }
-            [data-testid="stSidebarNav"] { display: none; }
-            .login-container {
-                max-width: 400px;
-                margin: 80px auto 0 auto;
-                padding: 40px;
-                border-radius: 16px;
-                border: 1px solid rgba(128,128,128,0.2);
-                background: var(--background-color);
-                box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-            }
-        </style>
-    """, unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# AUTENTIKASI  ← diganti total ke sistem username+password via auth.py
+# ─────────────────────────────────────────────────────────────────────────────
 
-    col_l, col_m, col_r = st.columns([1, 2, 1])
-    with col_m:
-        st.markdown("""
-            <div style='text-align:center; margin-bottom: 24px;'>
-        """, unsafe_allow_html=True)
-
-        # Tampilkan ikon dashboard jika tersedia, fallback ke emoji
-        if _icon_b64:
-            st.markdown(
-                f"<div style='text-align:center;'>"
-                f"<img src='data:image/png;base64,{_icon_b64}' "
-                f"width='90' height='90' style='border-radius:16px; margin-bottom:12px;'>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown("<div style='text-align:center; font-size:56px;'>📊</div>", unsafe_allow_html=True)
-
-        st.markdown("""
-                <h2 style='font-size:24px; text-align:center; margin-left:18px;'>Monitoring Dashboard</h2>
-                <p style='color: #888; font-size:14px; margin-bottom:18px; text-align:center;'>Pengadaan Barang</p>
-            </div>
-        """, unsafe_allow_html=True)
-
-        with st.form("login_form"):
-            password_input = st.text_input(
-                "Password",
-                type="password",
-                placeholder="Masukkan password...",
-                label_visibility="collapsed"
-            )
-            submitted = st.form_submit_button("Masuk", use_container_width=True, type="primary")
-
-        if submitted:
-            try:
-                correct_password = st.secrets["auth"]["password"]
-            except (KeyError, FileNotFoundError):
-                st.error("Konfigurasi auth tidak ditemukan di secrets.")
-                st.stop()
-
-            if password_input == correct_password:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Password salah. Silakan coba lagi.")
-
-        st.markdown("""
-            <p style='text-align:center; color:#aaa; font-size:12px; margin-top:24px;'>
-                Hubungi administrator jika lupa password.
-            </p>
-        """, unsafe_allow_html=True)
-
-# Inisialisasi state auth
+# Inisialisasi session state auth
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
 
-# Blok akses: stop di sini jika belum login
-if not st.session_state.authenticated:
-    render_login()
+# Blok akses: render_login() dari auth.py menangani tampilan & logika login.
+# Kembalikan True jika sudah login, False jika belum (lalu st.stop()).
+if not render_login():
     st.stop()
 
 # Scroll-to-top: dipanggil setelah auth agar tidak tampil di halaman login
@@ -151,7 +87,6 @@ def init_state(key, value):
         st.session_state[key] = value
 
 init_state('show_changelog',      False)
-init_state('filter_mode',          'sidebar')
 init_state('filter_mode',          'sidebar')
 # SAP filters
 init_state('filter_bagian',       ['All'])
@@ -174,7 +109,6 @@ init_state('sips_prev_pgroup',    ['All'])
 
 @st.dialog("Konfirmasi Logout")
 def dialog_logout():
-    # Paksa dialog ke tengah layar
     st.markdown("""
 <style>
 div[data-testid="stDialog"] > div > div {
@@ -186,9 +120,11 @@ div[data-testid="stDialog"] > div > div {
 }
 </style>
 """, unsafe_allow_html=True)
+    user = get_current_user()
+    nama = user['nama_lengkap'] if user else "User"
     st.markdown(
-        "<p style='text-align:center; font-size:15px; margin:8px 0 20px 0;'>"
-        "Yakin ingin keluar dari dashboard?</p>",
+        f"<p style='text-align:center; font-size:15px; margin:8px 0 20px 0;'>"
+        f"Yakin ingin keluar, <b>{nama}</b>?</p>",
         unsafe_allow_html=True
     )
     col_ya, col_tidak = st.columns(2)
@@ -196,7 +132,7 @@ div[data-testid="stDialog"] > div > div {
         if st.button("Ya, Logout", icon=":material/logout:",
                      use_container_width=True, type="primary",
                      key="dlg_logout_ya"):
-            st.session_state.authenticated = False
+            logout()
             st.rerun()
     with col_tidak:
         if st.button("Batal", icon=":material/close:",
@@ -477,8 +413,6 @@ st.sidebar.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# ── Theme toggle + Filter mode toggle ────────────────────────────────────────
-
 # ── Toggle filter mode + header ──────────────────────────────────────────────
 _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
 _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
@@ -531,7 +465,7 @@ st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,1
 # ══════════════════════════════════════════════════════════════════════════════
 if st.session_state.filter_mode == 'sidebar' and is_summary:
     st.sidebar.info("📌 Filter data untuk Executive Summary akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
-    st.sidebar.markdown("<br>", unsafe_allow_html=True) # Spacer
+    st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 elif st.session_state.filter_mode == 'sidebar' and is_lainnya:
     st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi.")
@@ -577,7 +511,6 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
             elif not cur:                             st.session_state.filter_pgroup = ['All']
             st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
 
-        # Pastikan session state selalu valid (tidak pernah kosong)
         if not st.session_state.get('filter_dept'):
             st.session_state.filter_dept = ['All']
         if not st.session_state.get('filter_pgroup'):
@@ -585,7 +518,6 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
         if not st.session_state.get('filter_bagian'):
             st.session_state.filter_bagian = ['All']
 
-        # Sinkronkan session state dengan options yang tersedia
         _dept_opts = ['All'] + departments['department_code'].tolist()
         if not any(v in _dept_opts for v in st.session_state.filter_dept):
             st.session_state.filter_dept = ['All']
@@ -687,7 +619,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips:
 
         # ── Date Range ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
-        <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered' 
+        <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered'
            style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
@@ -722,7 +654,6 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             nama_data = load_data("""
                 SELECT DISTINCT nama FROM sips_employees
                 WHERE bagian IS NOT NULL ORDER BY nama
-
             """)
 
         options_nama = ['All'] + nama_data['nama'].tolist()
@@ -734,7 +665,6 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             elif not cur:                             st.session_state.sips_filter_nama = ['All']
             st.session_state.sips_prev_nama = st.session_state.sips_filter_nama
 
-        # Pastikan session state SIPS selalu valid
         if not st.session_state.get('sips_filter_nama'):
             st.session_state.sips_filter_nama = ['All']
         if not st.session_state.get('sips_filter_bagian'):
@@ -772,7 +702,6 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         bagian_data = load_data("""
             SELECT DISTINCT bagian FROM sips_employees
             WHERE bagian IS NOT NULL ORDER BY bagian
-
         """)
         options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
 
@@ -781,7 +710,6 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.sips_filter_bagian = ['All']
-            # Reset filter nama saat bagian berubah
             st.session_state.sips_filter_nama = ['All']
             st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
 
@@ -861,7 +789,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             sips_selected_bagian = ['All']
 
         st.sidebar.markdown("""
-        <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer' 
+        <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer'
            style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
@@ -884,8 +812,9 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
     except Exception as e:
         st.sidebar.error(f"Error loading SIPS filters: {e}")
 
-# ── Tombol Logout: selalu di paling bawah sidebar ───────────────────────────
+# ── Tombol Logout + info user: selalu di paling bawah sidebar ───────────────
 st.sidebar.markdown("---")
+render_user_info_sidebar()   # ← tampilkan nama, role, bagian user yang login
 if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout"):
     dialog_logout()
 
@@ -930,8 +859,6 @@ filter_conditions = build_filter_conditions(
 )
 bagian_pr_cond, bagian_po_cond = build_bagian_conditions(selected_bagian, exclude_bagian)
 
-# Kondisi terpisah untuk dept & purchasing_group — dipakai oleh query yang
-# JOIN langsung ke po_items / purchase_orders (bukan via vw_pr_po_complete)
 dept_cond = build_dept_cond('poi.department_code', selected_department, exclude_dept)
 pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   exclude_purchasing_group)
 
@@ -949,7 +876,7 @@ teks_filter_sips = f"""
 - Nama: {', '.join(sips_selected_nama)}
 """
 
-# ── Bangun / refresh konteks global untuk Melati ────────────────────────────────
+# ── Bangun / refresh konteks global untuk Melati ─────────────────────────────
 global_context = build_global_context(
     load_data      = load_data,
     is_sips        = is_sips,
@@ -980,8 +907,9 @@ global_context = build_global_context(
 )
 
 st.session_state['_summary_view_args'] = dict(
-    load_data = load_data,
+    load_data      = load_data,
     global_context = global_context,
+    is_admin       = is_admin(),    # ← flag role dikirim ke v_isu & v_summary
 )
 
 st.session_state['_view_args'] = dict(
