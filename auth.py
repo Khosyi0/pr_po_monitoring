@@ -171,6 +171,39 @@ def render_login() -> bool:
             </div>
         """, unsafe_allow_html=True)
 
+        # ── CSS animasi loading ────────────────────────────────────────────────
+        st.markdown("""
+        <style>
+        /* Spinner dots animasi saat proses login */
+        @keyframes _isu_bounce {
+            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+            40%            { transform: scale(1); opacity: 1;   }
+        }
+        .login-dots {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 0 6px 0;
+        }
+        .login-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #ff4b4b;
+            animation: _isu_bounce 1.4s ease-in-out infinite both;
+        }
+        .login-dot:nth-child(1) { animation-delay: -0.32s; }
+        .login-dot:nth-child(2) { animation-delay: -0.16s; }
+        .login-dot:nth-child(3) { animation-delay: 0s;     }
+        .login-msg {
+            text-align: center;
+            font-size: 13px;
+            opacity: 0.55;
+            margin: 0 0 4px 0;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
         # ── Form login ────────────────────────────────────────────────────────
         st.markdown("""
             <div style='
@@ -182,6 +215,42 @@ def render_login() -> bool:
             '>
         """, unsafe_allow_html=True)
 
+        # Cek apakah sedang dalam proses loading (setelah tombol ditekan)
+        _is_loading = st.session_state.get("_login_loading", False)
+
+        if _is_loading:
+            # ── Tampilkan animasi dots + pesan selama verifikasi ke DB ─────────
+            st.markdown("""
+                <div class="login-dots">
+                    <div class="login-dot"></div>
+                    <div class="login-dot"></div>
+                    <div class="login-dot"></div>
+                </div>
+                <p class="login-msg">Memverifikasi akun...</p>
+            """, unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Ambil credentials yang disimpan sementara di session state
+            _uname = st.session_state.pop("_login_username", "")
+            _pwd   = st.session_state.pop("_login_password", "")
+            st.session_state["_login_loading"] = False
+
+            # Lakukan verifikasi ke DB (ini yang menyebabkan delay)
+            _ensure_table()
+            _user = _verify_password(_uname, _pwd)
+
+            if _user:
+                st.session_state.authenticated = True
+                st.session_state.current_user  = _user
+                _update_last_login(_user["id"])
+            else:
+                st.session_state["_login_error"] = "Username atau password salah, atau akun tidak aktif."
+
+            st.rerun()
+            return False
+
+        # ── Form normal (belum submit) ─────────────────────────────────────────
         with st.form("login_form", clear_on_submit=False):
             st.markdown(
                 "<p style='font-size:13px;font-weight:600;margin:0 0 6px 0;opacity:0.7;'>"
@@ -215,20 +284,21 @@ def render_login() -> bool:
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # ── Proses login ──────────────────────────────────────────────────────
+        # ── Tampilkan error jika ada (dari run sebelumnya) ────────────────────
+        if st.session_state.get("_login_error"):
+            st.error(st.session_state.pop("_login_error"))
+
+        # ── Proses submit: simpan credentials & set loading flag ──────────────
         if submitted:
             if not username_input.strip() or not password_input:
                 st.error("Username dan password tidak boleh kosong.")
             else:
-                _ensure_table()
-                user = _verify_password(username_input, password_input)
-                if user:
-                    st.session_state.authenticated = True
-                    st.session_state.current_user  = user
-                    _update_last_login(user["id"])
-                    st.rerun()
-                else:
-                    st.error("Username atau password salah, atau akun tidak aktif.")
+                # Simpan credentials sementara & tandai sedang loading
+                # → rerun akan render animasi dots, lalu verifikasi ke DB
+                st.session_state["_login_loading"]  = True
+                st.session_state["_login_username"] = username_input.strip().lower()
+                st.session_state["_login_password"] = password_input
+                st.rerun()
 
         st.markdown("""
             <p style='text-align:center;color:#aaa;font-size:12px;margin-top:20px;'>
