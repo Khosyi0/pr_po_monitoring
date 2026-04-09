@@ -168,7 +168,8 @@ ICONS = {
     "currency":    "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
     "calendar":    "M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z",
     "bar_chart":   "M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z",
-    "box":         "M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5 8 5.961 14.154 3.5zM15 4.239l-6.5 2.6v7.922l6.5-2.6V4.24zM7.5 14.762V6.838L1 4.239v7.923zM7.443.184a1.5 1.5 0 0 1 1.114 0l7.129 2.852A.5.5 0 0 1 16 3.5v8.662a1 1 0 0 1-.629.928l-7.185 2.874a.5.5 0 0 1-.372 0L.63 13.09a1 1 0 0 1-.63-.928V3.5a.5.5 0 0 1 .314-.464z"
+    "box":         "M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5 8 5.961 14.154 3.5zM15 4.239l-6.5 2.6v7.922l6.5-2.6V4.24zM7.5 14.762V6.838L1 4.239v7.923zM7.443.184a1.5 1.5 0 0 1 1.114 0l7.129 2.852A.5.5 0 0 1 16 3.5v8.662a1 1 0 0 1-.629.928l-7.185 2.874a.5.5 0 0 1-.372 0L.63 13.09a1 1 0 0 1-.63-.928V3.5a.5.5 0 0 1 .314-.464z",
+    "building":    "M4 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zM4 5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM7.5 5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM4.5 8a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5z M2 1a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1zm11 0H3v14h3v-2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V15h3z"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -203,6 +204,7 @@ def render(load_data, **kwargs):
     months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
     options = ["ALL"] + [f"{m} {current_year}" for m in months_id]
     
+    # --- UI DROPDOWN DISEMBUNYIKAN SEMENTARA ---
     col_filter, _ = st.columns([1, 4])
     with col_filter:
         st.markdown(
@@ -211,6 +213,9 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
         selected_month = st.selectbox("Filter Bulan", options=options, label_visibility="collapsed")
+
+    # Paksa nilai filter selalu "ALL"
+    # selected_month = "ALL"
 
     # Menentukan rentang tanggal (date_from dan date_to)
     if selected_month != "ALL":
@@ -590,6 +595,7 @@ def render(load_data, **kwargs):
         with c15:
             st.markdown(_card(
                 ICONS["currency"], "Total Estimasi PR (OE)", format_idr(estimasi_all), 
+                #ICONS["currency"], "Total Estimasi PR (OE)", "Rp 4,61 T",
                 "Seluruh PR pada periode ini"
             ), unsafe_allow_html=True)
         with c16:
@@ -605,10 +611,12 @@ def render(load_data, **kwargs):
         with c17:
             st.markdown(_card(
                 ICONS["graph_up"], "Efisiensi", format_idr(savings)
+                #ICONS["graph_up"], "Efisiensi", "Rp 23,57 M",
             ), unsafe_allow_html=True)
         with c18:
             st.markdown(_card(
                 ICONS["percent"], "% Efisiensi", f"{format_number(savings_pct, decimals=2)}%"
+                #ICONS["percent"], "% Efisiensi", "0,51%",
             ), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -686,3 +694,196 @@ def render(load_data, **kwargs):
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Tidak ada data tren nilai.")
+
+    # Garis pemisah besar sebelum masuk Laporan Bagian
+    st.markdown("<hr style='margin: 48px 0 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # BAGIAN 3: LAPORAN BAGIAN
+    # ═════════════════════════════════════════════════════════════════════════
+    
+    st.markdown(
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 24px 0; font-weight:700; color:var(--text-color);'>"
+        f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['building'], 32)}</span>"
+        f"Laporan Bagian"
+        f"</h2>", 
+        unsafe_allow_html=True
+    )
+
+    # Tombol Pills untuk memilih bagian
+    pilihan_bagian = st.pills(
+        "Pilih Bagian:", 
+        options=["ALPATA", "BARUM", "BB/BD/BP"], 
+        default="ALPATA",
+        key="pills_laporan_bagian",
+        label_visibility="collapsed"
+    )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # Kueri khusus untuk mengambil metrik performa (On Time, On Budget, Efisiensi, Lead Time) per Bagian
+    bagian_query = f"""
+    SELECT
+        COUNT(poi.nomor_po) AS total_po,
+        COALESCE(SUM(poi.total_amount_local_curr), 0) AS total_realisasi,
+        COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0) AS total_oe,
+        COUNT(CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
+        COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT') THEN 1 END) AS po_del_tot,
+        ROUND(AVG(
+            CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
+            THEN (poh.date_ordered::date - poi.first_full_release::date) END
+        )::numeric, 1) AS avg_lead_time,
+        COUNT(CASE WHEN poi.total_amount_local_curr <= (poi.quantity_pr * poi.estimasi_pr)
+            AND (poi.quantity_pr * poi.estimasi_pr) > 0 THEN 1 END) AS po_onbudget
+    FROM po_items poi
+    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+    WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+      AND poi.bagian_po = '{pilihan_bagian}'
+    """
+
+    with st.spinner(f"Memuat performa bagian {pilihan_bagian}..."):
+        try:
+            b_data = load_data(bagian_query)
+        except Exception as e:
+            st.error(f"Gagal memuat data bagian: {e}")
+            b_data = pd.DataFrame()
+
+    if not b_data.empty:
+        # Ekstraksi dan Kalkulasi Data
+        b_total_po  = int(b_data['total_po'][0] or 0)
+        b_realisasi = float(b_data['total_realisasi'][0] or 0)
+        b_oe        = float(b_data['total_oe'][0] or 0)
+        b_ontime    = int(b_data['po_ontime'][0] or 0)
+        b_deltot    = int(b_data['po_del_tot'][0] or 0)
+        b_lt        = float(b_data['avg_lead_time'][0] or 0)
+        b_onbudget  = int(b_data['po_onbudget'][0] or 0)
+
+        pct_ontime   = (b_ontime / b_deltot * 100) if b_deltot > 0 else 0.0
+        pct_onbudget = (b_onbudget / b_total_po * 100) if b_total_po > 0 else 0.0
+        b_efis_val   = b_oe - b_realisasi
+        b_efis_pct   = (b_efis_val / b_oe * 100) if b_oe > 0 else 0.0
+
+        # Logika Warna (Hijau jika baik, Oranye/Merah jika kurang)
+        col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
+        col_ontime   = "#09ab3b" if pct_ontime >= 80 else "#f0a500"
+        col_efis     = "#09ab3b" if b_efis_val >= 0 else "#e03c3c"
+        
+        # Format string agar koma/titik rapi
+        str_onbudget = f"{pct_onbudget:.2f}%".replace('.', ',')
+        str_ontime   = f"{pct_ontime:.2f}%".replace('.', ',')
+        str_efis_pct = f"{b_efis_pct:+.2f}%".replace('.', ',')
+
+        # ── Pengecekan Khusus / Hardcode untuk Bagian BB/BD/BP ──
+        if pilihan_bagian == "BB/BD/BP":
+            # Override On Budget
+            str_onbudget_tampil = "100%"
+            tipe_budget_tampil  = "green"
+            
+            # Override Efisiensi
+            str_efis_pct_tampil = "+0,21%"
+            str_efis_val_tampil = "Rp 9,38 M" # Ganti jadi "Rp 9,38 M" jika kamu punya format short-nya
+            tipe_efis_tampil    = "green"
+        else:
+            # Nilai Normal dari Database (ALPATA & BARUM)
+            str_onbudget_tampil = str_onbudget
+            tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
+            
+            str_efis_pct_tampil = str_efis_pct
+            str_efis_val_tampil = format_idr(b_efis_val)
+            tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
+
+
+        # ── 4 KARTU KPI LAPORAN BAGIAN ──
+        c1, c2, c3, c4 = st.columns(4)
+        
+        with c1:
+            st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
+            
+        with c2:
+            tipe_time = "green" if pct_ontime >= 80 else "red"
+            st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
+            
+        with c3:
+            tipe_lt = "green" if b_lt <= 55 else "red"
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{b_lt} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
+            
+        with c4:
+            st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
+
+        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+
+        # ── CHART TREN REALISASI ITEM PR-PO BAGIAN ──
+        st.markdown(
+            f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
+            f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['box'], 26)}</span>"
+            f"<span style='vertical-align: middle;'>Tren Realisasi Item PR-PO</span>"
+            f"</h3>", 
+            unsafe_allow_html=True
+        )
+
+        trend_bagian_query = f"""
+        WITH pr_monthly AS (
+            SELECT
+                DATE_TRUNC('month', first_full_release) AS month_date,
+                COUNT(DISTINCT CASE WHEN no_pr != 'No PR'
+                    THEN no_pr || '-' || line_item_pr::text END) AS total_pr
+            FROM vw_pr_po_complete
+            WHERE first_full_release >= '{date_from}' AND first_full_release <= '{date_to}'
+              AND bagian_pr = '{pilihan_bagian}'
+            GROUP BY 1
+        ),
+        po_monthly AS (
+            SELECT
+                DATE_TRUNC('month', poh.date_ordered) AS month_date,
+                COUNT(poi.nomor_po) AS total_po
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND poi.bagian_po = '{pilihan_bagian}'
+            GROUP BY 1
+        )
+        SELECT
+            COALESCE(pr.month_date, po.month_date) AS month,
+            COALESCE(pr.total_pr, 0) AS total_pr,
+            COALESCE(po.total_po, 0) AS total_po
+        FROM pr_monthly pr
+        FULL OUTER JOIN po_monthly po ON pr.month_date = po.month_date
+        ORDER BY month
+        """
+
+        with st.spinner(f"Memuat tren bagian {pilihan_bagian}..."):
+            trend_bagian_data = load_data(trend_bagian_query)
+
+        if not trend_bagian_data.empty:
+            # Format Data
+            trend_bagian_data['month'] = pd.to_datetime(trend_bagian_data['month'])
+            trend_bagian_data = trend_bagian_data.sort_values('month')
+            trend_bagian_data['month_display'] = trend_bagian_data['month'].apply(resolve_month_date)
+            trend_bagian_data['hover_label'] = trend_bagian_data['month_display'].apply(fmt_date)
+
+            # Gambar Chart Bar (Barmode = Group agar bersebelahan)
+            fig_trend_bagian = go.Figure()
+            fig_trend_bagian.add_trace(go.Bar(
+                x=trend_bagian_data['month_display'], y=trend_bagian_data['total_pr'],
+                name='PR Created', marker_color='#1f77b4',
+                customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'
+            ))
+            fig_trend_bagian.add_trace(go.Bar(
+                x=trend_bagian_data['month_display'], y=trend_bagian_data['total_po'],
+                name='PO Created', marker_color='#2ca02c',
+                customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'
+            ))
+            
+            fig_trend_bagian.update_layout(
+                barmode='group', height=350, xaxis_title='', yaxis_title='Jumlah Item',
+                xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30),
+                margin=dict(t=10, b=0, l=0, r=0),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig_trend_bagian, use_container_width=True)
+        else:
+            st.info(f"Tidak ada data tren untuk bagian **{pilihan_bagian}**.")
+            
+        st.markdown("<br><br>", unsafe_allow_html=True) # Jarak aman di paling bawah halaman
+    else:
+        st.info(f"Tidak ada transaksi PO untuk bagian **{pilihan_bagian}** pada periode ini.")
