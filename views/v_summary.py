@@ -431,9 +431,9 @@ def render(load_data, **kwargs):
     with c1:
         st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "green"), unsafe_allow_html=True)
     with c2:
-        st.markdown(_card(ICONS["people"], "Sinergi PI Group", "-", "Target:", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["people"], "Sinergi PI Group", "Rp 99,27 M", "Target:", "green"), unsafe_allow_html=True)
     with c3:
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target:", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target: > 90%", "green"), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 2
