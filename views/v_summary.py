@@ -78,17 +78,33 @@ SUMMARY_CSS = """
     margin: 32px 0 12px 4px;
 }
 
+@media screen {
+    .pagebreak { display: none; }
+}
+
 /* ── Print styles ─────────────────────────────────────────────────────────── */
 @media print {
-    [data-testid="stSidebar"],
-    [data-testid="stSidebarNav"],
-    [data-testid="stToolbar"],
-    footer,
-    header { display: none !important; }
+    body {
+            zoom: 0.75 !important; 
+        }
 
-    @page {
-        margin: 1.5cm 1.5cm 1.5cm 1.5cm;
-        size: A4 portrait;
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarNav"],
+        [data-testid="stToolbar"],
+        footer,
+        header { display: none !important; }
+
+        @page {
+            margin: 1.5cm;
+            size: A4 portrait;
+        }
+
+    /* Memaksa pindah ke halaman baru saat di-print */
+    .pagebreak {
+        page-break-before: always !important;
+        break-before: page !important;
+        display: block !important;
+        height: 0;
     }
 
     .sum-card {
@@ -105,9 +121,19 @@ SUMMARY_CSS = """
     .sum-delta-red    { color: #b71c1c !important; }
     .sum-delta-orange { color: #b25500 !important; }
 
-    [data-testid="stHorizontalBlock"] {
+    /* KUNCI PERBAIKAN: Mencegah kolom dan grafik terpotong di tengah halaman */
+    [data-testid="stHorizontalBlock"],
+    [data-testid="stPlotlyChart"],
+    [data-testid="stElementContainer"] {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+    }
+
+    /* Mencegah judul terpisah dari grafik di bawahnya */
+    h1, h2, h3, h4 {
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        page-break-inside: avoid !important;
     }
 
     [data-testid="stSpinner"],
@@ -481,6 +507,9 @@ def render(load_data, **kwargs):
     # BAGIAN 2: LAPORAN PENGADAAN BARANG (Kiri: Volume | Kanan: Nilai)
     # ═════════════════════════════════════════════════════════════════════════
     
+    # --- PEMBATAS HALAMAN 2 ---
+    st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
+
     st.markdown(
         f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 40px 0 16px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['file_text'], 32)}</span>"
@@ -701,7 +730,10 @@ def render(load_data, **kwargs):
     # ═════════════════════════════════════════════════════════════════════════
     # BAGIAN 3: LAPORAN BAGIAN
     # ═════════════════════════════════════════════════════════════════════════
-    
+
+    # --- PEMBATAS HALAMAN 3 ---
+    st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
+
     st.markdown(
         f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 24px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['building'], 32)}</span>"
