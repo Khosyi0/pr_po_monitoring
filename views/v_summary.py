@@ -773,24 +773,13 @@ def render(load_data, **kwargs):
         str_ontime   = f"{pct_ontime:.2f}%".replace('.', ',')
         str_efis_pct = f"{b_efis_pct:+.2f}%".replace('.', ',')
 
-        # ── Pengecekan Khusus / Hardcode untuk Bagian BB/BD/BP ──
-        if pilihan_bagian == "BB/BD/BP":
-            # Override On Budget
-            str_onbudget_tampil = "100%"
-            tipe_budget_tampil  = "green"
-            
-            # Override Efisiensi
-            str_efis_pct_tampil = "+0,21%"
-            str_efis_val_tampil = "Rp 9,38 M" # Ganti jadi "Rp 9,38 M" jika kamu punya format short-nya
-            tipe_efis_tampil    = "green"
-        else:
-            # Nilai Normal dari Database (ALPATA & BARUM)
-            str_onbudget_tampil = str_onbudget
-            tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
-            
-            str_efis_pct_tampil = str_efis_pct
-            str_efis_val_tampil = format_idr(b_efis_val)
-            tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
+
+        str_onbudget_tampil = str_onbudget
+        tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
+        
+        str_efis_pct_tampil = str_efis_pct
+        str_efis_val_tampil = format_idr(b_efis_val)
+        tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
 
 
         # ── 4 KARTU KPI LAPORAN BAGIAN ──
