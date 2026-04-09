@@ -33,7 +33,7 @@ from context_builder import build_global_context
 from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
 # Views - Executive Summary
-from views import v_summary, v_isu
+from views import v_summary, v_isu, v_manajemen_user
 
 # Views - PR-PO SAP
 from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
@@ -143,33 +143,41 @@ div[data-testid="stDialog"] > div > div {
 # HALAMAN: render functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_summary():      v_summary.render(**st.session_state.get('_summary_view_args', {}))
-def _render_isu():          v_isu.render(**st.session_state.get('_summary_view_args', {}))
-def _render_dashboard():    v_dashboard.render(**st.session_state.get('_view_args', {}))
-def _render_detail():       v_detail.render(**st.session_state.get('_view_args', {}))
-def _render_evaluasi():     v_evaluasi.render(**st.session_state.get('_view_args', {}))
-def _render_kinerja():      v_kinerja_pg.render(**st.session_state.get('_view_args', {}))
-def _render_alert():        v_alert.render(**st.session_state.get('_view_args', {}))
-def _render_sips_dashboard(): v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
-def _render_sips_detail():    v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
-def _render_sips_waktu():     v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
-def _render_sips_alert():     v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
-def _render_tren_harga_bb():         v_tren_harga_bb.render(**st.session_state.get('_summary_view_args', {}))
+def _render_summary():                  v_summary.render(**st.session_state.get('_summary_view_args', {}))
+def _render_isu():                      v_isu.render(**st.session_state.get('_summary_view_args', {}))
+def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
+def _render_dashboard():                v_dashboard.render(**st.session_state.get('_view_args', {}))
+def _render_detail():                   v_detail.render(**st.session_state.get('_view_args', {}))
+def _render_evaluasi():                 v_evaluasi.render(**st.session_state.get('_view_args', {}))
+def _render_kinerja():                  v_kinerja_pg.render(**st.session_state.get('_view_args', {}))
+def _render_alert():                    v_alert.render(**st.session_state.get('_view_args', {}))
+def _render_sips_dashboard():           v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_detail():              v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_waktu():               v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_alert():               v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
+def _render_tren_harga_bb():            v_tren_harga_bb.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
-def _render_monitoring_sparepart_ln(): v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
-def _render_searching_ex_po():       v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
-def _render_monitoring_kontrak():    v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
+def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
+def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
+def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
 # ─────────────────────────────────────────────────────────────────────────────
 
+summary_pages = [
+    st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
+    st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
+]
+
+if is_admin():
+    summary_pages.append(
+        st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:")
+    )
+
 pg = st.navigation(
     {
-        "Executive Summary": [
-            st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
-            st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
-        ],
+        "Highlight": summary_pages,
         "PR-PO SAP": [
             st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
             st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
@@ -195,7 +203,7 @@ pg = st.navigation(
 )
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES = {"Executive Summary", "Isu"}
+SUMMARY_TITLES = {"Executive Summary", "Isu", "Manajemen User"}
 SIPS_TITLES    = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 LAINNYA_TITLES = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak"}
 current_page = pg.title
@@ -414,64 +422,62 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Toggle filter mode + header ──────────────────────────────────────────────
-_mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
-_mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
+if not is_summary:
+    _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
+    _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
 
-col_fh, col_toggle = st.sidebar.columns([3, 2])
-with col_fh:
-    st.markdown("""
-        <h2 style='display:flex; align-items:center; font-size:20px;
-                   color:var(--text-color); margin-top:4px; margin-bottom:4px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-                 fill="currentColor" viewBox="0 0 16 16" style="margin-right:8px;">
-                <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0
-                         1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0
-                         0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5z"/>
-            </svg>
-            Filters
-        </h2>
-    """, unsafe_allow_html=True)
-with col_toggle:
-    st.markdown('<div id="toggle-anchor"></div>', unsafe_allow_html=True)
-    st.markdown("""
-        <style>
-        div[data-testid="stColumn"]:has(#toggle-anchor) button p,
-        div[data-testid="stColumn"]:has(#toggle-anchor) button span,
-        div[data-testid="column"]:has(#toggle-anchor) button p,
-        div[data-testid="column"]:has(#toggle-anchor) button span {
-            font-size: 12px !important;
-        }
-        div[data-testid="stColumn"]:has(#toggle-anchor) button,
-        div[data-testid="column"]:has(#toggle-anchor) button {
-            padding-top: 0px !important;
-            padding-bottom: 0px !important;
-            min-height: 28px !important;
-            margin-top: -13px !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    if st.button(_mode_label, help=_mode_help, use_container_width=True,
-                 key="btn_toggle_filter_mode"):
-        st.session_state.filter_mode = (
-            'topbar' if st.session_state.filter_mode == 'sidebar' else 'sidebar'
-        )
-        st.rerun()
+    col_fh, col_toggle = st.sidebar.columns([3, 2])
+    with col_fh:
+        st.markdown("""
+            <h2 style='display:flex; align-items:center; font-size:20px;
+                    color:var(--text-color); margin-top:4px; margin-bottom:4px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                    fill="currentColor" viewBox="0 0 16 16" style="margin-right:8px;">
+                    <path d="M1.5 1.5A.5.5 0 0 1 2 1h12a.5.5 0 0 1 .5.5v2a.5.5 0 0
+                            1-.128.334L10 8.692V13.5a.5.5 0 0 1-.342.474l-3 1A.5.5 0
+                            0 1 6 14.5V8.692L1.628 3.834A.5.5 0 0 1 1.5 3.5z"/>
+                </svg>
+                Filters
+            </h2>
+        """, unsafe_allow_html=True)
+    with col_toggle:
+        st.markdown('<div id="toggle-anchor"></div>', unsafe_allow_html=True)
+        st.markdown("""
+            <style>
+            div[data-testid="stColumn"]:has(#toggle-anchor) button p,
+            div[data-testid="stColumn"]:has(#toggle-anchor) button span,
+            div[data-testid="column"]:has(#toggle-anchor) button p,
+            div[data-testid="column"]:has(#toggle-anchor) button span {
+                font-size: 12px !important;
+            }
+            div[data-testid="stColumn"]:has(#toggle-anchor) button,
+            div[data-testid="column"]:has(#toggle-anchor) button {
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                min-height: 28px !important;
+                margin-top: -13px !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        if st.button(_mode_label, help=_mode_help, use_container_width=True,
+                    key="btn_toggle_filter_mode"):
+            st.session_state.filter_mode = (
+                'topbar' if st.session_state.filter_mode == 'sidebar' else 'sidebar'
+            )
+            st.rerun()
 
-st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,128,0.3);'>",
-                    unsafe_allow_html=True)
+    st.sidebar.markdown("<hr style='margin:4px 0 12px 0; border-color:rgba(128,128,128,0.3);'>",
+                        unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FILTERS PR-PO SAP / SIPS: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.filter_mode == 'sidebar' and is_summary:
-    st.sidebar.info("📌 Filter data untuk Executive Summary akan ditambahkan setelah metrik yang dibutuhkan disepakati dalam rapat.")
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-elif st.session_state.filter_mode == 'sidebar' and is_lainnya:
+if st.session_state.filter_mode == 'sidebar' and is_lainnya:
     st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-elif st.session_state.filter_mode == 'sidebar' and not is_sips:
+elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
         bagian_data  = load_data("""
@@ -941,7 +947,7 @@ st.session_state['_sips_view_args'] = dict(
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # ─────────────────────────────────────────────────────────────────────────────
 
-if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog:
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary:
     if is_sips:
         render_filter_bar('sips', load_data)
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
