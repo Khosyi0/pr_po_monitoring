@@ -444,11 +444,11 @@ def render(load_data, **kwargs):
     # Baris 3
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", "-", "Target: 80%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", "85,71%", "Target: 80%", "green"), unsafe_allow_html=True)
     with c8:
         st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(savings_pct, decimals=2)}%", "Target: > 2%", "green"), unsafe_allow_html=True)
     with c9:
-        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "-", "Target: 100%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", "green"), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 4: Rincian Pemenuhan SLA OTOBOS
