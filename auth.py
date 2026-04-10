@@ -139,9 +139,47 @@ def render_login() -> bool:
     # ── CSS halaman login ─────────────────────────────────────────────────────
     st.markdown("""
         <style>
-            [data-testid="stSidebar"]    { display: none; }
-            [data-testid="stSidebarNav"] { display: none; }
-            [data-testid="stToolbar"]    { display: none; }
+            [data-testid="stSidebar"], 
+            [data-testid="stSidebarNav"], 
+            [data-testid="stToolbar"] { display: none; }
+
+            /* Spinner dots animasi saat proses login */
+            @keyframes _isu_bounce {
+                0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+                40%            { transform: scale(1); opacity: 1;   }
+            }
+            .login-dots {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 0 6px 0;
+            }
+            .login-dot {
+                width: 10px; height: 10px;
+                border-radius: 50%;
+                background: #ff4b4b;
+                animation: _isu_bounce 1.4s ease-in-out infinite both;
+            }
+            .login-dot:nth-child(1) { animation-delay: -0.32s; }
+            .login-dot:nth-child(2) { animation-delay: -0.16s; }
+            .login-dot:nth-child(3) { animation-delay: 0s;     }
+            .login-msg {
+                text-align: center;
+                font-size: 13px;
+                opacity: 0.55;
+                margin: 0 0 12px 0;
+                font-weight: 600;
+            }
+            
+            /* Styling untuk form bawaan Streamlit agar terlihat seperti kartu */
+            [data-testid="stForm"] {
+                border-radius: 16px !important;
+                padding: 32px 28px 24px 28px !important;
+                box-shadow: 0 4px 24px rgba(0,0,0,0.08) !important;
+                border: 1px solid rgba(128,128,128,0.18) !important;
+                background: var(--secondary-background-color) !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -171,97 +209,36 @@ def render_login() -> bool:
             </div>
         """, unsafe_allow_html=True)
 
-        # ── CSS animasi loading ────────────────────────────────────────────────
-        st.markdown("""
-        <style>
-        /* Spinner dots animasi saat proses login */
-        @keyframes _isu_bounce {
-            0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
-            40%            { transform: scale(1); opacity: 1;   }
-        }
-        .login-dots {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            padding: 14px 0 6px 0;
-        }
-        .login-dot {
-            width: 10px; height: 10px;
-            border-radius: 50%;
-            background: #ff4b4b;
-            animation: _isu_bounce 1.4s ease-in-out infinite both;
-        }
-        .login-dot:nth-child(1) { animation-delay: -0.32s; }
-        .login-dot:nth-child(2) { animation-delay: -0.16s; }
-        .login-dot:nth-child(3) { animation-delay: 0s;     }
-        .login-msg {
-            text-align: center;
-            font-size: 13px;
-            opacity: 0.55;
-            margin: 0 0 4px 0;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # ── Form login ────────────────────────────────────────────────────────
-        st.markdown("""
-            <div style='
-                background: var(--secondary-background-color);
-                border: 1px solid rgba(128,128,128,0.18);
-                border-radius: 16px;
-                padding: 32px 28px 24px 28px;
-                box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-            '>
-        """, unsafe_allow_html=True)
-
-        # Cek apakah sedang dalam proses loading (setelah tombol ditekan)
+        # Cek status loading
         _is_loading = st.session_state.get("_login_loading", False)
 
-        if _is_loading:
-            # ── Tampilkan animasi dots + pesan selama verifikasi ke DB ─────────
-            st.markdown("""
-                <div class="login-dots">
-                    <div class="login-dot"></div>
-                    <div class="login-dot"></div>
-                    <div class="login-dot"></div>
-                </div>
-                <p class="login-msg">Memverifikasi akun...</p>
-            """, unsafe_allow_html=True)
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-            # Ambil credentials yang disimpan sementara di session state
-            _uname = st.session_state.pop("_login_username", "")
-            _pwd   = st.session_state.pop("_login_password", "")
-            st.session_state["_login_loading"] = False
-
-            # Lakukan verifikasi ke DB (ini yang menyebabkan delay)
-            _ensure_table()
-            _user = _verify_password(_uname, _pwd)
-
-            if _user:
-                st.session_state.authenticated = True
-                st.session_state.current_user  = _user
-                _update_last_login(_user["id"])
-            else:
-                st.session_state["_login_error"] = "Username atau password salah, atau akun tidak aktif."
-
-            st.rerun()
-            return False
-
-        # ── Form normal (belum submit) ─────────────────────────────────────────
+        # ── Form Login (Dinamis: Normal vs Loading) ───────────────────────────
         with st.form("login_form", clear_on_submit=False):
+            
+            # Jika loading, tampilkan animasi di bagian paling atas form
+            if _is_loading:
+                st.markdown("""
+                    <div class="login-dots">
+                        <div class="login-dot"></div>
+                        <div class="login-dot"></div>
+                        <div class="login-dot"></div>
+                    </div>
+                    <p class="login-msg">Memverifikasi akun...</p>
+                """, unsafe_allow_html=True)
+
             st.markdown(
                 "<p style='font-size:13px;font-weight:600;margin:0 0 6px 0;opacity:0.7;'>"
                 "USERNAME</p>",
                 unsafe_allow_html=True
             )
+            # Kolom akan ter-disable (abu-abu) jika sedang loading
             username_input = st.text_input(
                 "Username",
+                value=st.session_state.get("_login_username", ""),
                 placeholder="Masukkan username...",
                 label_visibility="collapsed",
                 autocomplete="username",
+                disabled=_is_loading 
             )
 
             st.markdown(
@@ -272,29 +249,46 @@ def render_login() -> bool:
             password_input = st.text_input(
                 "Password",
                 type="password",
+                value=st.session_state.get("_login_password", ""),
                 placeholder="Masukkan password...",
                 label_visibility="collapsed",
                 autocomplete="current-password",
+                disabled=_is_loading
             )
 
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             submitted = st.form_submit_button(
-                "Masuk", use_container_width=True, type="primary"
+                "Masuk", use_container_width=True, type="primary", disabled=_is_loading
             )
 
-        st.markdown("</div>", unsafe_allow_html=True)
+        # ── Proses Verifikasi (Berjalan saat _is_loading True) ────────────────
+        if _is_loading:
+            _ensure_table()
+            _user = _verify_password(st.session_state["_login_username"], st.session_state["_login_password"])
+            
+            # Reset status loading
+            st.session_state["_login_loading"] = False
+            
+            if _user:
+                st.session_state.authenticated = True
+                st.session_state.current_user  = _user
+                _update_last_login(_user["id"])
+            else:
+                st.session_state["_login_error"] = "Username atau password salah, atau akun tidak aktif."
+            
+            # Rerun untuk masuk dashboard atau menampilkan error
+            st.rerun()
 
-        # ── Tampilkan error jika ada (dari run sebelumnya) ────────────────────
-        if st.session_state.get("_login_error"):
+        # ── Tampilkan error jika ada (setelah loading selesai) ────────────────
+        if st.session_state.get("_login_error") and not _is_loading:
             st.error(st.session_state.pop("_login_error"))
 
-        # ── Proses submit: simpan credentials & set loading flag ──────────────
-        if submitted:
+        # ── Proses saat tombol ditekan (Set Loading = True) ───────────────────
+        if submitted and not _is_loading:
             if not username_input.strip() or not password_input:
                 st.error("Username dan password tidak boleh kosong.")
             else:
-                # Simpan credentials sementara & tandai sedang loading
-                # → rerun akan render animasi dots, lalu verifikasi ke DB
+                # Simpan input dan panggil animasi loading
                 st.session_state["_login_loading"]  = True
                 st.session_state["_login_username"] = username_input.strip().lower()
                 st.session_state["_login_password"] = password_input
@@ -307,7 +301,6 @@ def render_login() -> bool:
         """, unsafe_allow_html=True)
 
     return False
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS YANG DIPAKAI DI SELURUH APP
