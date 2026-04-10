@@ -271,7 +271,7 @@ def render(load_data, **kwargs):
             no_pr,
             line_item_pr,
             MAX(CASE WHEN nomor_po IS NOT NULL THEN 1 ELSE 0 END) AS has_po,
-            MAX(estimasi_pr) AS oe_val
+            MAX(estimasi_pr * quantity_pr) AS oe_val 
         FROM vw_pr_po_complete
         WHERE first_full_release >= '{date_from}'
           AND first_full_release <= '{date_to}'
@@ -626,9 +626,9 @@ def render(load_data, **kwargs):
         c15, c16 = st.columns(2)
         with c15:
             st.markdown(_card(
-                ICONS["currency"], "Total Estimasi PR (OE)", format_idr(estimasi_all), 
+                ICONS["currency"], "Total Estimasi PR (OE)", format_idr(oe_po), 
                 #ICONS["currency"], "Total Estimasi PR (OE)", "Rp 4,61 T",
-                "Seluruh PR pada periode ini"
+                "OE dari PR yang sudah terbit PO"
             ), unsafe_allow_html=True)
         with c16:
             st.markdown(_card(
