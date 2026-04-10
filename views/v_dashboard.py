@@ -94,7 +94,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 THEN 1 END)                                               AS po_ontime,
             COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
                 THEN 1 END)                                               AS po_delivered_total,
-            COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS realisasi_po
+            COALESCE(SUM(poi.total_amount_local_curr), 0)                 AS realisasi_po,
+            COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') 
+                         THEN poi.total_amount_local_curr ELSE 0 END), 0) AS total_sinergi_pi
         FROM po_items poi
         JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
         WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
@@ -124,6 +126,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         produktivitas    = (total_po / total_pr * 100) if total_po > 0 else 0.0
         pct_pengiriman   = (po_delivered / total_po * 100) if total_po > 0 else 0.0
         ketepatan_pct    = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
+        sinergi_pi_val   = float(po_kpi['total_sinergi_pi'][0] or 0)
 
         # ── KPI_DASH: 14 item, 3 per baris ────────────────────────────────────
         KPI_DASH = [
@@ -255,18 +258,16 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "key": "kpi_sinergi",
                 "icon_path": "M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5",
                 "label": "Sinergi PI Group",
-                "value": "Rp 99,27 M",
+                "value": format_idr(sinergi_pi_val),
                 "delta": "Target: -",
                 "formula": """\
-**Sinergi PI Group**: Jumlah atau nilai kolaborasi/transaksi dengan entitas PI Group lainnya.
+**Sinergi PI Group**: Jumlah nilai realisasi PO (Total Amount in Local Curr) yang ditransaksikan dengan entitas PI Group lainnya.
 
-**Status:** Tidak ada kolom sinergi di `vw_pr_po_complete`. Membutuhkan data dari sistem terpisah.
-
-**Formula Excel (jika data tersedia):**
-```
-= COUNT(PO ke vendor PI Group)
-  atau SUM(nilai PO ke vendor PI Group)
-```
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PO Deletion Flag** selain `L`
+- Filter **Vendor Code** hanya `4000000011` dan `4000000012`
+- Jumlahkan **Total Amount in Local Curr**
 
 **Target:** -\
 """,
@@ -487,9 +488,13 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                         continue
                     kpi = items[i]
                     is_open = st.session_state[kpi["key"]]
-                    neutral = kpi["value"] == "-" or kpi["delta"].startswith("Target:")
-                    delta_cls = "kpi-delta-neutral" if neutral else "kpi-delta"
-                    delta_arrow = "" if neutral else "↑ "
+                    
+                    # Logika panah: sembunyikan panah '↑' jika teks berupa Target atau value kosong
+                    no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:")
+                    delta_arrow = "" if no_arrow else "↑ "
+                    
+                    # --- KUNCI PERBAIKAN: Paksa semua tulisan bawah menggunakan class hijau ---
+                    delta_cls = "kpi-delta" 
 
                     card_html = f"""
                     <div class="kpi-card">

@@ -294,15 +294,17 @@ def render(load_data, **kwargs):
         COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0)              AS total_oe_po,
         ROUND(AVG(
             CASE WHEN poi.first_full_release IS NOT NULL
-                  AND poh.date_ordered   IS NOT NULL
+                    AND poh.date_ordered   IS NOT NULL
             THEN (poh.date_ordered::date - poi.first_full_release::date)
             END
         )::numeric, 2)                                                   AS avg_lead_time,
         COUNT(DISTINCT poh.nomor_po)                                     AS total_po_distinct,
-        COUNT(CASE WHEN poi.status_pengiriman = 'SELESAI' THEN 1 END)   AS po_delivered,
+        COUNT(CASE WHEN poi.status_pengiriman = 'SELESAI' THEN 1 END)    AS po_delivered,
         COUNT(CASE WHEN poi.on_time_delivery  = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
         COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
-                   THEN 1 END)                                           AS po_delivered_total
+                    THEN 1 END)                                          AS po_delivered_total,
+        COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') 
+                    THEN poi.total_amount_local_curr ELSE 0 END), 0)     AS total_sinergi_pi
     FROM po_items poi
     JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
     WHERE poh.date_ordered >= '{date_from}'
@@ -427,6 +429,7 @@ def render(load_data, **kwargs):
     po_delivered  = int(po_kpi['po_delivered'][0]       or 0)
     po_ontime     = int(po_kpi['po_ontime'][0]          or 0)
     po_del_tot    = int(po_kpi['po_delivered_total'][0] or 0)
+    sinergi_pi_val= float(po_kpi['total_sinergi_pi'][0] or 0)
 
     savings       = oe_po - po_amount
     savings_pct   = (savings / oe_po * 100)        if oe_po > 0        else 0.0
@@ -457,7 +460,7 @@ def render(load_data, **kwargs):
     with c1:
         st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "green"), unsafe_allow_html=True)
     with c2:
-        st.markdown(_card(ICONS["people"], "Sinergi PI Group", "Rp 99,27 M", "Target:", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["people"], "Sinergi PI Group", format_idr(sinergi_pi_val), "Target: -", "neutral"), unsafe_allow_html=True)
     with c3:
         st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target: > 90%", "green"), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
