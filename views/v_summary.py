@@ -475,7 +475,7 @@ def render(load_data, **kwargs):
     # Baris 3
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", "85,71%", "Target: 80%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", "88%", "Target: 80%", "green"), unsafe_allow_html=True)
     with c8:
         st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(savings_pct, decimals=2)}%", "Target: > 2%", "green"), unsafe_allow_html=True)
     with c9:

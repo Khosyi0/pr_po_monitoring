@@ -146,6 +146,7 @@ div[data-testid="stDialog"] > div > div {
 def _render_summary():                  v_summary.render(**st.session_state.get('_summary_view_args', {}))
 def _render_isu():                      v_isu.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
+def _render_changelog():                v_changelog.render()
 def _render_dashboard():                v_dashboard.render(**st.session_state.get('_view_args', {}))
 def _render_detail():                   v_detail.render(**st.session_state.get('_view_args', {}))
 def _render_evaluasi():                 v_evaluasi.render(**st.session_state.get('_view_args', {}))
@@ -170,44 +171,53 @@ summary_pages = [
     st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
 ]
 
+admin_pages = []
 if is_admin():
-    summary_pages.append(
-        st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:")
-    )
+    admin_pages = [
+        st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:"),
+        st.Page(_render_changelog, title="Log Perubahan", icon=":material/history:")
+    ]
 
-pg = st.navigation(
-    {
-        "Highlight": summary_pages,
-        "PR-PO SAP": [
-            st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
-            st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
-            st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
-            st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
-            st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
-        ],
-        "SIPS": [
-            st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
-            st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
-            st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
-            st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
-        ],
-        "Lainnya": [
-            st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
-            st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
-            st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
-            st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
-            st.Page(_render_monitoring_kontrak,      title="Monitoring Kontrak",             icon=":material/contract:"),
-        ],
-    },
-    position="sidebar",
-)
+nav_dict = {
+    "Highlight": summary_pages
+}
+
+if admin_pages:
+    nav_dict["Admin Menu"] = admin_pages
+
+nav_dict.update({
+    "PR-PO SAP": [
+        st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
+        st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
+        st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
+        st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
+        st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
+    ],
+    "SIPS": [
+        st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
+        st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
+        st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
+        st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
+    ],
+    "Lainnya": [
+        st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
+        st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
+        st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
+        st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
+        st.Page(_render_monitoring_kontrak,      title="Monitoring Kontrak",             icon=":material/contract:"),
+    ]
+})
+
+pg = st.navigation(nav_dict, position="sidebar")
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES = {"Executive Summary", "Isu", "Manajemen User"}
+SUMMARY_TITLES = {"Executive Summary", "Isu"} 
+ADMIN_TITLES   = {"Manajemen User", "Log Perubahan"} # ← Grup baru
 SIPS_TITLES    = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 LAINNYA_TITLES = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak"}
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
+is_admin_pg  = current_page in ADMIN_TITLES
 is_sips      = current_page in SIPS_TITLES
 is_lainnya   = current_page in LAINNYA_TITLES
 
@@ -223,14 +233,17 @@ if current_page != st.session_state.last_page:
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Pill aktif: div ke-1 = Summary, div ke-2 = PR-PO SAP, div ke-3 = SIPS, div ke-4 = Lainnya
-if is_summary:
-    active_div = "1"
-elif is_sips:
-    active_div = "3"
-elif is_lainnya:
-    active_div = "4"
+if is_admin():
+    if is_summary:        active_div = "1"
+    elif is_admin_pg:     active_div = "2"
+    elif is_sips:         active_div = "4"
+    elif is_lainnya:      active_div = "5"
+    else:                 active_div = "3"
 else:
-    active_div = "2"
+    if is_summary:        active_div = "1"
+    elif is_sips:         active_div = "3"
+    elif is_lainnya:      active_div = "4"
+    else:                 active_div = "2"
 
 st.markdown(f"""
 <style>
@@ -1005,10 +1018,7 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
 # ROUTING
 # ─────────────────────────────────────────────────────────────────────────────
 
-if st.session_state.show_changelog:
-    v_changelog.render()
-else:
-    pg.run()
+pg.run()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FOOTER
@@ -1017,10 +1027,13 @@ else:
 st.markdown("---")
 col_foot1, col_foot2 = st.columns([4, 1])
 
+_logo_path_footer = "assets/logo_pg.png"
+_logo_b64_footer  = _load_icon_b64(_logo_path_footer)
+
 with col_foot1:
     system_label = "SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP")
     st.markdown(
-        f"<div style='color:#666; margin-top:10px;'>"
+        f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.8.2 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
@@ -1028,8 +1041,14 @@ with col_foot1:
     )
 
 with col_foot2:
-    btn_label = "Kembali ke App" if st.session_state.show_changelog else "Log Perubahan"
-    btn_icon  = ":material/arrow_back:" if st.session_state.show_changelog else ":material/history:"
-    if st.button(btn_label, icon=btn_icon, use_container_width=True):
-        st.session_state.show_changelog = not st.session_state.show_changelog
-        st.rerun()
+    if _logo_b64_footer:
+        st.markdown(
+            f"""
+            <div style='display:flex; justify-content:flex-end; align-items:center; height:100%; min-height:50px;'>
+                <img src='data:image/png;base64,{_logo_b64_footer}' style='height:40px; width:auto; padding-right:10px;'>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.error("Gagal memuat logo footer.")

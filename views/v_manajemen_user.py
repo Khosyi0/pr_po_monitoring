@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS & ICONS UNTUK KARTU METRIK
+# CSS & ICONS UNTUK KARTU METRIK (Tetap sama seperti sebelumnya)
 # ─────────────────────────────────────────────────────────────────────────────
 
 USER_METRIC_CSS = """
@@ -27,8 +27,8 @@ USER_METRIC_CSS = """
     width: 44px;
     height: 44px;
     border-radius: 10px;
-    background: rgba(128, 128, 128, 0.15); /* Background netral transparan */
-    color: var(--text-color); /* Otomatis mengikuti tema terang/gelap */
+    background: rgba(128, 128, 128, 0.15); 
+    color: var(--text-color); 
 }
 .user-body { flex: 1; min-width: 0; }
 .user-label {
@@ -50,6 +50,8 @@ USER_METRIC_CSS = """
     opacity: 0.55;
     margin: 0;
 }
+/* Menyesuaikan sedikit tampilan dataframe */
+[data-testid="stDataFrame"] { margin-bottom: 8px; }
 </style>
 """
 
@@ -66,7 +68,6 @@ def _svg(path_d: str, size: int = 24) -> str:
     )
 
 def _user_card(icon_d: str, label: str, value: str, delta: str = "") -> str:
-    # Memastikan tidak ada spasi kosong / baris baru agar markdown tidak salah render
     delta_html = f'<p class="user-delta">{delta}</p>' if delta else ""
     return f"""<div class="user-card">
     <div class="user-icon">{_svg(icon_d, 22)}</div>
@@ -84,6 +85,8 @@ def _get_engine():
     from config_db import get_db_engine
     return get_db_engine()
 
+# (Tambahkan st.cache_data agar loading lebih cepat)
+@st.cache_data(ttl=60) 
 def _load_user_data(search_term=""):
     try:
         query = """
@@ -97,7 +100,7 @@ def _load_user_data(search_term=""):
             query += " WHERE username ILIKE :search OR nama_lengkap ILIKE :search"
             params["search"] = f"%{search_term}%"
             
-        query += " ORDER BY created_at DESC"
+        query += " ORDER BY id ASC" # Diubah ke ASC agar urutan stabil saat diedit
         
         with _get_engine().connect() as conn:
             df = pd.read_sql(text(query), conn, params=params)
@@ -135,6 +138,27 @@ def _add_user_to_db(username, password, nama_lengkap, role, bagian):
             return False, "Username sudah digunakan. Silakan pilih username lain."
         return False, f"Terjadi kesalahan: {e}"
 
+# --- FUNGSI UPDATE BARU ---
+def _update_user_db(user_id, updates):
+    if not updates: return True, ""
+    
+    set_clauses = []
+    params = {"id": int(user_id)}
+    
+    for key, value in updates.items():
+        set_clauses.append(f"{key} = :{key}")
+        # Tangani nilai None (Kosong)
+        params[key] = value.strip() if isinstance(value, str) and value.strip() else value
+    
+    sql = f"UPDATE melati_users SET {', '.join(set_clauses)} WHERE id = :id"
+    
+    try:
+        with _get_engine().begin() as conn:
+            conn.execute(text(sql), params)
+        return True, ""
+    except Exception as e:
+        return False, f"Gagal menyimpan perubahan: {e}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RENDER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,10 +169,8 @@ def render(**kwargs):
         st.error("Akses Ditolak. Halaman ini khusus untuk Administrator.")
         st.stop()
 
-    # Inject CSS
     st.markdown(USER_METRIC_CSS, unsafe_allow_html=True)
 
-    # Header menggunakan SVG icon (Otomatis menyesuaikan tema)
     st.markdown("""
         <h1 style='display:flex; align-items:center; font-size:42px; margin-bottom:0;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" 
@@ -194,33 +216,59 @@ def render(**kwargs):
         
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    # ── Bagian 2: Tabel Daftar User (Tengah) ──────────────────────────────────
+    # ── Bagian 2: Data Editor Interaktif (Update & Soft Delete) ───────────────
     st.subheader("Daftar Pengguna Sistem")
+    st.caption("💡 *Tips: Klik pada sel tabel (Nama, Role, Bagian, atau centang Aktif) untuk mengedit data secara langsung.*")
     
     search_query = st.text_input("Cari Username atau Nama Lengkap:", placeholder="Ketik lalu tekan Enter...")
     df_tampil = _load_user_data(search_query) if search_query else df_all
     
     if not df_tampil.empty:
-        if 'created_at' in df_tampil.columns:
-            df_tampil['created_at'] = pd.to_datetime(df_tampil['created_at']).dt.strftime('%d %b %Y %H:%M')
-        if 'last_login' in df_tampil.columns:
-            df_tampil['last_login'] = pd.to_datetime(df_tampil['last_login']).dt.strftime('%d %b %Y %H:%M').fillna("Belum pernah login")
-            
-        st.dataframe(
-            df_tampil,
+        # Menyiapkan kolom tanggal agar formatnya bagus tapi tetap bisa dipakai referensi ID
+        df_edit = df_tampil.copy()
+        df_edit['created_at_str'] = pd.to_datetime(df_edit['created_at']).dt.strftime('%d %b %Y %H:%M')
+        df_edit['last_login_str'] = pd.to_datetime(df_edit['last_login']).dt.strftime('%d %b %Y %H:%M').fillna("Belum")
+        
+        # Kolom yang ditampilkan di editor (Buang kolom tanggal asli karena kita pakai versi string-nya)
+        df_display = df_edit[['id', 'username', 'nama_lengkap', 'role', 'bagian', 'aktif', 'created_at_str', 'last_login_str']]
+
+        # Menampilkan Data Editor interaktif
+        edited_df = st.data_editor(
+            df_display,
             column_config={
-                "id": st.column_config.NumberColumn("ID", format="%d"),
-                "username": st.column_config.TextColumn("Username", width="medium"),
+                "id": st.column_config.NumberColumn("ID", disabled=True), # ID tidak boleh diedit
+                "username": st.column_config.TextColumn("Username", disabled=True, width="medium"), # Username tidak boleh diedit
                 "nama_lengkap": st.column_config.TextColumn("Nama Lengkap", width="large"),
-                "role": st.column_config.TextColumn("Role"),
-                "bagian": st.column_config.TextColumn("Bagian/Departemen"),
-                "aktif": st.column_config.CheckboxColumn("Status Aktif"),
-                "created_at": st.column_config.TextColumn("Dibuat Pada"),
-                "last_login": st.column_config.TextColumn("Login Terakhir"),
+                "role": st.column_config.SelectboxColumn("Role", options=["admin", "viewer"], required=True),
+                "bagian": st.column_config.TextColumn("Bagian/Dept"),
+                "aktif": st.column_config.CheckboxColumn("Aktif (Akses Login)"),
+                "created_at_str": st.column_config.TextColumn("Dibuat Pada", disabled=True),
+                "last_login_str": st.column_config.TextColumn("Login Terakhir", disabled=True),
             },
             hide_index=True,
-            use_container_width=True
+            use_container_width=True,
+            key="user_editor"
         )
+        
+        # --- PROSES SIMPAN PERUBAHAN (UPDATE) ---
+        # Membandingkan dataframe yang diedit dengan dataframe asli untuk mencari perbedaan
+        if st.session_state["user_editor"]["edited_rows"]:
+            changes_made = False
+            for row_idx, updates in st.session_state["user_editor"]["edited_rows"].items():
+                user_id = df_display.iloc[row_idx]['id']
+                
+                # Update ke database
+                success, msg = _update_user_db(user_id, updates)
+                if success:
+                    changes_made = True
+                else:
+                    st.error(f"Gagal mengupdate ID {user_id}: {msg}")
+            
+            if changes_made:
+                st.success("✅ Perubahan berhasil disimpan!")
+                _load_user_data.clear() # Bersihkan cache
+                st.rerun() # Refresh halaman untuk menampilkan data terbaru
+
     else:
         st.info("Belum ada data user atau pencarian tidak ditemukan.")
 
@@ -253,7 +301,7 @@ def render(**kwargs):
                     
                     if sukses:
                         st.success(f"✅ User '{new_username}' berhasil ditambahkan!")
-                        st.cache_data.clear()
+                        _load_user_data.clear() # Bersihkan cache
                         st.rerun()
                     else:
                         st.error(pesan)

@@ -237,7 +237,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783",
                 "label": "Pengelolaan Anggaran Operasional",
                 "value": "-",
-                "delta": "Target: -",
+                "delta": "Target: ≤ 100%",
                 "formula": """\
 **Pengelolaan Anggaran Operasional**: Persentase realisasi anggaran operasional terhadap anggaran yang ditetapkan.
 
@@ -276,7 +276,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
                 "label": "Kecepatan Proses PO",
                 "value": f"{format_number(avg_lt_val, decimals=2)} Hari",
-                "delta": "Target: - Hari Kalender",
+                "delta": "Target: ≤ 55 Hari",
                 "formula": """\
 **Kecepatan Proses PO**: Rata-rata hari dari `1St Full Release` PR hingga PO diterbitkan (`Date Ordered`).
  
@@ -299,7 +299,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5V5h1.02a1.5 1.5 0 0 1 1.17.563l1.481 1.85a1.5 1.5 0 0 1 .329.938V10.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 1-4 0H5a2 2 0 1 1-3.998-.085A1.5 1.5 0 0 1 0 10.5zm1.294 7.456A2 2 0 0 1 4.732 11h5.536a2 2 0 0 1 .732-.732V3.5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .294.456M12 10a2 2 0 0 1 1.732 1h.768a.5.5 0 0 0 .5-.5V8.35a.5.5 0 0 0-.11-.312l-1.48-1.85A.5.5 0 0 0 13.02 6H12zm-9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2m9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2",
                 "label": "% Pengiriman Barang",
                 "value": f"{format_number(pct_pengiriman, decimals=1)}%",
-                "delta": f"{format_number(po_delivered)} item GR / {format_number(total_po)} item PO",
+                "delta": "Target: > 80%",
                 "formula": """\
 **% Pengiriman Barang (GR/PO)**: Persentase item PO yang sudah diterima barangnya.
 
@@ -319,7 +319,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
                 "label": "Ketepatan Pengiriman Barang",
                 "value": f"{format_number(ketepatan_pct, decimals=1)}%",
-                "delta": f"{format_number(po_ontime)} tepat / {format_number(po_del_tot)} selesai",
+                "delta": "Target: > 90%",
                 "formula": """\
 **Ketepatan Pengiriman Barang**: Persentase item PO diterima tepat waktu dari total item yang sudah dikirim.
 
@@ -339,8 +339,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "key": "kpi_otobos",
                 "icon_path": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
                 "label": "Pemenuhan SLA OTOBOS",
-                "value": "-",
-                "delta": "Average (OTOBOS)",
+                "value": "99,33%",
+                "delta": "Target: > 90%",
                 "formula": """\
 **Pemenuhan SLA OTOBOS**: Tingkat pemenuhan SLA sistem OTOBOS.
 
@@ -359,7 +359,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
                 "label": "Efisiensi Pengadaan",
                 "value": f"{format_number(savings_pct, decimals=2)}%",
-                "delta": "PO/OE",
+                "delta": "Target: > 2%",
                 "formula": """\
 **Efisiensi Pengadaan (PO/OE)**: Rata-rata persentase penghematan dari nilai OE per item PO.
 
@@ -378,8 +378,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 "key": "kpi_izin_impor",
                 "icon_path": "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2",
                 "label": "Pemenuhan Izin Impor",
-                "value": "-",
-                "delta": "Target: -",
+                "value": "100%",
+                "delta": "Target: 2 / 2",
                 "formula": """\
 **Pemenuhan Izin Impor**: Persentase PO impor yang memiliki izin impor lengkap dan valid.
 
@@ -397,8 +397,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 "key": "kpi_pembebasan",
                 "icon_path": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z",
                 "label": "Pemenuhan SLA Pembebasan Barang",
-                "value": "-",
-                "delta": "Target: -",
+                "value": "85,71%",
+                "delta": "Target: 80%",
                 "formula": """\
 **Pemenuhan SLA Pembebasan Barang**: Persentase pengajuan pembebasan barang selesai dalam SLA.
 
