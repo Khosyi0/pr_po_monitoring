@@ -20,6 +20,40 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "9 Apr 2026", "Versi": "v1.8.5", "Perubahan": """
+    - Menambah struktur database untuk menampung data user
+    - Mengubah tampilan dan sistem login menjadi input user dan password
+    - Mengubah akses CRUD di halaman isu sehingga hanya admin yang bisa Create, Update, dan Delete isu.
+    - Menambahkan halaman Manajemen User yang hanya bisa dibuka oleh admin dengan fitur:
+        - Penambahan user baru
+        - Edit user yang sudah ada
+    - Memperbarui dan menambahkan informasi tampilan dan isi dari halaman Executive Summary:
+        - KPI Pengadaan Barang
+        - Laporan Pengadaan Barang
+        - Laporan Bagian"""},
+        {"Tanggal": "6 Apr 2026", "Versi": "v1.8.4", "Perubahan": """
+    - Penambahan bagian baru bernama "Highlight" yang isinya halaman Executive Summary dan Halaman Isu
+    - Menambah struktur database untuk menampung data isu
+    - Membuat isi dari Halaman Isu yang fiturnya:
+        - Membuat isu dengan input:
+            - Judul Isu
+            - Deskripsi Singkat
+            - Kategori
+            - Prioritas
+            - Bagian
+            - Dibuat oleh
+            - Konten Isi
+        - Melihat detail dari isu yang sudah dibuat
+        - Mengubah isi dan status isu (Open, In Progress, Rsolved, Closed)
+        - Menghapus isu yang sudah dibuat"""},
+        {"Tanggal": "2 Apr 2026", "Versi": "v1.8.3", "Perubahan": """
+    - Penambahan halaman kosong di bagian baru yaitu "Lainnya":
+        - Isu
+        - Tren Harga Baku
+        - Monitoring Jaminan Pelaksanaan
+        - Monitoring Sparepart LN
+        - Searching Ex PO
+        - Monitoring Kontrak"""},
         {"Tanggal": "26 Mar 2026", "Versi": "v1.8.2", "Perubahan": """
     - Menambahkan chart Ringkasan Kecpeatan per Purchasing Group x Jenis Tender di halaman Analisis Waktu Proses SIPS
     - Menambahkan Halaman Alert SIPS:
@@ -256,5 +290,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.2"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.5"])):
             st.markdown(item["Perubahan"])
