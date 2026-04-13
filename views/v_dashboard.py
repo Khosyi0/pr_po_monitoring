@@ -414,11 +414,6 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             },
         ]
 
-        # ── Session state ──────────────────────────────────────────────────────
-        for kpi in KPI_DASH:
-            if kpi["key"] not in st.session_state:
-                st.session_state[kpi["key"]] = False
-
         # ── CSS card ───────────────────────────────────────────────────────────
         st.markdown("""
         <style>
@@ -517,10 +512,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     with c_btn:
                         # Mengurangi margin top agar icon mata sejajar dengan tengah kartu
                         st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
-                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info(kpi["formula"])
 
         # ── Render 5 baris × 3 kolom ──────────────────────────────────────────
         for row in range(0, len(KPI_DASH), 3):
@@ -530,12 +523,6 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             # 2. Render ketiga kartu tersebut
             render_kpi_row(current_row_items)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            
-            # 3. Cek apakah ada tombol dari baris INI yang sedang aktif
-            # Jika aktif, tampilkan infonya tepat di bawah baris ini
-            for kpi in current_row_items:
-                if st.session_state[kpi["key"]]:
-                    st.info(kpi["formula"])
 
         st.markdown("---")
 
@@ -555,16 +542,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key1 = "show_formula_pr_status_dept"
-                if key1 not in st.session_state:
-                    st.session_state[key1] = False
-                is_open = st.session_state[key1]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key1}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key1})
-
-            if st.session_state.get(key1, False):
-                st.info("""
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""
 **PR Status by Department**: Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
 
 **Formula Excel:** (PR SAP)
@@ -630,16 +609,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key2 = "show_formula_top_10_vendors_by_po_value"
-                if key2 not in st.session_state:
-                    st.session_state[key2] = False
-                is_open = st.session_state[key2]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key2}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key2})
-
-            if st.session_state.get(key2, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Top 10 Vendors by PO Value**: Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
 
 **Formula Excel:** (PO SAP)
@@ -652,32 +623,15 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             st.caption("Top 10 vendor dengan total nilai PO terbesar.")
 
             # ── Filter lokal vendor ───────────────────────────────────────────
-            vendor_filter_key = "vendor_chart_filter"
-            if vendor_filter_key not in st.session_state:
-                st.session_state[vendor_filter_key] = "ALL"
-
             vendor_filter_opts = ["ALL", "B01", "Investasi", "Lainnya"]
             selected_vendor_filter = st.pills(
                 "Filter Vendor",
                 options=vendor_filter_opts,
-                key=vendor_filter_key,
+                default="ALL",
                 label_visibility="collapsed"
             )
             if not selected_vendor_filter:
                 selected_vendor_filter = "ALL"
-
-            # Bangun kondisi tambahan berdasarkan filter lokal
-            if selected_vendor_filter == "B01":
-                vendor_extra_cond = "AND poh.purchasing_group = 'B01'"
-            elif selected_vendor_filter == "Investasi":
-                vendor_extra_cond = "AND poi.department_code LIKE 'INV%' AND poi.department_code != 'INV'"
-            elif selected_vendor_filter == "Lainnya":
-                vendor_extra_cond = (
-                    "AND poh.purchasing_group != 'B01' "
-                    "AND NOT (poi.department_code LIKE 'INV%' AND poi.department_code != 'INV')"
-                )
-            else:  # ALL
-                vendor_extra_cond = ""
 
             # Bangun filter_conditions untuk PO (ganti kolom ke alias tabel yang benar)
             vendor_filter_cond = (
@@ -691,7 +645,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             vendor_query = f"""
             SELECT
                 COALESCE(v.vendor_name, 'Unknown') AS vendor,
-                COUNT(DISTINCT poi.nomor_po)           AS total_po,
+                poi.department_code,
+                poh.purchasing_group,
                 SUM(poi.total_amount_local_curr)       AS total_value
             FROM po_items poi
             JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
@@ -699,15 +654,29 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
               AND {bagian_po_poi}
               AND {vendor_filter_cond}
-              {vendor_extra_cond}
-            GROUP BY v.vendor_name
-            ORDER BY total_value DESC
-            LIMIT 10
+            GROUP BY v.vendor_name, poi.department_code, poh.purchasing_group
             """
             with st.spinner("Memuat chart vendor..."):
-                vendor_data = load_data(vendor_query)
+                vendor_data_raw = load_data(vendor_query)
 
-            if not vendor_data.empty:
+            if not vendor_data_raw.empty:
+                # Filter in-memory menggunakan Pandas agar instan saat diklik!
+                if selected_vendor_filter == "B01":
+                    vendor_data = vendor_data_raw[vendor_data_raw['purchasing_group'] == 'B01']
+                elif selected_vendor_filter == "Investasi":
+                    mask = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
+                    vendor_data = vendor_data_raw[mask]
+                elif selected_vendor_filter == "Lainnya":
+                    mask_b01 = vendor_data_raw['purchasing_group'] == 'B01'
+                    mask_inv = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
+                    vendor_data = vendor_data_raw[~mask_b01 & ~mask_inv]
+                else:
+                    vendor_data = vendor_data_raw
+
+                vendor_data = vendor_data.groupby('vendor', as_index=False)['total_value'].sum()
+                vendor_data = vendor_data.sort_values('total_value', ascending=False).head(10)
+
+            if 'vendor_data' in locals() and not vendor_data.empty:
                 vendor_data['label_text'] = vendor_data['total_value'].apply(format_idr_short)
                 fig = px.bar(
                     vendor_data, x='total_value', y='vendor', orientation='h',
@@ -746,16 +715,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key3 = "show_formula_pr_po_trend"
-                if key3 not in st.session_state:
-                    st.session_state[key3] = False
-                is_open = st.session_state[key3]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key3}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key3})
-
-            if st.session_state.get(key3, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **PR-PO Creation Trend**: Line chart jumlah PR dan PO yang dibuat per bulan.
 
 **Formula Excel** mengikuti KPI **Total PR** dan **Total PO** di atas.
@@ -880,16 +841,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key4 = "show_formula_lead_time"
-                if key4 not in st.session_state:
-                    st.session_state[key4] = False
-                is_open = st.session_state[key4]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key4}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key4})
-
-            if st.session_state.get(key4, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Lead Time Distribution**: Pie chart distribusi PO berdasarkan rentang waktu proses (dari `1St Full Release` PR hingga `Date Ordered` PO terbit).
  
 **Formula Excel:** (PO SAP)
@@ -962,16 +915,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            key5 = "show_formula_top_10_pending"
-            if key5 not in st.session_state:
-                st.session_state[key5] = False
-            is_open = st.session_state[key5]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key5}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key5})
-
-        if st.session_state.get(key5, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Top 10 PR Without PO (Pending)**: Tabel 10 PR tertua yang belum diproses menjadi PO.
 
 **Formula Excel:** (PR SAP)
@@ -1037,16 +982,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key6 = "show_formula_delivery_perf"
-                if key6 not in st.session_state:
-                    st.session_state[key6] = False
-                is_open = st.session_state[key6]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key6}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key6})
-
-            if st.session_state.get(key6, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Delivery Performance**: Pie chart status pengiriman PO (tepat waktu vs terlambat vs pending).
 
 | Status | Kondisi |
@@ -1120,16 +1057,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                key7 = "show_formula_material_cat"
-                if key7 not in st.session_state:
-                    st.session_state[key7] = False
-                is_open = st.session_state[key7]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key7}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key7})
-
-            if st.session_state.get(key7, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Material Category Value**: Bar chart total nilai PO per kategori ABC material.
 
 **Formula Excel:** (PO SAP)
