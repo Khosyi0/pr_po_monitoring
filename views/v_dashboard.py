@@ -481,7 +481,6 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     if i >= n:
                         continue
                     kpi = items[i]
-                    is_open = st.session_state[kpi["key"]]
                     
                     # Logika panah: sembunyikan panah '↑' jika teks berupa Target atau value kosong
                     no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:")
