@@ -131,6 +131,7 @@ def _ensure_table():
         conn.execute(text(sql))
 
 
+@st.cache_data(ttl=3600)
 def _load_list(kategori=None, prioritas=None, status=None,
                bagian=None, search=None) -> pd.DataFrame:
     conds = ["1=1"]
@@ -164,6 +165,7 @@ def _load_list(kategori=None, prioritas=None, status=None,
         return pd.read_sql(text(q), conn)
 
 
+@st.cache_data(ttl=3600)
 def _load_detail(isu_id: int) -> dict | None:
     with _engine().connect() as conn:
         df = pd.read_sql(text(f"SELECT * FROM melati_isu WHERE id = {isu_id}"), conn)
@@ -187,6 +189,7 @@ def _create(judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh) 
             bagian=bagian if bagian != "Semua Bagian" else None,
             dibuat_oleh=dibuat_oleh,
         ))
+        _load_list.clear()
         return r.fetchone()[0]
 
 
@@ -206,11 +209,15 @@ def _update(isu_id, judul, deskripsi, konten, kategori, prioritas,
             bagian=bagian if bagian not in ("Semua Bagian", None, "") else None,
             dibuat_oleh=dibuat_oleh, status=status,
         ))
+        _load_list.clear()
+        _load_detail.clear()
 
 
 def _delete(isu_id: int):
     with _engine().begin() as conn:
         conn.execute(text(f"DELETE FROM melati_isu WHERE id = {isu_id}"))
+        _load_list.clear()
+        _load_detail.clear()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

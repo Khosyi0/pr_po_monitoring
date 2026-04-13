@@ -85,7 +85,7 @@ def _get_engine():
     from config_db import get_db_engine
     return get_db_engine()
 
-@st.cache_data(ttl=60) 
+@st.cache_data(ttl=86400) 
 def _load_user_data(search_term=""):
     try:
         query = """

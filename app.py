@@ -525,21 +525,21 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         options_p_group = ['All'] + p_group_data['purchasing_group'].tolist()
 
         def update_bagian_logic():
-            cur, prv = st.session_state.filter_bagian, st.session_state.prev_filter_bagian
+            cur, prv = st.session_state.get('filter_bagian', []), st.session_state.get('prev_filter_bagian', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.filter_bagian = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.filter_bagian = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.filter_bagian = ['All']
             st.session_state.prev_filter_bagian = st.session_state.filter_bagian
 
         def update_dept_logic():
-            cur, prv = st.session_state.filter_dept, st.session_state.prev_filter_dept
+            cur, prv = st.session_state.get('filter_dept', []), st.session_state.get('prev_filter_dept', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.filter_dept = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.filter_dept = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.filter_dept = ['All']
             st.session_state.prev_filter_dept = st.session_state.filter_dept
 
         def update_pgroup_logic():
-            cur, prv = st.session_state.filter_pgroup, st.session_state.prev_filter_pgroup
+            cur, prv = st.session_state.get('filter_pgroup', []), st.session_state.get('prev_filter_pgroup', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.filter_pgroup = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.filter_pgroup = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.filter_pgroup = ['All']
@@ -553,11 +553,11 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             st.session_state.filter_bagian = ['All']
 
         _dept_opts = ['All'] + departments['department_code'].tolist()
-        if not any(v in _dept_opts for v in st.session_state.filter_dept):
+        if not any(v in _dept_opts for v in st.session_state.get('filter_dept', [])):
             st.session_state.filter_dept = ['All']
-        if not any(v in options_p_group for v in st.session_state.filter_pgroup):
+        if not any(v in options_p_group for v in st.session_state.get('filter_pgroup', [])):
             st.session_state.filter_pgroup = ['All']
-        if not any(v in options_bagian for v in st.session_state.filter_bagian):
+        if not any(v in options_bagian for v in st.session_state.get('filter_bagian', [])):
             st.session_state.filter_bagian = ['All']
 
         # ── Department ────────────────────────────────────────────────────────
@@ -577,7 +577,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             Department
         </p>
         """, unsafe_allow_html=True)
-        _dept_default = [v for v in st.session_state.filter_dept if v in _dept_opts] or ['All']
+        _dept_default = [v for v in st.session_state.get('filter_dept', []) if v in _dept_opts] or ['All']
         _dept_sel = st.sidebar.multiselect(
             "Department",
             options=_dept_opts,
@@ -586,7 +586,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             key="filter_dept",
             label_visibility="collapsed"
         )
-        selected_department = st.session_state.filter_dept or ['All']
+        selected_department = st.session_state.get('filter_dept', ['All']) or ['All']
         exclude_dept = False
         if 'All' not in selected_department and selected_department:
             exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
@@ -605,7 +605,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             Purchasing Group
         </p>
         """, unsafe_allow_html=True)
-        _pg_default = [v for v in st.session_state.filter_pgroup if v in options_p_group] or ['All']
+        _pg_default = [v for v in st.session_state.get('filter_pgroup', []) if v in options_p_group] or ['All']
         _pg_sel = st.sidebar.multiselect(
             "Purchasing Group",
             options=options_p_group,
@@ -614,7 +614,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             key="filter_pgroup",
             label_visibility="collapsed"
         )
-        selected_p_group = st.session_state.filter_pgroup or ['All']
+        selected_p_group = st.session_state.get('filter_pgroup', ['All']) or ['All']
         exclude_purchasing_group = False
         if 'All' not in selected_p_group and selected_p_group:
             exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
@@ -639,7 +639,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        _bagian_default = [v for v in st.session_state.filter_bagian if v in options_bagian] or ['All']
+        _bagian_default = [v for v in st.session_state.get('filter_bagian', []) if v in options_bagian] or ['All']
         st.sidebar.pills(
             "Bagian",
             options=options_bagian,
@@ -649,7 +649,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             on_change=update_bagian_logic,
             label_visibility="collapsed"
         )
-        selected_bagian = st.session_state.filter_bagian or ['All']
+        selected_bagian = st.session_state.get('filter_bagian', ['All']) or ['All']
 
         # ── Date Range ────────────────────────────────────────────────────────
         st.sidebar.markdown("""
@@ -693,7 +693,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         options_nama = ['All'] + nama_data['nama'].tolist()
 
         def update_nama_logic():
-            cur, prv = st.session_state.sips_filter_nama, st.session_state.sips_prev_nama
+            cur, prv = st.session_state.get('sips_filter_nama', []), st.session_state.get('sips_prev_nama', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_nama = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_nama = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.sips_filter_nama = ['All']
@@ -721,7 +721,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Nama
         </p>
         """, unsafe_allow_html=True)
-        _nama_default = [v for v in st.session_state.sips_filter_nama if v in options_nama] or ['All']
+        _nama_default = [v for v in st.session_state.get('sips_filter_nama', []) if v in options_nama] or ['All']
         sips_selected_nama = st.sidebar.multiselect(
             "Nama",
             options=options_nama,
@@ -740,7 +740,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
 
         def update_bagian_sips_logic():
-            cur, prv = st.session_state.sips_filter_bagian, st.session_state.sips_prev_bagian
+            cur, prv = st.session_state.get('sips_filter_bagian', []), st.session_state.get('sips_prev_bagian', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.sips_filter_bagian = ['All']
@@ -758,7 +758,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             options_pgroup_sips = ['All']
 
         def update_pgroup_sips_logic():
-            cur, prv = st.session_state.sips_filter_pgroup, st.session_state.sips_prev_pgroup
+            cur, prv = st.session_state.get('sips_filter_pgroup', []), st.session_state.get('sips_prev_pgroup', [])
             if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_pgroup = ['All']
             elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_pgroup = [x for x in cur if x != 'All']
             elif not cur:                             st.session_state.sips_filter_pgroup = ['All']
@@ -777,7 +777,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Purchasing Group
         </p>
         """, unsafe_allow_html=True)
-        _pgsips_default = [v for v in st.session_state.sips_filter_pgroup if v in options_pgroup_sips] or ['All']
+        _pgsips_default = [v for v in st.session_state.get('sips_filter_pgroup', []) if v in options_pgroup_sips] or ['All']
         sips_selected_pgroup = st.sidebar.multiselect(
             "Purchasing Group SIPS",
             options=options_pgroup_sips,
@@ -809,7 +809,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             Bagian
         </p>
         """, unsafe_allow_html=True)
-        _bagian_sips_default = [v for v in st.session_state.sips_filter_bagian if v in options_bagian_sips] or ['All']
+        _bagian_sips_default = [v for v in st.session_state.get('sips_filter_bagian', []) if v in options_bagian_sips] or ['All']
         sips_selected_bagian = st.sidebar.pills(
             "Bagian SIPS",
             options=options_bagian_sips,
