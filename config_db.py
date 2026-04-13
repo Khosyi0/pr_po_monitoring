@@ -31,7 +31,7 @@ def get_db_engine():
         pool_pre_ping=True,
         pool_size=3,
         max_overflow=5,
-        connect_args={"connect_timeout": 30}
+        connect_args={"connect_timeout": 10}
     )
     return engine
 
@@ -58,6 +58,7 @@ def init_settings_table():
     except Exception:
         pass
 
+@st.cache_data(ttl=86400)
 def get_setting(key: str, default_value: str = "") -> str:
     """Mengambil nilai pengaturan dari database."""
     try:
@@ -81,6 +82,10 @@ def set_setting(key: str, value: str):
                 VALUES (:k, :v) 
                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
             """), {"k": key, "v": str(value)})
+                try:
+            get_setting.clear()
+        except Exception:
+            pass
     except Exception as e:
         st.error(f"Gagal menyimpan pengaturan: {e}")
 
