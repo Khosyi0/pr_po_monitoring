@@ -450,7 +450,7 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ── Toggle filter mode + header ──────────────────────────────────────────────
-if not is_summary:
+if not is_summary and not is_admin_pg:
     _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
     _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
 
@@ -505,7 +505,7 @@ if st.session_state.filter_mode == 'sidebar' and is_lainnya:
     st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary:
+elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary and not is_admin_pg:
     try:
         departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
         bagian_data  = load_data("""
@@ -975,7 +975,7 @@ st.session_state['_sips_view_args'] = dict(
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # ─────────────────────────────────────────────────────────────────────────────
 
-if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary:
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg:
     if is_sips:
         render_filter_bar('sips', load_data)
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
