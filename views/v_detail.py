@@ -28,17 +28,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 Search (PR No, PO No, Material, Vendor)
             </h1>
         """, unsafe_allow_html=True)
-        search_term = st.text_input("Search", value="", label_visibility="collapsed")
-        search_condition = ""
-        if search_term:
-            search_condition = f"""
-            AND (
-                no_pr ILIKE '%{search_term}%' OR
-                nomor_po ILIKE '%{search_term}%' OR
-                pr_description ILIKE '%{search_term}%' OR
-                vendor_name ILIKE '%{search_term}%'
-            )
-            """
+        search_term = st.text_input("Search", value="", placeholder="Ketik No PR, No PO, nama barang, atau nama vendor...", label_visibility="collapsed")
 
         table_query = f"""
         SELECT
@@ -48,38 +38,60 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             total_amount_local_curr, efisiensi, lead_time_process_po,
             status_pengiriman, on_time_delivery
         FROM vw_pr_po_complete
-        WHERE {filter_conditions} {search_condition}
+        WHERE {filter_conditions}
         AND ({bagian_pr_cond} OR {bagian_po_cond})
         ORDER BY tgl_create_pr DESC
-        LIMIT 100
         """
 
         with st.spinner("Memuat data tabel..."):
-            table_data = load_data(table_query)
+            table_data_raw = load_data(table_query)
 
-        if not table_data.empty:
+        if not table_data_raw.empty:
+            if search_term:
+                term = search_term.lower()
+                mask = (
+                    table_data_raw['no_pr'].astype(str).str.lower().str.contains(term, na=False) |
+                    table_data_raw['nomor_po'].astype(str).str.lower().str.contains(term, na=False) |
+                    table_data_raw['pr_description'].astype(str).str.lower().str.contains(term, na=False) |
+                    table_data_raw['vendor_name'].astype(str).str.lower().str.contains(term, na=False)
+                )
+                table_data = table_data_raw[mask].copy()
+            else:
+                table_data = table_data_raw.copy()
 
-            table_data['no_pr'] = table_data['no_pr'].replace('No PR', '-')
-            table_data['department_code'] = table_data['department_code'].replace('Unknown', '-')
+            if not table_data.empty:
 
-            for col in ['estimasi_pr', 'total_amount_local_curr', 'efisiensi']:
-                if col in table_data.columns:
-                    table_data[col] = table_data[col].apply(
-                        lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
-                    )
-            for col in ['tgl_create_pr', 'date_ordered']:
-                if col in table_data.columns:
-                    table_data[col] = pd.to_datetime(table_data[col]).dt.strftime('%Y-%m-%d')
+                table_data['no_pr'] = table_data['no_pr'].replace('No PR', '-')
+                table_data['department_code'] = table_data['department_code'].replace('Unknown', '-')
 
-            st.dataframe(table_data, use_container_width=True, height=400)
-            csv = table_data.to_csv(index=False)
-            st.download_button(
-                label="Download as CSV",
-                icon=":material/download:",
-                data=csv,
-                file_name=f"pr_po_data_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
+                for col in ['estimasi_pr', 'total_amount_local_curr', 'efisiensi']:
+                    if col in table_data.columns:
+                        table_data[col] = table_data[col].apply(
+                            lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                        )
+                for col in ['tgl_create_pr', 'date_ordered']:
+                    if col in table_data.columns:
+                        table_data[col] = pd.to_datetime(table_data[col]).dt.strftime('%Y-%m-%d')
+
+                count_label = f"Menampilkan **{len(table_data):,}** baris"
+                if len(table_data) > 500:
+                    count_label += " *(ditampilkan 500 teratas untuk performa, gunakan fitur Download untuk data lengkap)*"
+                    table_data_display = table_data.head(500)
+                else:
+                    table_data_display = table_data
+
+                st.caption(count_label)
+                st.dataframe(table_data_display, use_container_width=True, height=400)
+                csv = table_data.to_csv(index=False)
+                st.download_button(
+                    label="Download as CSV",
+                    icon=":material/download:",
+                    data=csv,
+                    file_name=f"pr_po_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+            else:
+                    st.info("Tidak ada data yang cocok dengan pencarian.")
         else:
             st.info("Tidak ada data yang cocok dengan filter yang dipilih.")
 
@@ -99,7 +111,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         konteks_lines.append("## 1. RINGKASAN DATA TABEL YANG DITAMPILKAN")
         if 'table_data' in locals() and not table_data.empty:
             n_rows = len(table_data)
-            konteks_lines.append(f"- Jumlah baris tampil: {n_rows} (limit 100 per query)")
+            konteks_lines.append(f"- Jumlah total baris ditemukan: {n_rows}")
             # Hitung ringkasan dari data yang ada
             n_pr  = table_data['no_pr'].replace('-', pd.NA).dropna().nunique()
             n_po  = table_data['nomor_po'].dropna().nunique()

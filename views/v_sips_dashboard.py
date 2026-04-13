@@ -560,15 +560,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             },
         ]
 
-        # ── Session state untuk setiap toggle ────────────────────────────────────
-        for kpi in KPI_DASH:
-            if kpi["key"] not in st.session_state:
-                st.session_state[kpi["key"]] = False
-
-        # ── FUNGSI TOGGLE YANG HILANG ────────────────────────────────────────────
-        def toggle_state(state_key):
-            st.session_state[state_key] = not st.session_state[state_key]
-
         # ── Helper: render satu baris (max 3 KPI) dengan tombol formula ──────────
         def render_kpi_row(items):
             cols = st.columns(3)
@@ -577,7 +568,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                     if i >= len(items):
                         continue
                     kpi     = items[i]
-                    is_open = st.session_state[kpi["key"]]
 
                     card_html = kpi_card(kpi["icon"], kpi["label"],
                                          kpi["value"], kpi["delta"], kpi["dtype"])
@@ -587,20 +577,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         st.markdown(card_html, unsafe_allow_html=True)
                     with c_btn:
                         st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                        tooltip  = "Hide Formula" if is_open else "Show Formula"
-                        btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
-                                  on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info(kpi["formula"])
 
         # ── Render 5 baris × 3 KPI ───────────────────────────────────────────────
         for row_start in range(0, len(KPI_DASH), 3):
             row_items = KPI_DASH[row_start:row_start + 3]
             render_kpi_row(row_items)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            # Formula info muncul tepat di bawah baris yang aktif
-            for kpi in row_items:
-                if st.session_state[kpi["key"]]:
-                    st.info(kpi["formula"])
 
     # ─────────────────────────────────────────────────────────────────────────
     # CHARTS
@@ -630,16 +614,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_sips_trend = "show_formula_sips_trend"
-            if key_sips_trend not in st.session_state:
-                st.session_state[key_sips_trend] = False
-            is_open = st.session_state[key_sips_trend]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_sips_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_trend})
-
-        if st.session_state.get(key_sips_trend, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Pipeline & Trend PR-PO SIPS**: Line chart jumlah PR dan PO yang dibuat per bulan.
                     
 **Formula Excel:**
@@ -714,16 +690,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_sips_status = "show_formula_sips_status"
-            if key_sips_status not in st.session_state:
-                st.session_state[key_sips_status] = False
-            is_open = st.session_state[key_sips_status]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_sips_status}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_status})
-
-        if st.session_state.get(key_sips_status, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Distribusi Status PR SIPS**: Pie chart persentase jumlah dokumen berdasarkan status akhirnya.
 
 **Formula Excel:**
@@ -774,16 +742,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_sips_sla = "show_formula_sips_sla"
-            if key_sips_sla not in st.session_state:
-                st.session_state[key_sips_sla] = False
-            is_open = st.session_state[key_sips_sla]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_sips_sla}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_sla})
-
-        if st.session_state.get(key_sips_sla, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
     **Performa SLA per Karyawan**: Bar chart persentase pencapaian SLA tepat waktu untuk setiap karyawan.
                     
     **Kalkulasi:**
@@ -848,16 +808,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_sips_hist = "show_formula_sips_hist"
-            if key_sips_hist not in st.session_state:
-                st.session_state[key_sips_hist] = False
-            is_open = st.session_state[key_sips_hist]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_sips_hist}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_hist})
-
-        if st.session_state.get(key_sips_hist, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
     **Distribusi Waktu PR → PO**: Histogram persebaran jumlah PR berdasarkan lama proses pembuatannya (dalam satuan hari).
 
     Membantu mengidentifikasi apakah mayoritas dokumen selesai dalam rentang waktu yang normal, atau terdapat banyak outlier yang memakan waktu sangat lama (ekor grafik yang panjang ke kanan).
@@ -905,16 +857,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_sips_vol = "show_formula_sips_vol"
-        if key_sips_vol not in st.session_state:
-            st.session_state[key_sips_vol] = False
-        is_open = st.session_state[key_sips_vol]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_sips_vol}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_vol})
-
-    if st.session_state.get(key_sips_vol, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
     **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
     """)
         
@@ -968,16 +912,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         """, unsafe_allow_html=True)
     with btn_col_k:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_sips_kontrak = "show_formula_sips_kontrak"
-        if key_sips_kontrak not in st.session_state:
-            st.session_state[key_sips_kontrak] = False
-        is_open = st.session_state[key_sips_kontrak]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_sips_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_kontrak})
-
-    if st.session_state.get(key_sips_kontrak, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Proporsi PO Kontrak vs Non-Kontrak**: Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (*Outline Agreement*) dibandingkan yang tidak.
 
 **Formula Excel:**
@@ -1045,16 +981,8 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_sips_eff = "show_formula_sips_eff"
-        if key_sips_eff not in st.session_state:
-            st.session_state[key_sips_eff] = False
-        is_open = st.session_state[key_sips_eff]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_sips_eff}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_sips_eff})
-
-    if st.session_state.get(key_sips_eff, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
     **Perbandingan Nilai OE vs PO per Karyawan**: Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.
 
     Bar **Biru** (OE PR) = Total nilai estimasi sebelum PO diproses.

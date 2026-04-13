@@ -14,10 +14,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         dept_cond   = kwargs.get('dept_cond', '1=1')
         pg_cond     = kwargs.get('pg_cond',   '1=1')
 
-        # Fungsi helper untuk tombol toggle formula
-        def toggle_state(state_key):
-            st.session_state[state_key] = not st.session_state[state_key]
-
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:60px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-tag-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
@@ -214,9 +210,6 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
         </style>
         """, unsafe_allow_html=True)
 
-        for kpi in KPI_EVAL_CARDS:
-            if kpi["key"] not in st.session_state:
-                st.session_state[kpi["key"]] = False
 
         # ── RENDERING 3 COLUMNS PER ROW ──
         for row in range(0, len(KPI_EVAL_CARDS), 3):
@@ -226,7 +219,6 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
                 with col:
                     if i < len(current_row_items):
                         kpi = current_row_items[i]
-                        is_open = st.session_state[kpi["key"]]
                         
                         card_html = f"""
                         <div class="kpi-card">
@@ -247,15 +239,8 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
                             st.markdown(card_html, unsafe_allow_html=True)
                         with c_btn:
                             st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                            tooltip = "Hide Formula" if is_open else "Show Formula"
-                            btn_icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                            st.button(btn_icon, key=f"btn_{kpi['key']}", help=tooltip,
-                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-            
-            # Show formula info exactly under the relevant row
-            for kpi in current_row_items:
-                if st.session_state[kpi["key"]]:
-                    st.info(kpi["formula"])
+                            with st.popover(":material/visibility:", help="Lihat Formula"):
+                                st.info(kpi["formula"])
 
         st.markdown("---")
 
@@ -273,16 +258,8 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_scatter = "show_formula_eval_scatter"
-            if key_scatter not in st.session_state:
-                st.session_state[key_scatter] = False
-            is_open = st.session_state[key_scatter]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_scatter}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_scatter})
-
-        if st.session_state.get(key_scatter, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **OE vs Realisasi Harga PO (per Material)**: Scatter chart perbandingan nilai estimasi vs realisasi PO per material.
 
 **Kalkulasi SQL:**
@@ -383,16 +360,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_overspend = "show_formula_eval_overspend"
-                if key_overspend not in st.session_state:
-                    st.session_state[key_overspend] = False
-                is_open = st.session_state[key_overspend]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_overspend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_overspend})
-
-            if st.session_state.get(key_overspend, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Top 10 Material: Overspend Terbesar**: Bar chart 10 material dengan selisih (OE - realisasi) terbesar.
 
 **Formula Excel:** (PO SAP)
@@ -485,17 +454,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_efisien = "show_formula_eval_efisien"
-                if key_efisien not in st.session_state:
-                    st.session_state[key_efisien] = False
-                is_open_ef = st.session_state[key_efisien]
-                icon_ef = ":material/visibility_off:" if is_open_ef else ":material/visibility:"
-                st.button(icon_ef, key=f"btn_{key_efisien}",
-                          help="Hide Formula" if is_open_ef else "Show Formula",
-                          on_click=toggle_state, kwargs={"state_key": key_efisien})
-
-            if st.session_state.get(key_efisien, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Top 10 Material: Efisiensi Terbesar**: Bar chart 10 material dengan total penghematan (OE - realisasi) terbesar.
 
 **Formula Excel:** (PO SAP)
@@ -669,16 +629,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                key_vendor_var = "show_formula_eval_vendor_var"
-                if key_vendor_var not in st.session_state:
-                    st.session_state[key_vendor_var] = False
-                is_open = st.session_state[key_vendor_var]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_vendor_var}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_vendor_var})
-
-            if st.session_state.get(key_vendor_var, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
     **Variasi Harga Antar Vendor (Top 10 Material)**: Perbandingan harga satuan dari vendor berbeda untuk material yang sama.
 
     **Formula Excel:** (PO SAP)
@@ -728,16 +680,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     """, unsafe_allow_html=True)
                 with btn_col:
                     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_trend = "show_formula_eval_trend"
-                    if key_trend not in st.session_state:
-                        st.session_state[key_trend] = False
-                    is_open = st.session_state[key_trend]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend})
-
-                if st.session_state.get(key_trend, False):
-                    st.info("""\
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info("""\
         **Tren Harga Historis per Material**: Line chart pergerakan harga satuan PO per bulan. Berguna untuk mendeteksi kenaikan harga yang tidak wajar dan melihat konsistensi vendor.
 
         **Formula Excel:** (PO SAP)
@@ -834,16 +778,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
         
         with btn_col_tbl:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            key_tbl_vendor = "show_formula_eval_tbl_vendor"
-            if key_tbl_vendor not in st.session_state:
-                st.session_state[key_tbl_vendor] = False
-            is_open = st.session_state[key_tbl_vendor]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_tbl_vendor}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_tbl_vendor})
-
-        if st.session_state.get(key_tbl_vendor, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Perbandingan Vendor**: Tabel ini menampilkan metrik kinerja vendor untuk material yang sedang dipilih, membantu Anda memilih vendor terbaik berdasarkan tiga pilar utama.
 
 **Kalkulasi Metrik:**
@@ -1020,18 +956,8 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     with _title_ch1:
                         st.markdown("**Peta Risiko Vendor: Nilai PO vs % Selisih terhadap OE**")
                     with _btn_ch1:
-                        key_rv_scatter = "show_formula_rv_scatter"
-                        if key_rv_scatter not in st.session_state:
-                            st.session_state[key_rv_scatter] = False
-                        _is_open_sc = st.session_state[key_rv_scatter]
-                        st.button(
-                            ":material/visibility_off:" if _is_open_sc else ":material/visibility:",
-                            key=f"btn_{key_rv_scatter}",
-                            help="Hide Formula" if _is_open_sc else "Show Formula",
-                            on_click=toggle_state, kwargs={"state_key": key_rv_scatter}
-                        )
-                    if st.session_state.get(key_rv_scatter, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **Peta Risiko Vendor (Scatter)**: Bubble chart posisi vendor berdasarkan dua dimensi risiko sekaligus, seberapa besar nilai transaksinya dan seberapa mahal harganya terhadap OE.
  
 **Sumbu X: Total Nilai PO:** `SUM(total_amount_local_curr)` per vendor dalam periode filter.
@@ -1134,18 +1060,8 @@ Nilai positif = realisasi lebih mahal dari OE. Nilai negatif = realisasi lebih h
                     with _title_ch2:
                         st.markdown("**% Realisasi vs OE per Vendor (Top 20, diurutkan terburuk)**")
                     with _btn_ch2:
-                        key_rv_bar = "show_formula_rv_bar"
-                        if key_rv_bar not in st.session_state:
-                            st.session_state[key_rv_bar] = False
-                        _is_open_bar = st.session_state[key_rv_bar]
-                        st.button(
-                            ":material/visibility_off:" if _is_open_bar else ":material/visibility:",
-                            key=f"btn_{key_rv_bar}",
-                            help="Hide Formula" if _is_open_bar else "Show Formula",
-                            on_click=toggle_state, kwargs={"state_key": key_rv_bar}
-                        )
-                    if st.session_state.get(key_rv_bar, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **% Realisasi vs OE per Vendor (Top 20)**: Bar chart horizontal yang menampilkan posisi setiap vendor terhadap OE, diurutkan dari yang paling mahal ke yang paling hemat.
  
 **Data yang ditampilkan:** 20 vendor dengan total nilai PO terbesar (Top 20 dari query utama), kemudian diurutkan ulang berdasarkan % selisih vs OE dari terburuk ke terbaik.

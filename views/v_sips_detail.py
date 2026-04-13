@@ -45,21 +45,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                                 placeholder="Ketik No PR, No PO, nama barang, atau nama karyawan...")
 
     # ── WHERE clause ──────────────────────────────────────────────────────────
-    extra = []
-    if search_term:
-        term = search_term.replace("'", "''")
-        extra.append(f"""(
-            no_pr       ILIKE '%{term}%' OR
-            no_po       ILIKE '%{term}%' OR
-            short_text  ILIKE '%{term}%' OR
-            nama        ILIKE '%{term}%' OR
-            nomor_mr_sr ILIKE '%{term}%'
-        )""")
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
-        selected_pgroup=selected_pgroup,
-        extra=extra
+        selected_pgroup=selected_pgroup
     )
 
     # ── Query tabel ───────────────────────────────────────────────────────────
@@ -87,85 +76,107 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         FROM vw_sips
         WHERE {where}
         ORDER BY requisition_date DESC
-        LIMIT 500
     """
 
     with st.spinner("Memuat data..."):
         try:
-            df = load_data(table_query)
+            df_raw = load_data(table_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
 
-    no_data = df.empty
-
-    if no_data:
-        st.info("Tidak ada data yang sesuai dengan filter.")
-
-    if not no_data:
-        # ── Format kolom ──────────────────────────────────────────────────────────
-        for col in ["OE PR (Rp)", "Nilai PO (Rp)"]:
-            if col in df.columns:
-                df[col] = df[col].apply(
-                    lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
-                )
-
-        for col in ["Tgl Requisisi", "Tgl PO"]:
-            if col in df.columns:
-                df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
-
-        for col in ["PR-PO (hari)", "SLA Standar", "SLA Realisasi"]:
-            if col in df.columns:
-                df[col] = df[col].apply(
-                    lambda x: f"{x:.0f}" if pd.notna(x) else ""
-                )
-
-        if "PO/MR (%)" in df.columns:
-            df["PO/MR (%)"] = df["PO/MR (%)"].apply(
-                lambda x: f"{x:.2f}%" if pd.notna(x) else ""
+    if not df_raw.empty:
+        if search_term:
+            term = search_term.lower()
+            mask = (
+                df_raw['no_pr'].astype(str).str.lower().str.contains(term, na=False) |
+                df_raw['No PO'].astype(str).str.lower().str.contains(term, na=False) |
+                df_raw['Deskripsi'].astype(str).str.lower().str.contains(term, na=False) |
+                df_raw['nama'].astype(str).str.lower().str.contains(term, na=False) |
+                df_raw['No MR/SR'].astype(str).str.lower().str.contains(term, na=False)
             )
+            df = df_raw[mask].copy()
+        else:
+            df = df_raw.copy()
+            
+        no_data = df.empty
+        if no_data:
+            st.info("Tidak ada data yang sesuai dengan pencarian.")
+            
+        if not no_data:
+            # ── Format kolom ──────────────────────────────────────────────────────────
+            for col in ["OE PR (Rp)", "Nilai PO (Rp)"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(
+                        lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                    )
 
-        # Warnai kolom Status
-        def color_status(val):
-            colors = {
-                "Closed":    "color: #09ab3b; font-weight:600",
-                "Proses PO": "color: #f0a500; font-weight:600",
-                "Open":      "color: #6c8ebf; font-weight:600",
-            }
-            return colors.get(val, "")
+            for col in ["Tgl Requisisi", "Tgl PO"]:
+                if col in df.columns:
+                    df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
 
-        def color_sla(val):
-            try:
-                v = float(str(val).replace(",", "."))
-                if v == 1:   return "color: #09ab3b; font-weight:600"
-                if v == 0:   return "color: #e03c3c; font-weight:600"
-            except:
-                pass
-            return ""
+            for col in ["PR-PO (hari)", "SLA Standar", "SLA Realisasi"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(
+                        lambda x: f"{x:.0f}" if pd.notna(x) else ""
+                    )
 
-        styled = (df.style
-                  .map(color_status, subset=["Status"])
-                  .map(color_sla,    subset=["SLA Nilai"]))
+            if "PO/MR (%)" in df.columns:
+                df["PO/MR (%)"] = df["PO/MR (%)"].apply(
+                    lambda x: f"{x:.2f}%" if pd.notna(x) else ""
+                )
 
-        # ── Info jumlah baris ─────────────────────────────────────────────────────
-        count_label = f"Menampilkan **{len(df):,}** baris"
-        if len(df) == 500:
-            count_label += " *(limit 500, gunakan filter untuk mempersempit hasil)*"
-        st.caption(count_label)
+            # Warnai kolom Status
+            def color_status(val):
+                colors = {
+                    "Closed":    "color: #09ab3b; font-weight:600",
+                    "Proses PO": "color: #f0a500; font-weight:600",
+                    "Open":      "color: #6c8ebf; font-weight:600",
+                }
+                return colors.get(val, "")
 
-        st.dataframe(styled, use_container_width=True, height=480)
+            def color_sla(val):
+                try:
+                    v = float(str(val).replace(",", "."))
+                    if v == 1:   return "color: #09ab3b; font-weight:600"
+                    if v == 0:   return "color: #e03c3c; font-weight:600"
+                except:
+                    pass
+                return ""
 
-        # ── Download CSV ──────────────────────────────────────────────────────────
-        csv = df.to_csv(index=False)
-        st.download_button(
-            label="Download sebagai CSV",
-            icon=":material/download:",
-            data=csv,
-            file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv",
-        )
+            styled = (df.style
+                      .map(color_status, subset=["Status"])
+                      .map(color_sla,    subset=["SLA Nilai"]))
 
-        # =====================================================================
+            # ── Info jumlah baris ─────────────────────────────────────────────────────
+            count_label = f"Menampilkan **{len(df):,}** baris"
+            if len(df) > 500:
+                count_label += " *(ditampilkan 500 teratas untuk performa, gunakan fitur Download untuk data lengkap)*"
+                df_display = df.head(500)
+            else:
+                df_display = df
+                
+            st.caption(count_label)
+
+            styled_display = (df_display.style
+                      .map(color_status, subset=["Status"])
+                      .map(color_sla,    subset=["SLA Nilai"]))
+
+            st.dataframe(styled_display, use_container_width=True, height=480)
+
+            # ── Download CSV ──────────────────────────────────────────────────────────
+            csv = df.to_csv(index=False)
+            st.download_button(
+                label="Download sebagai CSV",
+                icon=":material/download:",
+                data=csv,
+                file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+            )
+    else:
+        st.info("Tidak ada data yang sesuai dengan filter yang dipilih.")
+
+    # =====================================================================
     # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
     # =====================================================================
 

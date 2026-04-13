@@ -10,9 +10,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_number, render_chat_analyst, build_sips_where
 
-def toggle_state(state_key):
-    st.session_state[state_key] = not st.session_state[state_key]
-
 LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
               font_color="gray", margin=dict(t=16, b=16, l=10, r=10), separators=",.")
 GRID   = dict(gridcolor="rgba(128,128,128,0.15)")
@@ -160,13 +157,19 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_pr_po = "show_formula_kpi_pr_po"
-            if key_kpi_pr_po not in st.session_state:
-                st.session_state[key_kpi_pr_po] = False
-            is_open = st.session_state[key_kpi_pr_po]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_pr_po}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_pr_po})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**Rata-rata Proses Po dan Closed dari PR-PO**: Rata-rata jumlah hari PR-PO dengan **Status** `Proses PO` dan `Closed` dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Hitung rata-rata **PR-PO**
+
+**Nilai saat ini:** {format_number(avg_pr_po, decimals=2)} hari
+
+**Target:** -
+""")
 
     with col2:
         dc = "g" if avg_real <= avg_std else "r"
@@ -178,13 +181,24 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_real = "show_formula_kpi_real"
-            if key_kpi_real not in st.session_state:
-                st.session_state[key_kpi_real] = False
-            is_open = st.session_state[key_kpi_real]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_real}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_real})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
+
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1`
+- Hitung rata-rata **Realisasi SLA**
+
+**Interpretasi:**
+
+| Kondisi | Artinya |
+|---|---|
+| Realisasi ≤ Standard SLA | ✅ On-time, proses selesai sebelum target |
+| Realisasi > Standard SLA | ❌ Miss, proses melewati batas SLA |
+
+**Standard SLA rata-rata saat ini:** {format_number(avg_std)} hari &nbsp;|&nbsp; **Realisasi saat ini:** {format_number(avg_real, decimals=2)} hari
+""")
 
     with col3:
         c_card, c_btn = st.columns([10, 2])
@@ -195,63 +209,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_pra = "show_formula_kpi_pra"
-            if key_kpi_pra not in st.session_state:
-                st.session_state[key_kpi_pra] = False
-            is_open = st.session_state[key_kpi_pra]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_pra}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_pra})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**Waktu Pra-Disposisi**: Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
 
-    # Formula info baris 1 - tampil di bawah baris, lebar penuh
-    if st.session_state.get(key_kpi_pr_po, False):
-        st.info(f"""\
-    **Rata-rata Proses Po dan Closed dari PR-PO**: Rata-rata jumlah hari PR-PO dengan **Status** `Proses PO` dan `Closed` dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+Ini adalah waktu **di luar kendali tim pengadaan**.
 
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Status** menjadi `Proses PO` dan `Closed`
-    - Hitung rata-rata **PR-PO**
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1`
+- Hitung rata-rata dari `Tanggal Disposisi Buyer` dikurangi dengan `Requisition Date`
 
-    **Nilai saat ini:** {format_number(avg_pr_po, decimals=2)} hari
+**Nilai saat ini:** {format_number(avg_pra, decimals=2)} hari
 
-    **Target:** -
-    """)
-
-    if st.session_state.get(key_kpi_real, False):
-        st.info(f"""\
-    **Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
-
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Nilai SLA** menjadi `1`
-    - Hitung rata-rata **Realisasi SLA**
-
-    **Interpretasi:**
-
-    | Kondisi | Artinya |
-    |---|---|
-    | Realisasi ≤ Standard SLA | ✅ On-time, proses selesai sebelum target |
-    | Realisasi > Standard SLA | ❌ Miss, proses melewati batas SLA |
-
-    **Standard SLA rata-rata saat ini:** {format_number(avg_std)} hari &nbsp;|&nbsp; **Realisasi saat ini:** {format_number(avg_real, decimals=2)} hari
-    """)
-
-    if st.session_state.get(key_kpi_pra, False):
-        st.info(f"""\
-    **Waktu Pra-Disposisi**: Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
-
-    Ini adalah waktu **di luar kendali tim pengadaan**.
-
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Nilai SLA** menjadi `1`
-    - Hitung rata-rata dari `Tanggal Disposisi Buyer` dikurangi dengan `Requisition Date`
-
-    **Nilai saat ini:** {format_number(avg_pra, decimals=2)} hari
-
-    **Catatan:** Nilai ini tinggi bisa mengindikasikan bottleneck di proses approval atau routing sebelum PR masuk ke pengadaan.
-    """)
+**Catatan:** Nilai ini tinggi bisa mengindikasikan bottleneck di proses approval atau routing sebelum PR masuk ke pengadaan.
+""")
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -267,13 +239,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_e2e = "show_formula_kpi_e2e"
-            if key_kpi_e2e not in st.session_state:
-                st.session_state[key_kpi_e2e] = False
-            is_open = st.session_state[key_kpi_e2e]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_e2e}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_e2e})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**Rata-rata End-to-End**: Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
+
+Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
+- Pra-Disposisi = waktu sebelum buyer menerima PR (routing, approval, antrian)
+- PR-PO = waktu pengadaan setelah buyer menerima PR
+
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** menjadi `Closed`
+- Hitung rata-rata dari `Tanggal PO` dikurangi dengan `Requisition Date`
+
+**Nilai saat ini:** {format_number(avg_e2e, decimals=2)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=2)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=2)} hari
+""")
 
     with col5:
         dc = "g" if avg_headroom >= 0 else "r"
@@ -285,13 +265,32 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_headroom = "show_formula_kpi_headroom"
-            if key_kpi_headroom not in st.session_state:
-                st.session_state[key_kpi_headroom] = False
-            is_open = st.session_state[key_kpi_headroom]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_headroom}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_headroom})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**Rata-rata SLA Headroom**: Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
+
+**Formula:**
+```
+SLA Headroom = Standard SLA - Realisasi SLA
+```
+            
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1`
+- Hitung rata-rata dari `Standard SLA` dikurangi dengan `Realisasi SLA`
+
+**Interpretasi:**
+
+| Nilai | Artinya |
+|---|---|
+| **Positif** | Proses selesai lebih cepat dari target, masih ada sisa waktu ✅ |
+| **0** | Tepat di batas SLA |
+| **Negatif** | Proses melewati Standard SLA, SLA Miss ❌ |
+
+**Nilai saat ini:** {format_number(avg_headroom, decimals=2)} hari
+
+**Target:** ≥ 0 hari (semakin besar semakin baik)
+""")
 
     with col6:
         dc = "g" if pct_ontime >= 90 else ("o" if pct_ontime >= 75 else "r")
@@ -303,79 +302,27 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         unsafe_allow_html=True)
         with c_btn:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            key_kpi_ontime = "show_formula_kpi_ontime"
-            if key_kpi_ontime not in st.session_state:
-                st.session_state[key_kpi_ontime] = False
-            is_open = st.session_state[key_kpi_ontime]
-            icon    = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_kpi_ontime}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kpi_ontime})
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""\
+**% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
 
-    # Formula info baris 2 - tampil di bawah baris, lebar penuh
-    if st.session_state.get(key_kpi_e2e, False):
-        st.info(f"""\
-    **Rata-rata End-to-End**: Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Nilai SLA** menjadi `1` dan `0`
+- `= Nilai SLA 1 - Total PO`
 
-    Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
-    - Pra-Disposisi = waktu sebelum buyer menerima PR (routing, approval, antrian)
-    - PR-PO = waktu pengadaan setelah buyer menerima PR
+**Interpretasi:**
 
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Status** menjadi `Closed`
-    - Hitung rata-rata dari `Tanggal PO` dikurangi dengan `Requisition Date`
+| % On Time | Status |
+|---|---|
+| ≥ 90% | 🟢 Baik |
+| 75% - 89% | 🟡 Perlu perhatian |
+| < 75% | 🔴 Kritis |
 
-    **Nilai saat ini:** {format_number(avg_e2e, decimals=2)} hari &nbsp;|&nbsp; **Pra-Disposisi:** {format_number(avg_pra, decimals=2)} hari &nbsp;|&nbsp; **PR-PO:** {format_number(avg_pr_po, decimals=2)} hari
-    """)
+**Nilai saat ini:** {format_number(pct_ontime, decimals=2)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
 
-    if st.session_state.get(key_kpi_headroom, False):
-        st.info(f"""\
-    **Rata-rata SLA Headroom**: Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
-
-    **Formula:**
-    ```
-    SLA Headroom = Standard SLA − Realisasi SLA
-    ```
-                
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Nilai SLA** menjadi `1`
-    - Hitung rata-rata dari `Standard SLA` dikurangi dengan `Realisasi SLA`
-
-    **Interpretasi:**
-
-    | Nilai | Artinya |
-    |---|---|
-    | **Positif** | Proses selesai lebih cepat dari target, masih ada sisa waktu ✅ |
-    | **0** | Tepat di batas SLA |
-    | **Negatif** | Proses melewati Standard SLA, SLA Miss ❌ |
-
-    **Nilai saat ini:** {format_number(avg_headroom, decimals=2)} hari
-
-    **Target:** ≥ 0 hari (semakin besar semakin baik)
-    """)
-
-    if st.session_state.get(key_kpi_ontime, False):
-        st.info(f"""\
-    **% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
-
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Nilai SLA** menjadi `1` dan `0`
-    - `= Nilai SLA 1 - Total PO`
-
-    **Interpretasi:**
-
-    | % On Time | Status |
-    |---|---|
-    | ≥ 90% | 🟢 Baik |
-    | 75% – 89% | 🟡 Perlu perhatian |
-    | < 75% | 🔴 Kritis |
-
-    **Nilai saat ini:** {format_number(pct_ontime, decimals=2)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
-
-    **Target:** ≥ 90%
-    """)
+**Target:** ≥ 90%
+""")
 
     # ══════════════════════════════════════════════════════════════════════════
     # BAGIAN 2: Dekomposisi Waktu per Nama
@@ -393,16 +340,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_decomp = "show_formula_wt_decomp"
-        if key_wt_decomp not in st.session_state:
-            st.session_state[key_wt_decomp] = False
-        is_open = st.session_state[key_wt_decomp]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_decomp}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_decomp})
-
-    if st.session_state.get(key_wt_decomp, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Dekomposisi Waktu per Nama:** Stacked bar chart Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan.
 
 | Komponen | Artinya |
@@ -456,16 +395,8 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_sla_type = "show_formula_wt_sla_type"
-        if key_wt_sla_type not in st.session_state:
-            st.session_state[key_wt_sla_type] = False
-        is_open = st.session_state[key_wt_sla_type]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_sla_type}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_sla_type})
-
-    if st.session_state.get(key_wt_sla_type, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Standard SLA per jenis pengadaan:** Bar Chart % On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak.
 
 **Formula Excel:**
@@ -548,16 +479,8 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_headroom = "show_formula_wt_headroom"
-        if key_wt_headroom not in st.session_state:
-            st.session_state[key_wt_headroom] = False
-        is_open = st.session_state[key_wt_headroom]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_headroom}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_headroom})
-
-    if st.session_state.get(key_wt_headroom, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **SLA Headroom per Nama**: Horizontal Bar Chart Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan.
 
 | Nilai | Artinya |
@@ -606,16 +529,8 @@ Hijau = rata-rata headroom positif. Merah = sering melewati target.
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_trend = "show_formula_wt_trend"
-        if key_wt_trend not in st.session_state:
-            st.session_state[key_wt_trend] = False
-        is_open = st.session_state[key_wt_trend]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_trend}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_trend})
-
-    if st.session_state.get(key_wt_trend, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Tren Waktu per Bulan**: Combo Chart Perubahan kecepatan proses dari bulan ke bulan.
 
 | Elemen | Warna | Keterangan |
@@ -682,16 +597,8 @@ Hijau = rata-rata headroom positif. Merah = sering melewati target.
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_dist = "show_formula_wt_dist"
-        if key_wt_dist not in st.session_state:
-            st.session_state[key_wt_dist] = False
-        is_open = st.session_state[key_wt_dist]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_dist}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_dist})
-
-    if st.session_state.get(key_wt_dist, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Distribusi Waktu**: Bar Chart Sebaran PR-PO dan Realisasi SLA untuk mendeteksi outlier.
 
 - **Kiri - PR-PO**: Disposisi ke Tgl PO. Ekor kanan panjang = ada PR yang sangat lama diproses setelah disposisi.
@@ -754,16 +661,8 @@ Garis putus = rata-rata masing-masing.
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_prio = "show_formula_wt_prio"
-        if key_wt_prio not in st.session_state:
-            st.session_state[key_wt_prio] = False
-        is_open = st.session_state[key_wt_prio]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_prio}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_prio})
-
-    if st.session_state.get(key_wt_prio, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Waktu per Prioritas**: Bar Chart Rata-rata PR-PO & Realisasi SLA per Prioritas dan % On Time per Prioritas.
 
 | Prioritas | Standard SLA |
@@ -845,16 +744,8 @@ Idealnya Emergency dan Urgent lebih rendah dari Normal.
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_wt_pg = "show_formula_wt_pg"
-        if key_wt_pg not in st.session_state:
-            st.session_state[key_wt_pg] = False
-        is_open = st.session_state[key_wt_pg]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_wt_pg}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_wt_pg})
-
-    if st.session_state.get(key_wt_pg, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Waktu Realisasi SLA per Purchasing Group**: Bar Chart Perbandingan rata-rata waktu penyelesaian berdasarkan Purchasing Group.
 
 Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan oleh masing-masing Purchasing Group.
@@ -912,20 +803,12 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
                 </svg>
                 Resume OTOBOS per Individu
             </h1>
-            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Ringkasan ketepatan waktu per karyawan × jenis kontrak (seperti Ringkasan Kecepatan per PG × Jenis Tender)</p>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Ringkasan ketepatan waktu per karyawan x jenis kontrak (seperti Ringkasan Kecepatan per PG x Jenis Tender)</p>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        key_otobos = "show_formula_otobos"
-        if key_otobos not in st.session_state:
-            st.session_state[key_otobos] = False
-        is_open = st.session_state[key_otobos]
-        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-        tooltip = "Hide Formula" if is_open else "Show Formula"
-        st.button(icon, key=f"btn_{key_otobos}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_otobos})
-
-    if st.session_state.get(key_otobos, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Resume OTOBOS per Individu**: Tabel ringkasan ketepatan waktu setiap karyawan dibreakdown berdasarkan jenis kontrak (Agreement vs Non-Agreement).
 
 **Kolom yang ditampilkan:**
@@ -939,19 +822,19 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
 | % On Time | Persentase ketepatan waktu |
 | Avg Realisasi SLA | Rata-rata hari kerja dari Disposisi ke PO |
 | Avg Standard SLA | Rata-rata target SLA yang berlaku |
-| Avg Headroom | Rata-rata sisa waktu (Standard − Realisasi) |
+| Avg Headroom | Rata-rata sisa waktu (Standard - Realisasi) |
 
 **Formula Excel:**
 - Filter nama karyawan yang ingin dicari
 - Filter **Status** menjadi `Proses PO` dan `Closed`
 - Pisahkan berdasarkan **Kontrak/Non kontrak** (Agreement vs Non-Agreement)
 - Hitung % On Time: `Nilai SLA = 1` dibagi **Total PO**
-- Hitung Avg Headroom: rata-rata dari `Standard SLA − Realisasi SLA`
+- Hitung Avg Headroom: rata-rata dari `Standard SLA - Realisasi SLA`
 
-Warna % On Time: 🟢 ≥ 90% · 🟡 75–89% · 🔴 < 75%
+Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
 """)
 
-    st.caption("Ketepatan waktu per karyawan dan jenis pengadaan, serupa dengan Ringkasan Kecepatan PG × Jenis Tender di halaman SAP.")
+    st.caption("Ketepatan waktu per karyawan dan jenis pengadaan, serupa dengan Ringkasan Kecepatan PG x Jenis Tender di halaman SAP.")
 
     if df.empty:
         st.info("Tidak ada data untuk filter yang dipilih.")
@@ -1039,7 +922,7 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75–89% · 🔴 < 75%
                 + thead + '<tbody>' + ''.join(rows_html) + '</tbody>'
                 + '</table>'
                 + '<p style="font-size:12px;margin-top:8px">'
-                + '🟢 On Time ≥ 90% &nbsp;|&nbsp; 🟡 75–89% &nbsp;|&nbsp; 🔴 < 75%'
+                + '🟢 On Time ≥ 90% &nbsp;|&nbsp; 🟡 75-89% &nbsp;|&nbsp; 🔴 < 75%'
                 + ' &nbsp;|&nbsp; Headroom: + = lebih cepat, - = melewati SLA'
                 + '</p>'
             )
@@ -1118,7 +1001,7 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75–89% · 🔴 < 75%
 
     # 6. Resume OTOBOS per Individu
     if 'otobos' in locals() and not otobos.empty:
-        konteks_lines.append("## 6. RESUME OTOBOS PER INDIVIDU (Nama × Jenis Kontrak)")
+        konteks_lines.append("## 6. RESUME OTOBOS PER INDIVIDU (Nama x Jenis Kontrak)")
         df_otobos_ai = otobos[["nama", "jenis_kontrak", "total_po", "on_time", "terlambat", "pct_ontime", "avg_real", "avg_headroom"]]
         konteks_lines.append(df_otobos_ai.to_csv(index=False))
         konteks_lines.append("\n")

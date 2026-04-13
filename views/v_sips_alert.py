@@ -10,11 +10,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
  
- 
-def toggle_state(state_key):
-    st.session_state[state_key] = not st.session_state[state_key]
- 
- 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
  
     info_filter     = kwargs.get('info_filter', 'Tidak ada filter spesifik')
@@ -65,21 +60,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        key_sips_pr = "show_formula_sips_alert_pr"
-        if key_sips_pr not in st.session_state:
-            st.session_state[key_sips_pr] = False
-        is_open = st.session_state[key_sips_pr]
-        st.button(
-            ":material/visibility_off:" if is_open else ":material/visibility:",
-            key=f"btn_{key_sips_pr}",
-            help="Hide Formula" if is_open else "Show Formula",
-            on_click=toggle_state, kwargs={"state_key": key_sips_pr}
-        )
-
-    st.caption("Menampilkan PR SIPS berstatus selain 'Closed' dan 'Proses PO' yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
-
-    if st.session_state.get(key_sips_pr, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR SIPS berstatus *selain Closed dan Proses PO* yang belum
 diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Disposisi Buyer**.
 
@@ -183,19 +165,8 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
             """, unsafe_allow_html=True)
         with btn_col2:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            key_aging = "show_formula_sips_aging"
-            if key_aging not in st.session_state:
-                st.session_state[key_aging] = False
-            is_open_ag = st.session_state[key_aging]
-            st.button(
-                ":material/visibility_off:" if is_open_ag else ":material/visibility:",
-                key=f"btn_{key_aging}",
-                help="Hide Formula" if is_open_ag else "Show Formula",
-                on_click=toggle_state, kwargs={"state_key": key_aging}
-            )
-
-        if st.session_state.get(key_aging, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Rekap Aging PR Pending (Open)**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO),
 dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
 
@@ -271,19 +242,8 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
             """, unsafe_allow_html=True)
         with btn_col3:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            key_beban = "show_formula_sips_beban_pending"
-            if key_beban not in st.session_state:
-                st.session_state[key_beban] = False
-            is_open_bb = st.session_state[key_beban]
-            st.button(
-                ":material/visibility_off:" if is_open_bb else ":material/visibility:",
-                key=f"btn_{key_beban}",
-                help="Hide Formula" if is_open_bb else "Show Formula",
-                on_click=toggle_state, kwargs={"state_key": key_beban}
-            )
-
-        if st.session_state.get(key_beban, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Beban Pending per Karyawan**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per karyawan,
 dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`standar_sla`).
 
@@ -366,19 +326,8 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
         """, unsafe_allow_html=True)
     with btn_col4:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        key_status_dist = "show_formula_sips_status_dist"
-        if key_status_dist not in st.session_state:
-            st.session_state[key_status_dist] = False
-        is_open_sd = st.session_state[key_status_dist]
-        st.button(
-            ":material/visibility_off:" if is_open_sd else ":material/visibility:",
-            key=f"btn_{key_status_dist}",
-            help="Hide Formula" if is_open_sd else "Show Formula",
-            on_click=toggle_state, kwargs={"state_key": key_status_dist}
-        )
-
-    if st.session_state.get(key_status_dist, False):
-        st.info("""\
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
 **Monitoring Status PR SIPS**: Menampilkan jumlah PR berdasarkan statusnya beserta total nilai OE.
 
 **Keterangan Status:**
@@ -392,6 +341,8 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
 - Filter **Status** sesuai yang diinginkan
 - Hitung jumlah baris dan jumlahkan kolom **OE PR**
         """)
+
+    st.caption("Menampilkan PR SIPS berstatus selain 'Closed' dan 'Proses PO' yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
 
     st.caption("Distribusi jumlah PR dan total OE berdasarkan status dokumen SIPS.")
 

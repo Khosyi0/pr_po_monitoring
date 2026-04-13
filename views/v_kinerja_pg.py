@@ -17,10 +17,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
         
-        # Fungsi helper untuk tombol toggle formula
-        def toggle_state(state_key):
-            st.session_state[state_key] = not st.session_state[state_key]
-
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:50px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" class="bi bi-briefcase-fill" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 12px;">
@@ -152,10 +148,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             KPI_PG = []
 
             if KPI_PG:
-                for kpi in KPI_PG:
-                    if kpi["key"] not in st.session_state:
-                        st.session_state[kpi["key"]] = False
-
                 kpi_cols = st.columns(len(KPI_PG))
                 for col, kpi in zip(kpi_cols, KPI_PG):
                     with col:
@@ -164,15 +156,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                             st.metric(*kpi["metric_args"], **kpi["metric_kwargs"])
                         with btn_col:
                             st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                            is_open = st.session_state[kpi["key"]]
-                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                            tooltip = "Hide Formula" if is_open else "Show Formula"
-                            st.button(icon, key=f"btn_{kpi['key']}", help=tooltip,
-                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
-
-                for kpi in KPI_PG:
-                    if st.session_state[kpi["key"]]:
-                        st.info(kpi["formula"])
+                            with st.popover(":material/visibility:", help="Lihat Formula"):
+                                st.info(kpi["formula"])
 
         # ── TAB: OVERVIEW | BREAKDOWN ───────────────────
         components.html("""
@@ -375,16 +360,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_val = "show_formula_pg_val"
-                        if key_val not in st.session_state:
-                            st.session_state[key_val] = False
-                        is_open = st.session_state[key_val]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_val}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_val})
-
-                    if st.session_state.get(key_val, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **Perbandingan Nilai OE vs Realisasi PO**: Grouped bar chart perbandingkan estimasi anggaran (OE) vs realisasi PO per Purchasing Group.
 
 **Kalkulasi SQL:**
@@ -439,16 +416,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_efis = "show_formula_pg_efis"
-                        if key_efis not in st.session_state:
-                            st.session_state[key_efis] = False
-                        is_open = st.session_state[key_efis]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_efis}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_efis})
-
-                    if st.session_state.get(key_efis, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **% Efisiensi per Purchasing Group**: Bar chart horizontal persentase penghematan yang dicapai tiap Purchasing Group.
 
 **Kalkulasi SQL:**
@@ -513,16 +482,8 @@ Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group terseb
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_lt = "show_formula_pg_lt"
-                        if key_lt not in st.session_state:
-                            st.session_state[key_lt] = False
-                        is_open = st.session_state[key_lt]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_lt})
-
-                    if st.session_state.get(key_lt, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **Rata-rata Lead Time per Purchasing Group**: Bar chart horizontal rata-rata waktu proses PR→PO per Purchasing Group.
 
 **Kalkulasi SQL:**
@@ -573,16 +534,8 @@ Semakin tinggi %, semakin besar penghematan yang dicapai Purchasing Group terseb
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_konv = "show_formula_pg_konv"
-                        if key_konv not in st.session_state:
-                            st.session_state[key_konv] = False
-                        is_open = st.session_state[key_konv]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_konv}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_konv})
-
-                    if st.session_state.get(key_konv, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **% Konversi PR → PO per Purchasing Group**: Bar chart horizontal persentase item PR yang berhasil dikonversi menjadi PO, per Purchasing Group.
 
 **Kalkulasi SQL:**
@@ -777,10 +730,6 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
                     },
                 ]
 
-                for kpi in SPEED_KPI:
-                    if kpi["key"] not in st.session_state:
-                        st.session_state[kpi["key"]] = False
-
                 speed_cols = st.columns(len(SPEED_KPI))
                 for col, kpi in zip(speed_cols, SPEED_KPI):
                     with col:
@@ -790,10 +739,8 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
                                       delta=kpi["delta"], delta_color=spd_d_color)
                         with btn_col:
                             st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                            is_open = st.session_state[kpi["key"]]
-                            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                            st.button(icon, key=f"btn_{kpi['key']}", help="Hide Formula" if is_open else "Show Formula",
-                                      on_click=toggle_state, kwargs={"state_key": kpi["key"]})
+                            with st.popover(":material/visibility:", help="Lihat Formula"):
+                                st.info(kpi["formula"])
 
                 import streamlit.components.v1 as _comp
                 _ontime_color = "#09ab3b" if spd_ontime_pct >= 80 else ("#ffa500" if spd_ontime_pct >= 60 else "#ff4b4b")
@@ -828,10 +775,6 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
                 </script>
                 """, height=0)
 
-                for kpi in SPEED_KPI:
-                    if st.session_state[kpi["key"]]:
-                        st.info(kpi["formula"])
-
             st.markdown("---")
 
             col1, col2 = st.columns(2)
@@ -848,16 +791,8 @@ Drill-down ke tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk 
                     """, unsafe_allow_html=True)
                 with btn_col:
                     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_kontrak = "show_formula_pg_kontrak"
-                    if key_kontrak not in st.session_state:
-                        st.session_state[key_kontrak] = False
-                    is_open = st.session_state[key_kontrak]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_kontrak})
-
-                if st.session_state.get(key_kontrak, False):
-                    st.info("""\
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info("""\
 **Kontrak vs Non-Kontrak per Purchasing Group**: Stacked bar chart komposisi nilai realisasi berdasarkan jenis tender per Purchasing Group.
 
 **Formula Excel:** (PO SAP)
@@ -997,16 +932,8 @@ Kalkulasi jenis tender, dihitung dari kolom `contract_no` di `po_items`: diawali
                     """, unsafe_allow_html=True)
                 with btn_col:
                     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                    key_ta = "show_formula_pg_ta"
-                    if key_ta not in st.session_state:
-                        st.session_state[key_ta] = False
-                    is_open = st.session_state[key_ta]
-                    icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                    tooltip = "Hide Formula" if is_open else "Show Formula"
-                    st.button(icon, key=f"btn_{key_ta}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_ta})
-
-                if st.session_state.get(key_ta, False):
-                    st.info("""\
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info("""\
 **Distribusi Turn Around per Purchasing Group**: Komposisi item PO berdasarkan kategori Turn Around (TA vs non-TA).
 
 **Formula Excel:** 
@@ -1166,16 +1093,8 @@ Purchasing Group dengan proporsi TA tinggi memiliki karakteristik pengadaan berb
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_lt_kontrak = "show_formula_pg_lt_kontrak"
-                        if key_lt_kontrak not in st.session_state:
-                            st.session_state[key_lt_kontrak] = False
-                        is_open = st.session_state[key_lt_kontrak]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_lt_kontrak}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_lt_kontrak})
-
-                    if st.session_state.get(key_lt_kontrak, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **Lead Time: Kontrak vs Non-Kontrak per Purchasing Group**: Grouped bar chart rata-rata lead time per jenis tender per Purchasing Group.
 
 **Formula Excel:** (PO SAP)
@@ -1231,16 +1150,8 @@ Jika Tender Normal di suatu Purchasing Group jauh di atas target, pertimbangkan 
                         """, unsafe_allow_html=True)
                     with btn_col:
                         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-                        key_trend_lt = "show_formula_trend_lt"
-                        if key_trend_lt not in st.session_state:
-                            st.session_state[key_trend_lt] = False
-                        is_open = st.session_state[key_trend_lt]
-                        icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                        tooltip = "Hide Formula" if is_open else "Show Formula"
-                        st.button(icon, key=f"btn_{key_trend_lt}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_trend_lt})
-
-                    if st.session_state.get(key_trend_lt, False):
-                        st.info("""\
+                        with st.popover(":material/visibility:", help="Lihat Formula"):
+                            st.info("""\
 **Tren Lead Time per Bulan**: Line chart rata-rata kecepatan proses per bulan, dibedakan antara Tender Normal dan PR-PO Kontrak.
 
 **Formula Excel:** (PO SAP)

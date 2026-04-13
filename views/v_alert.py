@@ -18,10 +18,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         date_from   = kwargs.get('date_from')
         date_to     = kwargs.get('date_to')
         
-        # Fungsi helper untuk tombol toggle formula
-        def toggle_state(state_key):
-            st.session_state[state_key] = not st.session_state[state_key]
-
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:55px; margin-bottom: 0px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" fill="currentColor" class="bi bi-clipboard2-data-fill" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 12px;">
@@ -49,18 +45,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True) # Menyesuaikan tinggi tombol
-            key_alert_pr = "show_formula_alert_pr"
-            if key_alert_pr not in st.session_state:
-                st.session_state[key_alert_pr] = False
-            is_open = st.session_state[key_alert_pr]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_alert_pr}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_alert_pr})
-
-        st.caption("Menampilkan PR yang belum diproses menjadi PO selama lebih dari 30 hari sejak dibuat.")
-        
-        if st.session_state.get(key_alert_pr, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **PR Pending Mendekati Kadaluarsa (> 30 Hari)**: Menampilkan PR yang belum diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak dibuat.
 
 **Kolom yang ditampilkan:**
@@ -78,6 +64,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 - Tambah kolom `=TODAY()-tgl_create_pr`
 - Filter nilai > 30.
             """)
+
+        st.caption("Menampilkan PR yang belum diproses menjadi PO selama lebih dari 30 hari sejak dibuat.")
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True) # Spasi sebelum tabel
 
@@ -135,18 +123,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                key_alert_po = "show_formula_alert_po"
-                if key_alert_po not in st.session_state:
-                    st.session_state[key_alert_po] = False
-                is_open = st.session_state[key_alert_po]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_alert_po}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_alert_po})
-
-            st.caption("Menampilkan PO yang tanggal kirimnya sudah lewat namun barang belum diterima.")
-
-            if st.session_state.get(key_alert_po, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **PO Overdue (Melewati Delivery Date)**: Menampilkan PO yang tanggal delivery-nya sudah lewat namun barang belum diterima semua (`Delivery Completed` belum `X`).
 
 **Status `on_time_delivery`:**
@@ -172,6 +150,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 - Tambah kolom `=TODAY()-del_date_po`
 - Filter nilai positif.
                 """)
+
+            st.caption("Menampilkan PO yang tanggal kirimnya sudah lewat namun barang belum diterima.")
 
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -230,16 +210,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 """, unsafe_allow_html=True)
             with btn_col:
                 st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                key_alert_aging = "show_formula_alert_aging"
-                if key_alert_aging not in st.session_state:
-                    st.session_state[key_alert_aging] = False
-                is_open = st.session_state[key_alert_aging]
-                icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-                tooltip = "Hide Formula" if is_open else "Show Formula"
-                st.button(icon, key=f"btn_{key_alert_aging}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_alert_aging})
-
-            if st.session_state.get(key_alert_aging, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **Rekap Aging PO (Belum Dikirim)**: Bar chart jumlah PO yang belum diterima semua, dikelompokkan per rentang umur sejak PO diterbitkan.
 
 **Formula Excel:** (PO SAP)
@@ -319,18 +291,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            key_po_status = "show_formula_po_status"
-            if key_po_status not in st.session_state:
-                st.session_state[key_po_status] = False
-            is_open = st.session_state[key_po_status]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_po_status}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_po_status})
-
-        st.caption("Distribusi PO berdasarkan kolom PO Status dari Excel PO SAP.")
-
-        if st.session_state.get(key_po_status, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Monitoring PO Status**: Menampilkan jumlah PO berdasarkan statusnya.
 
 **Keterangan Nilai PO Status:**
@@ -345,6 +307,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 - Filter **PO Deletion Flag** selain `L`
 - Filter **PO Status** sesuai yang diinginkan
             """)
+
+        st.caption("Distribusi PO berdasarkan kolom PO Status dari Excel PO SAP.")
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -488,19 +452,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     </h1>
                 """, unsafe_allow_html=True)
             with btn_col2:
-                key_list_po = "show_formula_list_po_status"
-                if key_list_po not in st.session_state:
-                    st.session_state[key_list_po] = False
-                is_open_lp = st.session_state[key_list_po]
-                st.button(
-                    ":material/visibility_off:" if is_open_lp else ":material/visibility:",
-                    key=f"btn_{key_list_po}",
-                    help="Hide Formula" if is_open_lp else "Show Formula",
-                    on_click=toggle_state, kwargs={"state_key": key_list_po}
-                )
-
-            if st.session_state.get(key_list_po, False):
-                st.info("""\
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
 **List PO per Status**: Tabel detail semua PO untuk status yang dipilih.
 
 **Kolom yang ditampilkan:**
@@ -652,18 +605,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            key_grafik_terlambat = "show_formula_grafik_terlambat"
-            if key_grafik_terlambat not in st.session_state:
-                st.session_state[key_grafik_terlambat] = False
-            is_open = st.session_state[key_grafik_terlambat]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_grafik_terlambat}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_grafik_terlambat})
-
-        st.caption("Visualisasi PO yang sudah melewati delivery date berdasarkan keterlambatan, purchasing group, dan vendor.")
-
-        if st.session_state.get(key_grafik_terlambat, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **Grafik PO Terlambat**: Menampilkan visualisasi PO yang sudah melewati delivery date namun barang belum diterima semua (`on_time_delivery = 'IN PROGRESS'` dan `del_date_po < hari ini`).
 
 **Tiga chart yang ditampilkan:**
@@ -679,6 +622,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 - Tambah kolom `=TODAY()-Del Date PO`
 - Kelompokkan per rentang hari
             """)
+
+        st.caption("Visualisasi PO yang sudah melewati delivery date berdasarkan keterlambatan, purchasing group, dan vendor.")
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
@@ -844,18 +789,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            key_po_outstanding = "show_formula_po_outstanding"
-            if key_po_outstanding not in st.session_state:
-                st.session_state[key_po_outstanding] = False
-            is_open = st.session_state[key_po_outstanding]
-            icon = ":material/visibility_off:" if is_open else ":material/visibility:"
-            tooltip = "Hide Formula" if is_open else "Show Formula"
-            st.button(icon, key=f"btn_{key_po_outstanding}", help=tooltip, on_click=toggle_state, kwargs={"state_key": key_po_outstanding})
-
-        st.caption("PO yang barangnya belum diterima (IN PROGRESS) namun masih dalam batas delivery date - perlu dipantau agar tidak berubah menjadi overdue.")
-
-        if st.session_state.get(key_po_outstanding, False):
-            st.info("""\
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""\
 **PO Outstanding (Belum GR, Belum Jatuh Tempo)**: Menampilkan PO yang kondisinya:
 - `on_time_delivery = 'IN PROGRESS'` → barang belum diterima semua
 - `del_date_po >= hari ini` → delivery date belum terlewati
@@ -882,6 +817,8 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
 
 **Catatan:** Urutkan berdasarkan sisa hari terkecil untuk mengetahui PO mana yang paling mendesak di-follow up.
             """)
+
+        st.caption("PO yang barangnya belum diterima (IN PROGRESS) namun masih dalam batas delivery date - perlu dipantau agar tidak berubah menjadi overdue.")
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
