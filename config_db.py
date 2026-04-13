@@ -82,7 +82,7 @@ def set_setting(key: str, value: str):
                 VALUES (:k, :v) 
                 ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value
             """), {"k": key, "v": str(value)})
-                try:
+        try:
             get_setting.clear()
         except Exception:
             pass
