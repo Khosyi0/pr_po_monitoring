@@ -415,8 +415,10 @@ def render(**kwargs):
                     etl_sap.get_db_engine  = _get_engine  # Override koneksi db menggunakan versi dashboard yang rahasia
                     
                     terminal = st.empty()
-                    with redirect_stdout(StreamlitCapture(terminal)), redirect_stderr(StreamlitCapture(terminal)):
+                    capture_sap = StreamlitCapture(terminal)
+                    with redirect_stdout(capture_sap), redirect_stderr(capture_sap):
                         etl_sap.run_etl()
+                        capture_sap.flush()
                     
                     os.remove(pr_path)
                     os.remove(po_path)
@@ -437,8 +439,10 @@ def render(**kwargs):
                     etl_sips.db_get_engine = _get_engine
                     
                     terminal = st.empty()
-                    with redirect_stdout(StreamlitCapture(terminal)), redirect_stderr(StreamlitCapture(terminal)):
+                    capture_sips = StreamlitCapture(terminal)
+                    with redirect_stdout(capture_sips), redirect_stderr(capture_sips):
                         etl_sips.run_etl()
+                        capture_sips.flush()
                         
                     os.remove(sips_path)
                     st.success("Proses sinkronisasi SIPS selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")

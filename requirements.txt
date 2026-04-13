@@ -6,3 +6,4 @@ sqlalchemy
 psycopg2-binary
 google-genai
 tabulate
+openpyxl
