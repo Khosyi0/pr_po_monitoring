@@ -776,18 +776,27 @@ def render(load_data, **kwargs):
       AND poi.bagian_po = '{pilihan_bagian}'
     """
 
+    sips_efis_query = f"""
+    SELECT
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total
+    FROM vw_sips
+    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+      AND bagian = '{pilihan_bagian}'
+    """
+
     with st.spinner(f"Memuat performa bagian {pilihan_bagian}..."):
         try:
             b_data = load_data(bagian_query)
+            s_data = load_data(sips_efis_query)
         except Exception as e:
             st.error(f"Gagal memuat data bagian: {e}")
             b_data = pd.DataFrame()
+            s_data = pd.DataFrame()
 
     if not b_data.empty:
         # Ekstraksi dan Kalkulasi Data
         b_total_po  = int(b_data['total_po'][0] or 0)
-        b_realisasi = float(b_data['total_realisasi'][0] or 0)
-        b_oe        = float(b_data['total_oe'][0] or 0)
         b_ontime    = int(b_data['po_ontime'][0] or 0)
         b_deltot    = int(b_data['po_del_tot'][0] or 0)
         b_lt        = float(b_data['avg_lead_time'][0] or 0)
@@ -795,8 +804,17 @@ def render(load_data, **kwargs):
 
         pct_ontime   = (b_ontime / b_deltot * 100) if b_deltot > 0 else 0.0
         pct_onbudget = (b_onbudget / b_total_po * 100) if b_total_po > 0 else 0.0
-        b_efis_val   = b_oe - b_realisasi
-        b_efis_pct   = (b_efis_val / b_oe * 100) if b_oe > 0 else 0.0
+        
+        # Kalkulasi efisiensi khusus menggunakan data dari SIPS
+        if not s_data.empty:
+            b_sips_oe = float(s_data['sips_oe_total'][0] or 0)
+            b_sips_po = float(s_data['sips_po_total'][0] or 0)
+        else:
+            b_sips_oe = 0.0
+            b_sips_po = 0.0
+            
+        b_efis_val   = b_sips_oe - b_sips_po
+        b_efis_pct   = (b_efis_val / b_sips_oe * 100) if b_sips_oe > 0 else 0.0
 
         # Logika Warna (Hijau jika baik, Oranye/Merah jika kurang)
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"

@@ -221,7 +221,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "value": format_idr(oe_po_val),
                 "delta": "Owner's Estimate (OE)",
                 "formula": f"""\
-**Total Estimasi PR (OE)**: Total nilai OE dari semua PR.
+**Total Estimasi PR (OE)**: Total nilai OE dari semua PO.
 
 **Total Estimasi PR saat ini:** {int(oe_po_val):,}
 

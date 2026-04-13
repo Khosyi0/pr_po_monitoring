@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS & ICONS UNTUK KARTU METRIK (Tetap sama seperti sebelumnya)
+# CSS & ICONS UNTUK KARTU METRIK
 # ─────────────────────────────────────────────────────────────────────────────
 
 USER_METRIC_CSS = """
@@ -85,7 +85,6 @@ def _get_engine():
     from config_db import get_db_engine
     return get_db_engine()
 
-# (Tambahkan st.cache_data agar loading lebih cepat)
 @st.cache_data(ttl=60) 
 def _load_user_data(search_term=""):
     try:
@@ -100,7 +99,7 @@ def _load_user_data(search_term=""):
             query += " WHERE username ILIKE :search OR nama_lengkap ILIKE :search"
             params["search"] = f"%{search_term}%"
             
-        query += " ORDER BY id ASC" # Diubah ke ASC agar urutan stabil saat diedit
+        query += " ORDER BY id ASC" 
         
         with _get_engine().connect() as conn:
             df = pd.read_sql(text(query), conn, params=params)
@@ -138,21 +137,32 @@ def _add_user_to_db(username, password, nama_lengkap, role, bagian):
             return False, "Username sudah digunakan. Silakan pilih username lain."
         return False, f"Terjadi kesalahan: {e}"
 
-# --- FUNGSI UPDATE BARU ---
-def _update_user_db(user_id, updates):
-    if not updates: return True, ""
-    
-    set_clauses = []
-    params = {"id": int(user_id)}
-    
-    for key, value in updates.items():
-        set_clauses.append(f"{key} = :{key}")
-        # Tangani nilai None (Kosong)
-        params[key] = value.strip() if isinstance(value, str) and value.strip() else value
-    
-    sql = f"UPDATE melati_users SET {', '.join(set_clauses)} WHERE id = :id"
-    
+# --- FUNGSI UPDATE BERBASIS FORM ---
+def _update_user_db_full(user_id, nama_lengkap, role, bagian, aktif, new_password=""):
     try:
+        # Base query (tanpa update username)
+        sql = """
+            UPDATE melati_users 
+            SET nama_lengkap = :nama, 
+                role = :role, 
+                bagian = :bagian, 
+                aktif = :aktif
+        """
+        params = {
+            "id": int(user_id),
+            "nama": nama_lengkap.strip(),
+            "role": role,
+            "bagian": bagian.strip() if bagian.strip() else None,
+            "aktif": aktif
+        }
+        
+        # Tambahkan enkripsi password jika admin mengisi kolom password baru
+        if new_password:
+            sql += ", password_hash = crypt(:pwd, gen_salt('bf', 10))"
+            params["pwd"] = new_password
+            
+        sql += " WHERE id = :id"
+        
         with _get_engine().begin() as conn:
             conn.execute(text(sql), params)
         return True, ""
@@ -216,66 +226,95 @@ def render(**kwargs):
         
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    # ── Bagian 2: Data Editor Interaktif (Update & Soft Delete) ───────────────
+    # ── Bagian 2: Tabel Daftar User (Read-Only) ───────────────────────────────
     st.subheader("Daftar Pengguna Sistem")
-    st.caption("💡 *Tips: Klik pada sel tabel (Nama, Role, Bagian, atau centang Aktif) untuk mengedit data secara langsung.*")
     
     search_query = st.text_input("Cari Username atau Nama Lengkap:", placeholder="Ketik lalu tekan Enter...")
     df_tampil = _load_user_data(search_query) if search_query else df_all
     
     if not df_tampil.empty:
-        # Menyiapkan kolom tanggal agar formatnya bagus tapi tetap bisa dipakai referensi ID
-        df_edit = df_tampil.copy()
-        df_edit['created_at_str'] = pd.to_datetime(df_edit['created_at']).dt.strftime('%d %b %Y %H:%M')
-        df_edit['last_login_str'] = pd.to_datetime(df_edit['last_login']).dt.strftime('%d %b %Y %H:%M').fillna("Belum")
+        df_display = df_tampil.copy()
+        df_display['created_at'] = pd.to_datetime(df_display['created_at']).dt.strftime('%d %b %Y %H:%M')
+        df_display['last_login'] = pd.to_datetime(df_display['last_login']).dt.strftime('%d %b %Y %H:%M').fillna("Belum")
         
-        # Kolom yang ditampilkan di editor (Buang kolom tanggal asli karena kita pakai versi string-nya)
-        df_display = df_edit[['id', 'username', 'nama_lengkap', 'role', 'bagian', 'aktif', 'created_at_str', 'last_login_str']]
-
-        # Menampilkan Data Editor interaktif
-        edited_df = st.data_editor(
+        # Kembali menggunakan st.dataframe yang tidak bisa di-edit langsung
+        st.dataframe(
             df_display,
             column_config={
-                "id": st.column_config.NumberColumn("ID", disabled=True), # ID tidak boleh diedit
-                "username": st.column_config.TextColumn("Username", disabled=True, width="medium"), # Username tidak boleh diedit
+                "id": st.column_config.NumberColumn("ID", format="%d"),
+                "username": st.column_config.TextColumn("Username", width="medium"),
                 "nama_lengkap": st.column_config.TextColumn("Nama Lengkap", width="large"),
-                "role": st.column_config.SelectboxColumn("Role", options=["admin", "viewer"], required=True),
+                "role": st.column_config.TextColumn("Role"),
                 "bagian": st.column_config.TextColumn("Bagian/Dept"),
-                "aktif": st.column_config.CheckboxColumn("Aktif (Akses Login)"),
-                "created_at_str": st.column_config.TextColumn("Dibuat Pada", disabled=True),
-                "last_login_str": st.column_config.TextColumn("Login Terakhir", disabled=True),
+                "aktif": st.column_config.CheckboxColumn("Aktif"),
+                "created_at": st.column_config.TextColumn("Dibuat Pada"),
+                "last_login": st.column_config.TextColumn("Login Terakhir"),
             },
             hide_index=True,
             use_container_width=True,
-            key="user_editor"
         )
-        
-        # --- PROSES SIMPAN PERUBAHAN (UPDATE) ---
-        # Membandingkan dataframe yang diedit dengan dataframe asli untuk mencari perbedaan
-        if st.session_state["user_editor"]["edited_rows"]:
-            changes_made = False
-            for row_idx, updates in st.session_state["user_editor"]["edited_rows"].items():
-                user_id = df_display.iloc[row_idx]['id']
-                
-                # Update ke database
-                success, msg = _update_user_db(user_id, updates)
-                if success:
-                    changes_made = True
-                else:
-                    st.error(f"Gagal mengupdate ID {user_id}: {msg}")
-            
-            if changes_made:
-                st.success("✅ Perubahan berhasil disimpan!")
-                _load_user_data.clear() # Bersihkan cache
-                st.rerun() # Refresh halaman untuk menampilkan data terbaru
-
     else:
         st.info("Belum ada data user atau pencarian tidak ditemukan.")
 
-    # ── Bagian 3: Form Tambah User (Bawah) ────────────────────────────────────
     st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── Bagian 3: Formulir Manajemen Data (Edit & Tambah) ─────────────────────
     
-    with st.expander("➕ Tambah User Baru", expanded=False):
+    with st.expander("Edit Data User", expanded=False, icon=":material/edit:"):
+        if not df_all.empty:
+            # Membuat list opsi untuk dropdown: "ID - Username (Nama)"
+            user_options = df_all.apply(lambda x: f"{x['id']} - {x['username']} ({x['nama_lengkap']})", axis=1).tolist()
+            selected_user_str = st.selectbox("Pilih User yang akan diedit:", options=user_options)
+            
+            # Ekstrak ID dari pilihan
+            selected_id = int(selected_user_str.split(" - ")[0])
+            
+            # Tarik data spesifik user tersebut dari dataframe
+            user_data = df_all[df_all['id'] == selected_id].iloc[0]
+            
+            st.markdown("---")
+            
+            with st.form("form_edit_user"):
+                st.markdown(f"**Mengedit Data:** `{user_data['username']}`")
+                
+                c_edit1, c_edit2 = st.columns(2)
+                with c_edit1:
+                    edit_nama = st.text_input("Nama Lengkap *", value=user_data['nama_lengkap'])
+                    # Tentukan index role saat ini
+                    role_index = 0 if user_data['role'] == 'viewer' else 1
+                    edit_role = st.selectbox("Role *", options=["viewer", "admin"], index=role_index)
+                    edit_aktif = st.checkbox("Aktif (Izinkan Login)", value=bool(user_data['aktif']))
+                    
+                with c_edit2:
+                    edit_bagian = st.text_input("Bagian", value=user_data['bagian'] if user_data['bagian'] else "")
+                    edit_password = st.text_input("Reset Password", type="password", placeholder="Kosongkan jika tidak ingin diubah")
+                
+                st.caption("⚠️ *Kosongkan kolom Reset Password jika kamu hanya ingin mengubah Nama, Role, atau Status Aktif.*")
+                
+                btn_simpan_edit = st.form_submit_button("Simpan Perubahan", type="primary")
+                
+                if btn_simpan_edit:
+                    if not edit_nama:
+                        st.error("⚠️ Nama Lengkap wajib diisi!")
+                    else:
+                        sukses, pesan = _update_user_db_full(
+                            user_id=selected_id, 
+                            nama_lengkap=edit_nama, 
+                            role=edit_role, 
+                            bagian=edit_bagian, 
+                            aktif=edit_aktif, 
+                            new_password=edit_password
+                        )
+                        if sukses:
+                            st.success(f"✅ Data user '{user_data['username']}' berhasil diperbarui!")
+                            _load_user_data.clear()
+                            st.rerun()
+                        else:
+                            st.error(pesan)
+        else:
+            st.warning("Data user kosong.")
+
+    with st.expander("Tambah User Baru", expanded=False, icon=":material/person_add:"):
         with st.form("form_tambah_user", clear_on_submit=True):
             st.markdown("<p style='font-size:13px; opacity:0.8;'><em>Password akan otomatis dienkripsi sebelum disimpan ke database.</em></p>", unsafe_allow_html=True)
             
@@ -301,7 +340,7 @@ def render(**kwargs):
                     
                     if sukses:
                         st.success(f"✅ User '{new_username}' berhasil ditambahkan!")
-                        _load_user_data.clear() # Bersihkan cache
+                        _load_user_data.clear() 
                         st.rerun()
                     else:
                         st.error(pesan)

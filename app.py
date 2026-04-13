@@ -27,16 +27,19 @@ def _load_icon_b64(path: str) -> str | None:
 _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
-from config_db import load_data
+from config_db import load_data, get_setting
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
 from context_builder import build_global_context
 from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
-# Views - Executive Summary
-from views import v_summary, v_isu, v_manajemen_user
+# Views - Highlight
+from views import v_summary, v_isu
+
+# Views - Admin Menu
+from views import v_manajemen_user, v_manajemen_data, v_changelog
 
 # Views - PR-PO SAP
-from views import v_changelog, v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
+from views import v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
 # Views - SIPS
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
@@ -146,6 +149,7 @@ div[data-testid="stDialog"] > div > div {
 def _render_summary():                  v_summary.render(**st.session_state.get('_summary_view_args', {}))
 def _render_isu():                      v_isu.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
+def _render_manajemen_data():           v_manajemen_data.render(**st.session_state.get('_summary_view_args', {}))
 def _render_changelog():                v_changelog.render()
 def _render_dashboard():                v_dashboard.render(**st.session_state.get('_view_args', {}))
 def _render_detail():                   v_detail.render(**st.session_state.get('_view_args', {}))
@@ -175,6 +179,7 @@ admin_pages = []
 if is_admin():
     admin_pages = [
         st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:"),
+        st.Page(_render_manajemen_data, title="Manajemen Data", icon=":material/database:"),
         st.Page(_render_changelog, title="Log Perubahan", icon=":material/history:")
     ]
 
@@ -212,7 +217,7 @@ pg = st.navigation(nav_dict, position="sidebar")
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES = {"Executive Summary", "Isu"} 
-ADMIN_TITLES   = {"Manajemen User", "Log Perubahan"} # ← Grup baru
+ADMIN_TITLES   = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 SIPS_TITLES    = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 LAINNYA_TITLES = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak"}
 current_page = pg.title
@@ -386,9 +391,19 @@ st.components.v1.html("""
 current_year = datetime.now().year
 default_start_date = datetime(current_year, 1, 1).date()
 
-# Tanggal terakhir data diperbarui — sesuaikan setiap kali ETL baru dijalankan
-DATA_UPDATE_SAP  = datetime(2026, 3, 31).date()
-DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+# Tanggal terakhir data diperbarui — diambil dari database (diatur via Manajemen Data)
+sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
+sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
+
+try:
+    DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
+except:
+    DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
+    
+try:
+    DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
+except:
+    DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
 
 date_from                = default_start_date
 date_to                  = DATA_UPDATE_SAP
@@ -833,8 +848,8 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
 
 # ── Tombol Logout + info user: selalu di paling bawah sidebar ───────────────
 st.sidebar.markdown("---")
-render_user_info_sidebar()   # ← tampilkan nama, role, bagian user yang login
-if st.sidebar.button("🔒  Logout", use_container_width=True, key="btn_logout"):
+render_user_info_sidebar() 
+if st.sidebar.button("Logout", use_container_width=True, key="btn_logout"):
     dialog_logout()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -928,7 +943,7 @@ global_context = build_global_context(
 st.session_state['_summary_view_args'] = dict(
     load_data      = load_data,
     global_context = global_context,
-    is_admin       = is_admin(),    # ← flag role dikirim ke v_isu & v_summary
+    is_admin       = is_admin(),
 )
 
 st.session_state['_view_args'] = dict(

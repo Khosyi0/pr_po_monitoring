@@ -343,7 +343,7 @@ def render_user_info_sidebar():
         return
 
     role_color = "#ff4b4b" if user["role"] == "admin" else "#1f77b4"
-    role_label = "👑 Admin"   if user["role"] == "admin" else "👁 Viewer"
+    role_label = "Admin"   if user["role"] == "admin" else "Viewer"
     bagian_str = user.get("bagian") or "Semua Bagian"
 
     st.sidebar.markdown(f"""
