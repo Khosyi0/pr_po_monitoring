@@ -434,7 +434,6 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     # Mengambil 10 data dengan Total Pajak terbesar
     df_top10 = df.nlargest(10, 'TOTAL_BIAYA').copy()
     
-    # --- FIX GRAFIK NUMPUK MENJADI 1 BAR ---
     # Tambahkan Ranking agar setiap baris memiliki Label X yang 100% dijamin unik
     df_top10 = df_top10.reset_index(drop=True)
     df_top10['Rank'] = df_top10.index + 1
@@ -448,11 +447,9 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         else:
             identitas = str(row['nama_kapal'])[:10] + "..."
             
-        # Gabungkan Rank + Tanggal + Identitas
         return f"#{row['Rank']} | {tgl_str} ({identitas})"
 
     df_top10['Label'] = df_top10.apply(buat_label_unik, axis=1)
-    # ----------------------------------------
     
     df_top10_chart = df_top10.rename(columns={
         'bea_masuk_rp': 'Bea Masuk (Rp)',
@@ -460,13 +457,31 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         'pph_rp': 'PPH'
     })
 
-    fig_top10 = px.bar(
-        df_top10_chart, 
-        x='Label', 
-        y=['Bea Masuk (Rp)', 'PPN', 'PPH'],
-        labels={'value': 'Total Biaya (Rupiah)', 'variable': 'Jenis Pajak', 'Label': 'Dokumen Impor'},
-        color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c']
+    # --- FIX GRAFIK NUMPUK (MELT DATA) ---
+    # Mengubah format kolom menjadi baris agar Plotly bisa menumpuknya dengan benar
+    df_melted = df_top10_chart.melt(
+        id_vars=['Label', 'TOTAL_BIAYA', 'Rank'], 
+        value_vars=['Bea Masuk (Rp)', 'PPN', 'PPH'],
+        var_name='Jenis Pajak', 
+        value_name='Nilai Pajak'
     )
+    
+    # Urutkan berdasarkan Rank agar tampilannya berurutan dari yang terbesar ke terkecil
+    df_melted = df_melted.sort_values(['Rank', 'Jenis Pajak'])
+
+    fig_top10 = px.bar(
+        df_melted, 
+        x='Label', 
+        y='Nilai Pajak',
+        color='Jenis Pajak',
+        labels={'Nilai Pajak': 'Total Biaya (Rupiah)', 'Label': 'Dokumen Impor'},
+        color_discrete_map={
+            'Bea Masuk (Rp)': '#1f77b4', 
+            'PPN': '#ff7f0e', 
+            'PPH': '#2ca02c'
+        }
+    )
+    # ---------------------------------------
     
     max_top10_val = df_top10['TOTAL_BIAYA'].max()
     fig_top10.update_layout(
@@ -484,26 +499,6 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     )
 
     st.plotly_chart(fig_top10, use_container_width=True)
-
-    # ── TABEL RINCIAN SLA ─────────────────────────────────────────────────────
-    st.markdown("---")
-    st.markdown("""
-        <h1 style='display: flex; align-items: center; font-size:30px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
-            </svg>
-            Tabel Rincian SLA per Kapal
-        </h1>
-    """, unsafe_allow_html=True)
-    with st.expander("Lihat Rincian Data SLA per Kapal"):
-        df_sla = df[['no_aju', 'nama_kapal', 'komoditi', 'Keterangan_Jalur', 
-                     'SLA_Target', 'Bebas_Hari', 'Score_SLA', 'Check_List']].copy()
-        
-        df_sla['Check_List'] = df_sla['Check_List'].apply(lambda x: "✅ Selesai" if x else "⏳ Proses")
-        df_sla['Score_SLA'] = df_sla['Score_SLA'].apply(lambda x: "⭐ Memenuhi (1)" if x == 1 else "❌ Melampaui (0)")
-        
-        df_sla.columns = ['No AJU', 'Nama Kapal', 'Komoditi', 'Jalur', 'SLA (Target Hari)', 'Bebas (Realisasi Hari)', 'Score SLA', 'Status']
-        st.dataframe(df_sla, use_container_width=True)
 
     # =====================================================================
     # INTEGRASI AI CHAT ANALYST
