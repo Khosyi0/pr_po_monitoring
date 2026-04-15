@@ -186,8 +186,6 @@ def render_login() -> bool:
     # ── Layout terpusat ───────────────────────────────────────────────────────
     _, col_m, _ = st.columns([1, 1.6, 1])
     with col_m:
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-
         # Logo / icon
         if _icon_b64:
             st.markdown(
