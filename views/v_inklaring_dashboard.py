@@ -431,21 +431,28 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 """)
     st.caption("10 dokumen impor dengan nilai pengeluaran pajak terbesar, dirincikan berdasarkan komposisi jenis pajaknya.")
 
+    # Mengambil 10 data dengan Total Pajak terbesar
     df_top10 = df.nlargest(10, 'TOTAL_BIAYA').copy()
-
+    
+    # --- FIX GRAFIK NUMPUK MENJADI 1 BAR ---
+    # Tambahkan Ranking agar setiap baris memiliki Label X yang 100% dijamin unik
+    df_top10 = df_top10.reset_index(drop=True)
+    df_top10['Rank'] = df_top10.index + 1
+    
     def buat_label_unik(row):
         tgl_str = row['tgl_pib'].strftime('%d %b') if pd.notna(row['tgl_pib']) else 'No Date'
-        # Prioritaskan menampilkan SAP, jika kosong tampilkan AJU, jika kosong tampilkan Nama Kapal
-        if pd.notna(row['sap']) and str(row['sap']).strip() not in ['', '-', 'None', 'nan']:
-            identitas = f"SAP: {str(row['sap']).split('.')[0]}" # Split .0 sekadar jaga-jaga
-        elif pd.notna(row['no_aju']) and str(row['no_aju']).strip() not in ['', '-', 'None', 'nan']:
+        if pd.notna(row['no_aju']) and str(row['no_aju']).strip() not in ['', '-', 'None', 'nan']:
             identitas = f"AJU: {str(row['no_aju']).split('.')[0]}"
+        elif pd.notna(row['sap']) and str(row['sap']).strip() not in ['', '-', 'None', 'nan']:
+            identitas = f"SAP: {str(row['sap']).split('.')[0]}"
         else:
-            identitas = str(row['nama_kapal'])[:10] + "..." # Potong nama kapal agar tidak kepanjangan
+            identitas = str(row['nama_kapal'])[:10] + "..."
             
-        return f"{tgl_str} ({identitas})"
+        # Gabungkan Rank + Tanggal + Identitas
+        return f"#{row['Rank']} | {tgl_str} ({identitas})"
 
     df_top10['Label'] = df_top10.apply(buat_label_unik, axis=1)
+    # ----------------------------------------
     
     df_top10_chart = df_top10.rename(columns={
         'bea_masuk_rp': 'Bea Masuk (Rp)',
