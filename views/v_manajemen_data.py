@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from datetime import datetime
 from sqlalchemy import text
 import io
@@ -54,7 +55,7 @@ def render(**kwargs):
     
     st.markdown(
         "<p style='font-size:15px; opacity:0.6; margin-top:4px; margin-bottom:24px;'>"
-        "Pusat kendali sinkronisasi data SAP, SIPS, dan manajemen backup sistem."
+        "Pusat kendali sinkronisasi data SAP, SIPS, Inklaring, dan manajemen backup sistem."
         "</p>", 
         unsafe_allow_html=True
     )
@@ -63,16 +64,16 @@ def render(**kwargs):
 
     sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
     sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
+    inklaring_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
 
-    try:
-        DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
-    except:
-        DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
+    try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
         
-    try:
-        DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
-    except:
-        DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+    try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+
+    try: DATA_UPDATE_INKLARING = datetime.strptime(inklaring_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
 
     # ── Bagian 1: Informasi Status Data ───────────────────────────────────────
     st.markdown("""
@@ -85,7 +86,7 @@ def render(**kwargs):
         </h3>
     """, unsafe_allow_html=True)
     
-    col_sap, col_sips = st.columns(2)
+    col_sap, col_sips, col_inklaring = st.columns(3)
     
     with col_sap:
         st.markdown(f"""
@@ -103,17 +104,28 @@ def render(**kwargs):
             </div>
         """, unsafe_allow_html=True)
 
+    with col_inklaring:
+        st.markdown(f"""
+            <div style='background: var(--secondary-background-color); border: 1px solid rgba(44, 160, 44, 0.3); border-radius: 10px; padding: 16px; border-left: 5px solid #2ca02c;'>
+                <p style='margin: 0; font-size: 14px; opacity: 0.7; font-weight: 600;'>Database Inklaring Impor</p>
+                <h4 style='margin: 4px 0 0 0; font-size: 24px;'>{DATA_UPDATE_INKLARING.strftime('%d %B %Y')}</h4>
+            </div>
+        """, unsafe_allow_html=True)
+
     with st.expander("✏️ Edit Manual Tanggal Pembaruan"):
         with st.form("form_edit_tanggal"):
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
                 new_sap_date = st.date_input("Tanggal Update SAP", DATA_UPDATE_SAP)
             with c2:
                 new_sips_date = st.date_input("Tanggal Update SIPS", DATA_UPDATE_SIPS)
+            with c3:
+                new_inklaring_date = st.date_input("Tanggal Update Inklaring", DATA_UPDATE_INKLARING)
             
             if st.form_submit_button("Simpan Perubahan"):
                 set_setting("DATA_UPDATE_SAP", new_sap_date.strftime("%Y-%m-%d"))
                 set_setting("DATA_UPDATE_SIPS", new_sips_date.strftime("%Y-%m-%d"))
+                set_setting("DATA_UPDATE_INKLARING", new_inklaring_date.strftime("%Y-%m-%d"))
                 st.success("Berhasil mengubah tanggal!")
                 time.sleep(1)
                 st.rerun()
@@ -135,7 +147,7 @@ def render(**kwargs):
         """, unsafe_allow_html=True)
         
         with st.form("form_backup"):
-            jenis_data = st.selectbox("Jenis Data", ["PR SAP", "PO SAP", "SIPS"])
+            jenis_data = st.selectbox("Jenis Data", ["PR SAP", "PO SAP", "SIPS", "Inklaring Barang Impor"])
             c_from, c_to = st.columns(2)
             with c_from:
                 start_date = st.date_input("Dari Tanggal", datetime(2026, 1, 1))
@@ -353,6 +365,12 @@ def render(**kwargs):
                 WHERE sd.tgl_disposisi_buyer >= '{start_str}' AND sd.tgl_disposisi_buyer <= '{end_str}'
                 ORDER BY sd.tgl_disposisi_buyer DESC
                 """
+            elif jenis_data == "Inklaring Barang Impor":
+                query = f"""
+                SELECT * FROM inklaring_impor 
+                WHERE tgl_eta >= '{start_str}' AND tgl_eta <= '{end_str}'
+                ORDER BY tgl_eta DESC
+                """
             
             with st.spinner(f"Mengambil dan menyusun data {jenis_data}..."):
                 try:
@@ -370,7 +388,7 @@ def render(**kwargs):
                                 df_backup[col] = df_backup[col].dt.tz_localize(None)
 
                         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            df_backup.to_excel(writer, index=False, sheet_name=jenis_data)
+                            df_backup.to_excel(writer, index=False, sheet_name=jenis_data[:30]) # max 31 char
                         
                         st.success(f"Berhasil menyiapkan {len(df_backup)} baris data!")
                         st.download_button(
@@ -395,11 +413,12 @@ def render(**kwargs):
             </h3>
         """, unsafe_allow_html=True)
         
-        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS"])
+        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "Inklaring Barang Impor"])
         
         if tipe_etl == "SAP (PR & PO)":
             file_pr = st.file_uploader("Upload File PR SAP (.xlsx)", type=["xlsx"])
             file_po = st.file_uploader("Upload File PO SAP (.xlsx)", type=["xlsx"])
+            update_tgl_sap = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_sap")
             if file_pr and file_po:
                 if st.button("Jalankan ETL SAP", type="primary", icon=":material/cloud_upload:"):
                     # Simpan sementara ke sistem lokal agar dapat dibaca library openpyxl
@@ -422,10 +441,14 @@ def render(**kwargs):
                     
                     os.remove(pr_path)
                     os.remove(po_path)
+
+                    if update_tgl_sap:
+                        set_setting("DATA_UPDATE_SAP", datetime.today().strftime("%Y-%m-%d"))
                     st.success("Proses sinkronisasi SAP selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
                     
         elif tipe_etl == "SIPS":
             file_sips = st.file_uploader("Upload File SIPS (.xlsx)", type=["xlsx"])
+            update_tgl_sips = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_sips")
             if file_sips:
                 if st.button("Jalankan ETL SIPS", type="primary", icon=":material/cloud_upload:"):
                     sips_path = "temp_sips.xlsx"
@@ -445,7 +468,98 @@ def render(**kwargs):
                         capture_sips.flush()
                         
                     os.remove(sips_path)
+                    
+                    if update_tgl_sips:
+                        set_setting("DATA_UPDATE_SIPS", datetime.today().strftime("%Y-%m-%d"))
                     st.success("Proses sinkronisasi SIPS selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+        
+        elif tipe_etl == "Inklaring Barang Impor":
+            file_inklaring = st.file_uploader("Upload File Inklaring (.csv / .xlsx)", type=["csv", "xlsx"])
+            update_tgl_inklaring = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_inklaring")
+            if file_inklaring:
+                if st.button("Jalankan ETL Inklaring", type="primary", icon=":material/cloud_upload:"):
+                    with st.spinner("Sedang memproses dan menyimpan data ke database..."):
+                        try:
+                            file_inklaring.seek(0)
+                            if file_inklaring.name.endswith('.csv'):
+                                df = pd.read_csv(file_inklaring)
+                            else:
+                                df = pd.read_excel(file_inklaring)
+                            
+                            column_mapping = {
+                                "Tgl PIB": "tgl_pib", "AJU PIB": "aju_pib", "NO AJU": "no_aju",
+                                "SAP": "sap", "LN": "ln", "NAMA KAPAL": "nama_kapal",
+                                "Tgl ETA": "tgl_eta", "QUANTITY (MT)": "quantity_mt", "PEMASOK": "pemasok",
+                                "PENGIRIM": "pengirim", "AGENT": "agent", "KOMODITI": "komoditi",
+                                "ASAL NEGARA": "asal_negara", "Port of Load": "port_of_load", "HS": "hs_code",
+                                "Bea Masuk (Rp)": "bea_masuk_rp", "PPN": "ppn_rp", "PPH": "pph_rp",
+                                "BM % ": "bm_persen", "GUDANG TIMBUN": "gudang_timbun", "INVOICE": "invoice",
+                                "Kurs": "kurs", "SKEP BC": "skep_bc", "START BONGKAR": "start_bongkar",
+                                "SELESAI BONGKAR": "selesai_bongkar", "PPJK": "ppjk", "SPJM": "spjm",
+                                "AMBIL SAMPEL": "ambil_sampel", "No Pen PIB": "no_pen_pib", 
+                                "Tgl No Pen PIB": "tgl_no_pen_pib", "No S P P B": "no_sppb", 
+                                "Tgl SPPB": "tgl_sppb", "STATUS": "status", "NO SPTNP": "no_sptnp",
+                                "Tgl SPTNP": "tgl_sptnp", "NILAI SPTNP": "nilai_sptnp"
+                            }
+                            
+                            df_clean = df[list(column_mapping.keys())].rename(columns=column_mapping)
+                            kolom_teks = ['sap', 'no_aju', 'ln']
+                            for col in kolom_teks:
+                                df_clean[col] = df_clean[col].astype(str).str.replace(r'\.0$', '', regex=True)
+                                df_clean[col] = df_clean[col].replace({'nan': None, 'NaN': None, 'None': None})
+                            
+                            df_clean['aju_pib'] = df_clean['aju_pib'].fillna(
+                                'TEMP-' + df_clean['sap'].astype(str) + '-' + df_clean['no_aju'].astype(str)
+                            )
+
+                            date_columns = ['tgl_pib', 'tgl_eta', 'tgl_no_pen_pib', 'tgl_sppb', 'tgl_sptnp', 'start_bongkar', 'selesai_bongkar']
+                            numeric_columns = ['quantity_mt', 'bea_masuk_rp', 'ppn_rp', 'pph_rp', 'bm_persen', 'kurs', 'nilai_sptnp']
+
+                            for col in date_columns:
+                                df_clean[col] = pd.to_datetime(df_clean[col], errors='coerce')
+
+                            for col in numeric_columns:
+                                if df_clean[col].dtype == 'object':
+                                    df_clean[col] = df_clean[col].astype(str).str.replace(r'[\.,]00$', '', regex=True)
+                                    df_clean[col] = df_clean[col].str.replace(r'[,\.]', '', regex=True)
+                                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+
+                            df_clean = df_clean.replace({np.nan: None, 'NaT': None})
+                            df_clean = df_clean.drop_duplicates(subset=['aju_pib'], keep='last')
+                            
+                            engine = _get_engine()
+                            with engine.begin() as conn:
+                                df_clean.to_sql('temp_inklaring', conn, if_exists='replace', index=False)
+                                
+                                columns = list(df_clean.columns)
+                                set_clause = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'aju_pib'])
+                                
+                                select_clause_items = []
+                                for col in columns:
+                                    if col in numeric_columns:
+                                        select_clause_items.append(f"CAST({col} AS NUMERIC)")
+                                    elif col in date_columns:
+                                        select_clause_items.append(f"CAST({col} AS TIMESTAMP)")
+                                    else:
+                                        select_clause_items.append(col)
+                                        
+                                select_clause = ", ".join(select_clause_items)
+                                
+                                upsert_query = f"""
+                                    INSERT INTO inklaring_impor ({', '.join(columns)})
+                                    SELECT {select_clause} FROM temp_inklaring
+                                    ON CONFLICT (aju_pib) DO UPDATE SET {set_clause};
+                                """
+                                conn.execute(text(upsert_query))
+                                conn.execute(text("DROP TABLE temp_inklaring;"))
+                                
+                            if update_tgl_inklaring:
+                                set_setting("DATA_UPDATE_INKLARING", datetime.today().strftime("%Y-%m-%d"))
+                            st.success(f"🎉 Berhasil menyimpan {len(df_clean)} data Inklaring ke database!")
+                            st.cache_data.clear()
+                            
+                        except Exception as e:
+                            st.error(f"Gagal memproses data Inklaring: {e}")
 
     # ── Bagian 3: Zona Berbahaya (Reset Data) ─────────────────────────────────
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -462,12 +576,12 @@ def render(**kwargs):
     
     st.warning("Fitur ini akan menghapus seluruh data transaksi dari database secara permanen. Gunakan hanya jika Anda perlu mengulang proses upload (ETL) dari awal atau membersihkan data yang salah.")
     
-    col_del1, col_del2 = st.columns(2)
+    col_del1, col_del2, col_del3 = st.columns(3)
     
     with col_del1:
-        with st.expander("🗑️ Hapus Data SAP (PR & PO)"):
+        with st.expander("🗑️ Hapus Data SAP"):
             st.write("Tindakan ini akan menghapus semua data Purchase Requisition, Purchase Order, Goods Receipt, dan riwayat status rilis. (Data Master seperti Vendor dan Material akan tetap aman).")
-            confirm_sap = st.checkbox("Saya yakin ingin menghapus data SAP", key="confirm_sap")
+            confirm_sap = st.checkbox("Saya yakin (SAP)", key="confirm_sap")
             if st.button("Hapus Data SAP", type="primary", disabled=not confirm_sap, use_container_width=True):
                 with st.spinner("Menghapus data SAP..."):
                     try:
@@ -483,7 +597,7 @@ def render(**kwargs):
     with col_del2:
         with st.expander("🗑️ Hapus Data SIPS"):
             st.write("Tindakan ini akan menghapus semua riwayat transaksi SIPS dan data karyawan SIPS dari database.")
-            confirm_sips = st.checkbox("Saya yakin ingin menghapus data SIPS", key="confirm_sips")
+            confirm_sips = st.checkbox("Saya yakin (SIPS)", key="confirm_sips")
             if st.button("Hapus Data SIPS", type="primary", disabled=not confirm_sips, use_container_width=True):
                 with st.spinner("Menghapus data SIPS..."):
                     try:
@@ -491,6 +605,22 @@ def render(**kwargs):
                         with engine.begin() as conn:
                             conn.execute(text("TRUNCATE TABLE sips_data, sips_employees CASCADE;"))
                         st.success("Data SIPS berhasil dikosongkan! Halaman akan dimuat ulang...")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus data: {e}")
+
+    with col_del3:
+        with st.expander("🗑️ Hapus Data Inklaring"):
+            st.write("Tindakan ini akan mengosongkan seluruh tabel Inklaring Barang Impor.")
+            confirm_inklaring = st.checkbox("Saya yakin (Inklaring)", key="confirm_inklaring")
+            if st.button("Hapus Inklaring", type="primary", disabled=not confirm_inklaring, use_container_width=True):
+                with st.spinner("Menghapus data Inklaring..."):
+                    try:
+                        engine = _get_engine()
+                        with engine.begin() as conn:
+                            conn.execute(text("TRUNCATE TABLE inklaring_impor RESTART IDENTITY CASCADE;"))
+                        st.success("Data Inklaring berhasil dikosongkan! Halaman akan dimuat ulang...")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:

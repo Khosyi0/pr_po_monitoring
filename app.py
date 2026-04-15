@@ -44,6 +44,9 @@ from views import v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 # Views - SIPS
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 
+# Views - Inklaring Barang Impor
+from views import v_inklaring_dashboard, v_inklaring_detail
+
 # Views - Lainnya
 from views import v_tren_harga_bb, v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
 
@@ -165,6 +168,8 @@ def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.r
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
+def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
@@ -204,6 +209,10 @@ nav_dict.update({
         st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
         st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
     ],
+    "Inklaring Barang Impor": [
+        st.Page(_render_inklaring_dashboard, title="Dashboard Inklaring", icon=":material/directions_boat:"),
+        st.Page(_render_inklaring_detail,    title="Detailed Inklaring Data", icon=":material/inventory_2:"),
+    ],
     "Lainnya": [
         st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
         st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
@@ -216,14 +225,17 @@ nav_dict.update({
 pg = st.navigation(nav_dict, position="sidebar")
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES = {"Executive Summary", "Isu"} 
-ADMIN_TITLES   = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
-SIPS_TITLES    = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
-LAINNYA_TITLES = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak"}
+SUMMARY_TITLES   = {"Executive Summary", "Isu"} 
+ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
+SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
+INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data"}
+LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
+
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
 is_admin_pg  = current_page in ADMIN_TITLES
 is_sips      = current_page in SIPS_TITLES
+is_inklaring = current_page in INKLARING_TITLES
 is_lainnya   = current_page in LAINNYA_TITLES
 
 # Tutup changelog otomatis saat navigasi
@@ -234,21 +246,23 @@ if current_page != st.session_state.last_page:
     st.session_state.last_page = current_page
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CSS: section headers menjadi toggle pill SAP / SIPS
+# CSS: section headers menjadi toggle pill
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Pill aktif: div ke-1 = Summary, div ke-2 = PR-PO SAP, div ke-3 = SIPS, div ke-4 = Lainnya
+# Pill aktif: disesuaikan dengan posisi urutan di sidebar berdasarkan hak akses admin
 if is_admin():
     if is_summary:        active_div = "1"
     elif is_admin_pg:     active_div = "2"
     elif is_sips:         active_div = "4"
-    elif is_lainnya:      active_div = "5"
-    else:                 active_div = "3"
+    elif is_inklaring:    active_div = "5"
+    elif is_lainnya:      active_div = "6"
+    else:                 active_div = "3" # SAP
 else:
     if is_summary:        active_div = "1"
     elif is_sips:         active_div = "3"
-    elif is_lainnya:      active_div = "4"
-    else:                 active_div = "2"
+    elif is_inklaring:    active_div = "4"
+    elif is_lainnya:      active_div = "5"
+    else:                 active_div = "2" # SAP
 
 st.markdown(f"""
 <style>
@@ -394,16 +408,16 @@ default_start_date = datetime(current_year, 1, 1).date()
 # Tanggal terakhir data diperbarui — diambil dari database (diatur via Manajemen Data)
 sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
 sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
+inklaring_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
 
-try:
-    DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
-except:
-    DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
+try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
+except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
     
-try:
-    DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
-except:
-    DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
+except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+
+try: DATA_UPDATE_INKLARING = datetime.strptime(inklaring_date_str, "%Y-%m-%d").date()
+except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
 
 date_from                = default_start_date
 date_to                  = DATA_UPDATE_SAP
@@ -413,12 +427,16 @@ selected_bagian          = ['All']
 exclude_dept             = False
 exclude_purchasing_group = False
 exclude_bagian           = False
+
 default_sips_start_date  = datetime(current_year, 1, 1).date()
 sips_date_from           = default_sips_start_date
 sips_date_to             = DATA_UPDATE_SIPS
 sips_selected_nama       = ['All']
 sips_selected_bagian     = ['All']
 sips_selected_pgroup     = ['All']
+
+inklaring_date_from      = default_start_date
+inklaring_date_to        = DATA_UPDATE_INKLARING
 
 # ── Info data terakhir diambil ────────────────────────────────────────────────
 st.sidebar.markdown(f"""
@@ -498,12 +516,34 @@ if not is_summary and not is_admin_pg:
                         unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS PR-PO SAP / SIPS: hanya tampil jika mode sidebar
+# FILTERS PR-PO SAP / SIPS / INKLARING: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 
 if st.session_state.filter_mode == 'sidebar' and is_lainnya:
-    st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi.")
+    st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi visualisasi selesai.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+elif st.session_state.filter_mode == 'sidebar' and is_inklaring:
+    st.sidebar.markdown("""
+    <p title='Info Filter Tanggal:&#10;• Data Inklaring: rentang Tgl ETA (Pemberitahuan Impor Barang)'
+       style='font-size:14px; font-weight:600; color:var(--text-color);
+              margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+             fill="currentColor" viewBox="0 0 16 16">
+            <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
+                     0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
+                     1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
+                     1 0 0 0 1-1V4z"/>
+        </svg>
+        Date Range ⓘ
+    </p>
+    """, unsafe_allow_html=True)
+    inklaring_date_from = st.sidebar.date_input("Inklaring From", value=default_start_date, key="inklaring_sidebar_from")
+    inklaring_date_to   = st.sidebar.date_input("Inklaring To", value=DATA_UPDATE_INKLARING, key="inklaring_sidebar_to")
+
+    if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="inklaring_refresh"):
+        st.cache_data.clear()
+        st.rerun()
 
 elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary and not is_admin_pg:
     try:
@@ -910,6 +950,10 @@ teks_filter_sips = f"""
 - Nama: {', '.join(sips_selected_nama)}
 """
 
+teks_filter_inklaring = f"""
+- Tanggal (Tgl ETA): {inklaring_date_from} s.d {inklaring_date_to}
+"""
+
 # ── Bangun / refresh konteks global untuk Melati ─────────────────────────────
 global_context = build_global_context(
     load_data      = load_data,
@@ -971,11 +1015,21 @@ st.session_state['_sips_view_args'] = dict(
     global_context    = global_context,
 )
 
+# Inklaring view args
+st.session_state['_inklaring_view_args'] = dict(
+    load_data         = load_data,
+    date_from         = inklaring_date_from,
+    date_to           = inklaring_date_to,
+    info_filter       = teks_filter_inklaring,
+    global_context    = global_context,
+)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # ─────────────────────────────────────────────────────────────────────────────
 
-if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg:
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_lainnya:
     if is_sips:
         render_filter_bar('sips', load_data)
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
@@ -983,6 +1037,39 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         sips_selected_bagian = st.session_state.get('fb_sips_bagian',     ['All'])
         sips_selected_pgroup = st.session_state.get('fb_sips_pgroup',     ['All'])
         sips_selected_nama   = st.session_state.get('fb_sips_nama',       ['All'])
+        
+        teks_filter_sips = f"""
+- Tanggal: {sips_date_from} s.d {sips_date_to}
+- Bagian: {', '.join(sips_selected_bagian)}
+- Purchasing Group: {', '.join(sips_selected_pgroup)}
+- Nama: {', '.join(sips_selected_nama)}
+"""
+        st.session_state['_sips_view_args'].update(dict(
+            date_from       = sips_date_from,
+            date_to         = sips_date_to,
+            selected_nama   = sips_selected_nama,
+            selected_bagian = sips_selected_bagian,
+            selected_pgroup = sips_selected_pgroup,
+            info_filter     = teks_filter_sips,
+        ))
+        
+    elif is_inklaring:
+        # Menampilkan date picker secara mendatar untuk Top Bar khusus Inklaring
+        st.markdown("<div style='background-color: var(--secondary-background-color); padding: 15px; border-radius: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+        col1, col2, _ = st.columns([2, 2, 8])
+        with col1:
+            inklaring_date_from = st.date_input("Inklaring From", st.session_state.get('fb_inklaring_from', inklaring_date_from), key="fb_inklaring_from")
+        with col2:
+            inklaring_date_to = st.date_input("Inklaring To", st.session_state.get('fb_inklaring_to', inklaring_date_to), key="fb_inklaring_to")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        teks_filter_inklaring = f"\n- Tanggal (Tgl ETA): {inklaring_date_from} s.d {inklaring_date_to}\n"
+        st.session_state['_inklaring_view_args'].update(dict(
+            date_from   = inklaring_date_from,
+            date_to     = inklaring_date_to,
+            info_filter = teks_filter_inklaring,
+        ))
+
     else:
         render_filter_bar('sap', load_data)
         date_from           = st.session_state.get('fb_date_from',   date_from)
@@ -997,37 +1084,22 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         dept_cond = build_dept_cond('poi.department_code', selected_department, False)
         pg_cond   = build_pg_cond('poh.purchasing_group',  selected_p_group,   False)
 
-    # Rebuild teks filter & view args dengan nilai terbaru
-    teks_filter_sap = f"""
+        teks_filter_sap = f"""
 - Tanggal: {date_from} s.d {date_to}
 - Department: {', '.join(selected_department)}
 - Purchasing Group: {', '.join(selected_p_group)}
 - Bagian: {', '.join(selected_bagian)}
 """
-    teks_filter_sips = f"""
-- Tanggal: {sips_date_from} s.d {sips_date_to}
-- Bagian: {', '.join(sips_selected_bagian)}
-- Purchasing Group: {', '.join(sips_selected_pgroup)}
-- Nama: {', '.join(sips_selected_nama)}
-"""
-    st.session_state['_view_args'].update(dict(
-        filter_conditions = filter_conditions,
-        bagian_pr_cond    = bagian_pr_cond,
-        bagian_po_cond    = bagian_po_cond,
-        dept_cond         = dept_cond,
-        pg_cond           = pg_cond,
-        info_filter       = teks_filter_sap,
-        date_from         = date_from,
-        date_to           = date_to,
-    ))
-    st.session_state['_sips_view_args'].update(dict(
-        date_from       = sips_date_from,
-        date_to         = sips_date_to,
-        selected_nama   = sips_selected_nama,
-        selected_bagian = sips_selected_bagian,
-        selected_pgroup = sips_selected_pgroup,
-        info_filter     = teks_filter_sips,
-    ))
+        st.session_state['_view_args'].update(dict(
+            filter_conditions = filter_conditions,
+            bagian_pr_cond    = bagian_pr_cond,
+            bagian_po_cond    = bagian_po_cond,
+            dept_cond         = dept_cond,
+            pg_cond           = pg_cond,
+            info_filter       = teks_filter_sap,
+            date_from         = date_from,
+            date_to           = date_to,
+        ))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTING
@@ -1046,10 +1118,10 @@ _logo_path_footer = "assets/logo_pg.png"
 _logo_b64_footer  = _load_icon_b64(_logo_path_footer)
 
 with col_foot1:
-    system_label = "SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP")
+    system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP"))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8.5 | "
+        f"Monitoring Dashboard - {system_label} | v1.8.7 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
