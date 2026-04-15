@@ -186,12 +186,12 @@ def render_login() -> bool:
     # ── Layout terpusat ───────────────────────────────────────────────────────
     _, col_m, _ = st.columns([1, 1.6, 1])
     with col_m:
-        st.markdown("<div style='height:48px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         # Logo / icon
         if _icon_b64:
             st.markdown(
-                f"<div style='text-align:center;margin-bottom:8px;'>"
+                f"<div style='text-align:center;margin-bottom:4px;'>"
                 f"<img src='data:image/png;base64,{_icon_b64}' "
                 f"width='88' height='88' style='border-radius:18px;'></div>",
                 unsafe_allow_html=True
@@ -203,8 +203,8 @@ def render_login() -> bool:
             )
 
         st.markdown("""
-            <div style='text-align:center;margin-bottom:28px;'>
-                <h2 style='font-size:22px;margin:0 0 4px 0;'>Monitoring Dashboard</h2>
+            <div style='text-align:center;margin-bottom:16px;'>
+                <h2 style='font-size:22px;margin:0 0 4px 20px;'>Monitoring Dashboard</h2>
                 <p style='color:#888;font-size:13px;margin:0;'>Pengadaan Barang</p>
             </div>
         """, unsafe_allow_html=True)
@@ -295,7 +295,7 @@ def render_login() -> bool:
                 st.rerun()
 
         st.markdown("""
-            <p style='text-align:center;color:#aaa;font-size:12px;margin-top:20px;'>
+            <p style='text-align:center;color:#aaa;font-size:12px;margin-top:16px;'>
                 Hubungi administrator jika lupa password.
             </p>
         """, unsafe_allow_html=True)

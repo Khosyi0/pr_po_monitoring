@@ -675,14 +675,16 @@ def render(load_data, **kwargs):
                 fig2.add_trace(go.Scatter(
                     x=val_trend_data['month_display'], y=y_oe_cum,
                     mode='lines+markers', name='Estimasi PR (OE)',
-                    line=dict(color='#1f77b4', width=2),
+                    line=dict(color='#1f77b4', width=3, shape='spline'),
+                    fill='tozeroy', fillcolor='rgba(31,119,180,0.1)',
                     customdata=val_trend_data[['hover_label', 'cum_oe_fmt']],
                     hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Estimasi PR: %{customdata[1]}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
                     x=val_trend_data['month_display'], y=y_po_cum,
                     mode='lines+markers', name='Nilai PO',
-                    line=dict(color='#2ca02c', width=2),
+                    line=dict(color='#2ca02c', width=3, shape='spline'),
+                    fill='tozeroy', fillcolor='rgba(44,160,44,0.1)',
                     customdata=val_trend_data[['hover_label', 'cum_po_fmt']],
                     hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Nilai PO: %{customdata[1]}<extra></extra>'
                 ))
@@ -713,14 +715,16 @@ def render(load_data, **kwargs):
                 height=320,
                 xaxis_title='',
                 yaxis_title='Total Value (IDR)',
-                yaxis=idr_axis(max_val),
+                yaxis={**idr_axis(max_val), 'gridcolor': 'rgba(128,128,128,0.1)'},
                 xaxis=dict(
                     tickmode='array',
                     tickvals=val_trend_data['month_display'].tolist(),
                     ticktext=val_trend_data['hover_label'].tolist(),
-                    tickangle=-30
+                    tickangle=-30,
+                    showgrid=False
                 ),
-                margin=dict(t=10, b=0, l=0, r=0),
+                margin=dict(t=20, b=0, l=0, r=0),
+                plot_bgcolor='rgba(0,0,0,0)',
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
             st.plotly_chart(fig2, use_container_width=True)
@@ -756,30 +760,16 @@ def render(load_data, **kwargs):
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Kueri khusus untuk mengambil metrik performa (On Time, On Budget, Efisiensi, Lead Time) per Bagian
+    # Kueri khusus untuk mengambil metrik performa (On Time, On Budget, Efisiensi, Lead Time) per Bagian dari SIPS
     bagian_query = f"""
     SELECT
-        COUNT(poi.nomor_po) AS total_po,
-        COALESCE(SUM(poi.total_amount_local_curr), 0) AS total_realisasi,
-        COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0) AS total_oe,
-        COUNT(CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
-        COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT') THEN 1 END) AS po_del_tot,
-        ROUND(AVG(
-            CASE WHEN poi.first_full_release IS NOT NULL AND poh.date_ordered IS NOT NULL
-            THEN (poh.date_ordered::date - poi.first_full_release::date) END
-        )::numeric, 1) AS avg_lead_time,
-        COUNT(CASE WHEN poi.total_amount_local_curr <= (poi.quantity_pr * poi.estimasi_pr)
-            AND (poi.quantity_pr * poi.estimasi_pr) > 0 THEN 1 END) AS po_onbudget
-    FROM po_items poi
-    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-    WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-      AND poi.bagian_po = '{pilihan_bagian}'
-    """
-
-    sips_efis_query = f"""
-    SELECT
+        COUNT(*) AS total_pr,
+        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
+        ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
+        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
     FROM vw_sips
     WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
       AND bagian = '{pilihan_bagian}'
@@ -788,30 +778,23 @@ def render(load_data, **kwargs):
     with st.spinner(f"Memuat performa bagian {pilihan_bagian}..."):
         try:
             b_data = load_data(bagian_query)
-            s_data = load_data(sips_efis_query)
         except Exception as e:
             st.error(f"Gagal memuat data bagian: {e}")
             b_data = pd.DataFrame()
-            s_data = pd.DataFrame()
 
     if not b_data.empty:
         # Ekstraksi dan Kalkulasi Data
+        b_total_pr  = int(b_data['total_pr'][0] or 0)
         b_total_po  = int(b_data['total_po'][0] or 0)
-        b_ontime    = int(b_data['po_ontime'][0] or 0)
-        b_deltot    = int(b_data['po_del_tot'][0] or 0)
-        b_lt        = float(b_data['avg_lead_time'][0] or 0)
-        b_onbudget  = int(b_data['po_onbudget'][0] or 0)
+        b_ontime    = float(b_data['sla_ontime'][0] or 0)
+        b_lt        = float(b_data['avg_pr_po'][0] or 0)
+        b_onbudget  = int(b_data['on_budget_count'][0] or 0)
 
-        pct_ontime   = (b_ontime / b_deltot * 100) if b_deltot > 0 else 0.0
+        pct_ontime   = (b_ontime / b_total_po * 100) if b_total_po > 0 else 0.0
         pct_onbudget = (b_onbudget / b_total_po * 100) if b_total_po > 0 else 0.0
         
-        # Kalkulasi efisiensi khusus menggunakan data dari SIPS
-        if not s_data.empty:
-            b_sips_oe = float(s_data['sips_oe_total'][0] or 0)
-            b_sips_po = float(s_data['sips_po_total'][0] or 0)
-        else:
-            b_sips_oe = 0.0
-            b_sips_po = 0.0
+        b_sips_oe = float(b_data['sips_oe_total'][0] or 0)
+        b_sips_po = float(b_data['sips_po_total'][0] or 0)
             
         b_efis_val   = b_sips_oe - b_sips_po
         b_efis_pct   = (b_efis_val / b_sips_oe * 100) if b_sips_oe > 0 else 0.0
@@ -846,8 +829,7 @@ def render(load_data, **kwargs):
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
             
         with c3:
-            tipe_lt = "green" if b_lt <= 55 else "red"
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{b_lt} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
             
         with c4:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
@@ -864,32 +846,14 @@ def render(load_data, **kwargs):
         )
 
         trend_bagian_query = f"""
-        WITH pr_monthly AS (
-            SELECT
-                DATE_TRUNC('month', first_full_release) AS month_date,
-                COUNT(DISTINCT CASE WHEN no_pr != 'No PR'
-                    THEN no_pr || '-' || line_item_pr::text END) AS total_pr
-            FROM vw_pr_po_complete
-            WHERE first_full_release >= '{date_from}' AND first_full_release <= '{date_to}'
-              AND bagian_pr = '{pilihan_bagian}'
-            GROUP BY 1
-        ),
-        po_monthly AS (
-            SELECT
-                DATE_TRUNC('month', poh.date_ordered) AS month_date,
-                COUNT(poi.nomor_po) AS total_po
-            FROM po_items poi
-            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-              AND poi.bagian_po = '{pilihan_bagian}'
-            GROUP BY 1
-        )
         SELECT
-            COALESCE(pr.month_date, po.month_date) AS month,
-            COALESCE(pr.total_pr, 0) AS total_pr,
-            COALESCE(po.total_po, 0) AS total_po
-        FROM pr_monthly pr
-        FULL OUTER JOIN po_monthly po ON pr.month_date = po.month_date
+            DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
+            COUNT(*) AS total_pr,
+            COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
+        FROM vw_sips
+        WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+          AND bagian = '{pilihan_bagian}'
+        GROUP BY 1
         ORDER BY month
         """
 
