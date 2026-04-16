@@ -397,12 +397,13 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             hover_data={"No AJU": True, "Tahap": True, "Start": "|%d %b %Y %H:%M", "Finish": "|%d %b %Y %H:%M"}
         )
         
-        fig_gantt.update_yaxes(autorange="reversed") # Agar data terbaru di atas
+        fig_gantt.update_yaxes(autorange="reversed")
         fig_gantt.update_layout(
+            barmode='group',
             margin=dict(t=20, b=20, l=20, r=20),
             legend_title_text="",
             xaxis_title="Tanggal Operasional",
-            height=400 + (len(df_timeline) * 15) # Dinamis mengatur tinggi chart sesuai jumlah dokumen
+            height=400 + (len(df_timeline) * 15)
         )
         st.plotly_chart(fig_gantt, use_container_width=True)
     else:
@@ -433,19 +434,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     df_top10 = df.nlargest(10, 'TOTAL_BIAYA').copy()
 
-    def buat_label_unik(row):
-        tgl_str = row['tgl_pib'].strftime('%d %b') if pd.notna(row['tgl_pib']) else 'No Date'
-        # Prioritaskan menampilkan SAP, jika kosong tampilkan AJU, jika kosong tampilkan Nama Kapal
-        if pd.notna(row['sap']) and str(row['sap']).strip() not in ['', '-', 'None', 'nan']:
-            identitas = f"SAP: {str(row['sap']).split('.')[0]}" # Split .0 sekadar jaga-jaga
-        elif pd.notna(row['no_aju']) and str(row['no_aju']).strip() not in ['', '-', 'None', 'nan']:
-            identitas = f"AJU: {str(row['no_aju']).split('.')[0]}"
-        else:
-            identitas = str(row['nama_kapal'])[:10] + "..." # Potong nama kapal agar tidak kepanjangan
-            
-        return f"{tgl_str} ({identitas})"
-
-    df_top10['Label'] = df_top10.apply(buat_label_unik, axis=1)
+    df_top10['Label'] = 'AJU ' + df_top10['no_aju'].fillna('-').astype(str)
     
     df_top10_chart = df_top10.rename(columns={
         'bea_masuk_rp': 'Bea Masuk (Rp)',
@@ -458,12 +447,13 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         x='Label', 
         y=['Bea Masuk (Rp)', 'PPN', 'PPH'],
         labels={'value': 'Total Biaya (Rupiah)', 'variable': 'Jenis Pajak', 'Label': 'Dokumen Impor'},
-        color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c']
+        color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c'],
+        category_orders={"variable": ["Bea Masuk (Rp)", "PPN", "PPH"]}
     )
     
     max_top10_val = df_top10['TOTAL_BIAYA'].max()
     fig_top10.update_layout(
-        barmode='stack',
+        barmode='group',
         margin=dict(t=20, b=20, l=20, r=20),
         legend_title_text="Jenis Pajak",
         hovermode="x unified",
