@@ -438,18 +438,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     df_top10 = df_top10.reset_index(drop=True)
     df_top10['Rank'] = df_top10.index + 1
     
-    def buat_label_unik(row):
-        tgl_str = row['tgl_pib'].strftime('%d %b') if pd.notna(row['tgl_pib']) else 'No Date'
-        if pd.notna(row['no_aju']) and str(row['no_aju']).strip() not in ['', '-', 'None', 'nan']:
-            identitas = f"AJU: {str(row['no_aju']).split('.')[0]}"
-        elif pd.notna(row['sap']) and str(row['sap']).strip() not in ['', '-', 'None', 'nan']:
-            identitas = f"SAP: {str(row['sap']).split('.')[0]}"
-        else:
-            identitas = str(row['nama_kapal'])[:10] + "..."
-            
-        return f"#{row['Rank']} | {tgl_str} ({identitas})"
-
-    df_top10['Label'] = df_top10.apply(buat_label_unik, axis=1)
+    df_top10['Label'] = 'AJU ' + df_top10['no_aju'].fillna('-').astype(str)
     
     df_top10_chart = df_top10.rename(columns={
         'bea_masuk_rp': 'Bea Masuk (Rp)',
