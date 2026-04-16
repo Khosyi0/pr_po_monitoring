@@ -107,6 +107,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     total_biaya_sum = df['TOTAL_BIAYA'].sum()
     avg_waiting = df['Waiting_Time'].mean()
+    avg_bongkar = df['Lama_Bongkar_Hari'].mean()
 
     KPI_DASH = [
         {
@@ -114,16 +115,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "icon_path": "M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2l-3-3z",
             "label": "Total PIB",
             "value": f"{format_number(total_data)}",
-            "delta": "PIB",
-            "formula": "Jumlah total PIB pada periode filter."
-        },
-        {
-            "key": "kpi_pib_on_progress",
-            "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
-            "label": "PIB On Progress",
-            "value": f"{format_number(pib_on_progress)}",
-            "delta": "Dokumen",
-            "formula": "Seleisih Total PIB dengan PIB Selesai."
+            "delta": f"{format_number(pib_on_progress)} On Progress",
+            "formula": "Jumlah total PIB pada periode filter. Dokumen On Progress adalah selisih Total PIB dengan PIB Selesai."
         },
         {
             "key": "kpi_pib_selesai",
@@ -156,6 +149,14 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "value": f"{format_number(avg_waiting, decimals=1)} Hari" if pd.notna(avg_waiting) else "-",
             "delta": "Start Bongkar - Tgl PIB",
             "formula": "Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar."
+        },
+        {
+            "key": "kpi_avg_bongkar",
+            "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+            "label": "Rata-rata Waktu Proses Bongkar",
+            "value": f"{format_number(avg_bongkar, decimals=1)} Hari" if pd.notna(avg_bongkar) else "-",
+            "delta": "Selesai Bongkar - Start Bongkar",
+            "formula": "Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar."
         }
     ]
 
@@ -224,7 +225,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                     continue
                 kpi = items[i]
                 
-                no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:") or kpi["delta"].startswith("PIB") or kpi["delta"].startswith("Dokumen") or kpi["delta"].startswith("SPPB") or kpi["delta"].startswith("Bea Masuk") or kpi["delta"].startswith("Start Bongkar")
+                no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:") or kpi["delta"].startswith("PIB") or kpi["delta"].startswith("Dokumen") or kpi["delta"].startswith("SPPB") or kpi["delta"].startswith("Bea Masuk") or kpi["delta"].startswith("Start Bongkar") or kpi["delta"].endswith("On Progress") or kpi["delta"].startswith("Selesai Bongkar")
                 delta_arrow = "" if no_arrow else "↑ "
                 delta_cls = "kpi-delta"
 
@@ -268,14 +269,14 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-pie-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
                         <path d="M15.985 8.5H8.207l-5.5 5.5a8 8 0 0 0 13.277-5.5zM2 13.292A8 8 0 0 1 7.5.015v7.778l-5.5 5.5zM8.5.015V7.5h7.485A8.001 8.001 0 0 0 8.5.015z"/>
                     </svg>
-                    Proporsi Jalur Kepabeanan
+                    Proporsi Keterangan Jalur
                 </h1>
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             with st.popover(":material/visibility:", help="Lihat Formula"):
                 st.info("""\
-**Proporsi Jalur Kepabeanan**: Pie chart distribusi jumlah dokumen impor berdasarkan jalur merah dan jalur hijau.
+**Proporsi Keterangan Jalur**: Pie chart distribusi jumlah dokumen impor berdasarkan jalur merah dan jalur hijau.
 
 **Formula Excel:**
 - `Jalur Merah` = Jika kolom SPJM berisi teks (seperti tanggal) atau angka selain 0.
@@ -500,6 +501,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     konteks_lines.append(f"- Pencapaian SLA EPP: {persen_sla_epp:.1f}%")
     konteks_lines.append(f"- Total Pajak Impor Dibayarkan: Rp {total_biaya_sum:,.0f}")
     konteks_lines.append(f"- Rata-rata Waiting Time: {avg_waiting:.1f} Hari")
+    konteks_lines.append(f"- Rata-rata Waktu Proses Bongkar: {avg_bongkar:.1f} Hari")
     konteks_lines.append(f"- Filter Aktif: {info_filter}")
     konteks_lines.append("")
     
