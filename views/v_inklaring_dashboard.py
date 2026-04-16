@@ -474,7 +474,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     
     max_top10_val = df_top10['TOTAL_BIAYA'].max()
     fig_top10.update_layout(
-        barmode='stack',
+        barmode='group',
         margin=dict(t=20, b=20, l=20, r=20),
         legend_title_text="Jenis Pajak",
         hovermode="x unified",
