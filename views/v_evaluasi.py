@@ -8,6 +8,119 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, idr_axis
 
+EVALUASI_CSS = """
+<style>
+/* Copied from v_dashboard.py for consistency */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    min-height: 120px !important;
+    height: 100%;
+    padding: 20px 18px 16px 18px;
+}
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
+}
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
+    font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+}
+
+.dash-value {
+    font-size: 2rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px 0 !important;
+    line-height: 1.1 !important;
+    color: var(--text-color) !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    display: block !important;
+}
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
+/* Posisi tombol popover di dalam kartu KPI */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
+</style>
+"""
+
+ICONS = {
+    "kpi_eval_material": "M2 1a1 1 0 0 0-1 1v4.586a1 1 0 0 0 .293.707l7 7a1 1 0 0 0 1.414 0l4.586-4.586a1 1 0 0 0 0-1.414l-7-7A1 1 0 0 0 6.586 1zm4 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0",
+    "kpi_eval_oe": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+    "kpi_eval_realisasi": "M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4 M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z",
+    "kpi_eval_selisih": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
+    "kpi_eval_over": "M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2",
+    "kpi_eval_under": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+}
+
+def _svg(path_d: str, size: int = 40) -> str:
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>'
+    )
+
+def _card(icon_d: str, label: str, value: str,
+          delta: str = "", delta_type: str = "neutral") -> str:
+    delta_cls = {
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    delta_html = f'<p class="{delta_cls}">{delta}</p>' if delta else ""
+    return f"""<div class="dash-card">
+    <div class="dash-icon">{_svg(icon_d, 36)}</div>
+    <div class="dash-body">
+        <p class="dash-label">{label}</p>
+        <p class="dash-value">{value}</p>{delta_html}
+    </div>
+</div>"""
+
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
         info_filter = kwargs.get('info_filter', 'Tidak ada filter spesifik')
@@ -23,19 +136,10 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             </h1>
         """, unsafe_allow_html=True)
         st.markdown("Analisis harga barang pada PO: perbandingan terhadap OE, variasi harga antar vendor, dan tren harga historis.")
-        st.markdown("""
-            <style>
-            [data-testid="stMetricValue"] > div {
-                font-size: 1.8rem !important; /* Ukuran font standar yang nyaman dibaca, tidak terlalu besar/kecil */
-                white-space: normal !important; /* KUNCI: Mencegah teks dipotong (...) dan memungkinkannya turun baris */
-                word-wrap: break-word !important; /* Memastikan angka/kata panjang bisa patah dengan rapi */
-                line-height: 1.2 !important; /* Mengatur jarak vertikal jika teks menjadi 2 baris */
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        st.markdown(EVALUASI_CSS, unsafe_allow_html=True)
         st.markdown("---")
 
-# ── KPI HARGA ─────────────────────────────────────
+# == KPI HARGA =====================================
         date_from = kwargs.get('date_from')
         date_to   = kwargs.get('date_to')
         bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
@@ -85,11 +189,10 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         total_mat      = int(harga_kpi['total_material'][0] or 0)
         delta_label    = "efisien" if total_efis_val >= 0 else "melebihi OE"
 
-        # ── DEFINISI KPI DENGAN DOKUMENTASI LENGKAP ──
+        # == DEFINISI KPI DENGAN DOKUMENTASI LENGKAP ==
         KPI_EVAL_CARDS = [
             {
                 "key": "kpi_eval_material",
-                "icon_path": "M2 1a1 1 0 0 0-1 1v4.586a1 1 0 0 0 .293.707l7 7a1 1 0 0 0 1.414 0l4.586-4.586a1 1 0 0 0 0-1.414l-7-7A1 1 0 0 0 6.586 1zm4 3.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0",
                 "label": "Total Material Unik",
                 "value": f"{format_number(total_mat)}",
                 "delta": "Item dalam PO",
@@ -104,7 +207,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             },
             {
                 "key": "kpi_eval_oe",
-                "icon_path": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
                 "label": "Total OE",
                 "value": format_idr(total_oe_val),
                 "delta": "Anggaran Estimasi",
@@ -123,7 +225,6 @@ Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunaka
             },
             {
                 "key": "kpi_eval_realisasi",
-                "icon_path": "M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4 M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z",
                 "label": "Total Realisasi PO",
                 "value": format_idr(total_real_val),
                 "delta": "Nilai Aktual PO",
@@ -139,7 +240,6 @@ Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunaka
             },
             {
                 "key": "kpi_eval_selisih",
-                "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
                 "label": "Selisih OE vs Realisasi",
                 "value": format_idr(total_efis_val),
                 "delta": delta_label,
@@ -159,7 +259,6 @@ Ini adalah **nilai yang dianggarkan** sebelum proses pengadaan dimulai. Digunaka
             },
             {
                 "key": "kpi_eval_over",
-                "icon_path": "M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2",
                 "label": "Item PO Melebihi OE",
                 "value": f"{format_number(po_over)} item",
                 "delta": "Perlu Investigasi",
@@ -177,7 +276,6 @@ Item ini perlu diinvestigasi: kemungkinan penyebabnya adalah perubahan spesifika
             },
             {
                 "key": "kpi_eval_under",
-                "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
                 "label": "Item Sesuai/Di Bawah OE",
                 "value": f"{format_number(po_under)} item",
                 "delta": "Aman/Hemat",
@@ -195,56 +293,30 @@ Semakin banyak item di kategori ini dibandingkan total item PO, semakin baik per
             },
         ]
 
-        # ── CSS CARDS ──
-        st.markdown("""
-        <style>
-        .kpi-card {
-            display: flex; align-items: center; background: var(--secondary-background-color);
-            border-radius: 10px; padding: 16px 14px; gap: 12px; height: 100%;
-        }
-        .kpi-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .kpi-body { flex: 1; min-width: 0; }
-        .kpi-label { font-size: 13px; opacity: 0.9; margin: 0 0 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .kpi-value { font-size: 1.8rem !important; font-weight: 600 !important; margin: 0 !important; line-height: 1.1 !important; display: block !important; }
-        .kpi-delta { font-size: 12px; color: #09ab3b; margin: 0; }
-        </style>
-        """, unsafe_allow_html=True)
-
-
-        # ── RENDERING 3 COLUMNS PER ROW ──
-        for row in range(0, len(KPI_EVAL_CARDS), 3):
-            current_row_items = KPI_EVAL_CARDS[row:row + 3]
-            cols = st.columns(3)
-            for i, col in enumerate(cols):
-                with col:
-                    if i < len(current_row_items):
-                        kpi = current_row_items[i]
-                        
-                        card_html = f"""
-                        <div class="kpi-card">
-                            <div class="kpi-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="35" height="35" fill="currentColor" viewBox="0 0 16 16">
-                                    <path d="{kpi['icon_path']}"/>
-                                </svg>
-                            </div>
-                            <div class="kpi-body">
-                                <p class="kpi-label">{kpi['label']}</p>
-                                <p class="kpi-value">{kpi['value']}</p>
-                                <p class="kpi-delta">{"↑ " if total_efis_val >= 0 else ""}{kpi['delta']}</p>
-                            </div>
-                        </div>"""
-                        
-                        c_card, c_btn = st.columns([10, 2])
-                        with c_card:
-                            st.markdown(card_html, unsafe_allow_html=True)
-                        with c_btn:
-                            st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                            with st.popover(":material/visibility:", help="Lihat Formula"):
-                                st.info(kpi["formula"])
+        # == RENDERING 3 COLUMNS PER ROW ==
+        for row_start in range(0, len(KPI_EVAL_CARDS), 3):
+            cols = st.columns(3, gap="medium")
+            row_items = KPI_EVAL_CARDS[row_start : row_start + 3]
+            for i, kpi in enumerate(row_items):
+                with cols[i]:
+                    delta_type = "neutral"
+                    if kpi['key'] == 'kpi_eval_selisih':
+                        delta_type = "green" if total_efis_val >= 0 else "red"
+                    elif kpi['key'] == 'kpi_eval_over':
+                        delta_type = "red"
+                    elif kpi['key'] == 'kpi_eval_under':
+                        delta_type = "green"
+                    
+                    card_html = _card(ICONS[kpi['key']], kpi['label'], kpi['value'], kpi['delta'], delta_type)
+                    
+                    st.markdown(card_html, unsafe_allow_html=True)
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info(kpi["formula"])
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ── ROW 1: Scatter OE vs Realisasi (full width) ────────────────────────────
+        # == ROW 1: Scatter OE vs Realisasi (full width) ============================
 
         title_col, btn_col = st.columns([9, 1])
         with title_col:
@@ -335,7 +407,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 legend=dict(orientation='h', yanchor='bottom', y=1.02),
                 separators=",.",
                 xaxis=axis_cfg,
-                yaxis=axis_cfg,
+                yaxis=axis_cfg, margin=dict(t=40, b=40, l=40, r=20)
             )
             st.plotly_chart(fig, use_container_width=True)
             st.caption("Titik di atas garis diagonal = realisasi melebihi OE. Ukuran titik = jumlah PO.")
@@ -344,7 +416,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
         st.markdown("---")
 
-        # ── ROW 1b: Top 10 Overspend & Top 10 Efisiensi ─────────────────────────────
+        # == ROW 1b: Top 10 Overspend & Top 10 Efisiensi =============================
         col_over, col_ef = st.columns(2)
 
         with col_over:
@@ -435,7 +507,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     height=420,
                     yaxis={'categoryorder': 'total ascending'},
                     coloraxis_colorbar=dict(title='% Overspend'),
-                    xaxis=idr_axis(overspend_data['total_overspend'].max() * 1.15),
+                    xaxis=idr_axis(overspend_data['total_overspend'].max() * 1.15), margin=dict(t=20, b=40, l=20, r=40)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -534,7 +606,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     height=450,
                     yaxis={'categoryorder': 'total ascending'},
                     coloraxis_colorbar=dict(title='% Efisiensi'),
-                    xaxis=idr_axis(efisien_data['total_efisiensi'].max() * 1.15),
+                    xaxis=idr_axis(efisien_data['total_efisiensi'].max() * 1.15), margin=dict(t=20, b=40, l=20, r=40)
                 )
                 st.plotly_chart(fig_ef, use_container_width=True)
             else:
@@ -542,7 +614,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
         st.markdown("---")
 
-        # ── ROW 2: Harga per Vendor & Tren Harga Historis ─────────────────────────
+        # == ROW 2: Harga per Vendor & Tren Harga Historis =========================
 
         # 1. Load data variasi vendor terlebih dahulu untuk mendapatkan daftar material
         vendor_price_query = f"""
@@ -615,7 +687,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
-        # ── KOLOM 1: Variasi Harga Antar Vendor (Chart Saja) ─────────────────────
+        # == KOLOM 1: Variasi Harga Antar Vendor (Chart Saja) =====================
         with col1:
             title_col, btn_col = st.columns([9, 1])
             with title_col:
@@ -661,12 +733,12 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                     fig.update_layout(
                         height=380, showlegend=False,
                         coloraxis_showscale=False, xaxis_tickangle=-30,
-                        yaxis=idr_axis(df_mat['harga_satuan_avg'].max() * 1.15),
+                        yaxis=idr_axis(df_mat['harga_satuan_avg'].max() * 1.15), margin=dict(t=20, b=40, l=20, r=20)
                     )
                     fig.update_traces(textposition='outside')
                     st.plotly_chart(fig, use_container_width=True)
 
-            # ── KOLOM 2: Tren Harga Historis per Material ────────────────────────────
+            # == KOLOM 2: Tren Harga Historis per Material ============================
             with col2:
                 title_col, btn_col = st.columns([9, 1])
                 with title_col:
@@ -753,7 +825,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                             xaxis_title='Bulan',
                             yaxis_title='Harga Satuan (IDR/unit)',
                             legend=dict(orientation='h', yanchor='bottom', y=1.02),
-                            hovermode='x unified',
+                            hovermode='x unified', margin=dict(t=40, b=40, l=20, r=20),
                             yaxis=idr_axis(y_max_trend),
                         )
                         st.plotly_chart(fig_trend, use_container_width=True)
@@ -762,7 +834,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                         st.info("Tidak ada data historis untuk material ini.")
 
 
-        # ── TABEL FULL WIDTH: Perbandingan Vendor ────────────────────────────────
+        # == TABEL FULL WIDTH: Perbandingan Vendor ================================
         st.markdown("<br>", unsafe_allow_html=True)
         
         title_col_tbl, btn_col_tbl = st.columns([9, 1])
@@ -885,7 +957,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
 
         st.markdown("---")
 
-        # ── ROW 3: Ranking Vendor Keseluruhan ─────────────────────────────────────
+        # == ROW 3: Ranking Vendor Keseluruhan =====================================
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:22px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trophy-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
@@ -941,7 +1013,7 @@ Garis diagonal pada chart = garis paritas (realisasi = OE). Titik di atas garis 
                 axis=1
             )
  
-            # ── Tab chart vs tabel ─────────────────────────────────────────────
+            # == Tab chart vs tabel =============================================
             tab_chart, tab_tabel = st.tabs([
                 ":material/bar_chart: Visualisasi",
                 ":material/table_chart: Tabel Lengkap",
@@ -1048,6 +1120,7 @@ Nilai positif = realisasi lebih mahal dari OE. Nilai negatif = realisasi lebih h
                         yaxis_title='% Selisih vs OE (+ = lebih mahal, - = lebih hemat)',
                         legend=dict(orientation='h', yanchor='bottom', y=1.02, font=dict(size=10)),
                         hovermode='closest',
+                        margin=dict(t=40, b=40, l=40, r=20)
                     )
                     st.plotly_chart(fig_rv1, use_container_width=True)
                     st.caption(
@@ -1115,6 +1188,7 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
                             height=520,
                             yaxis={'categoryorder': 'total ascending'},
                             xaxis=dict(range=[-x_abs, x_abs]),
+                            margin=dict(t=40, b=40, l=20, r=40),
                             legend=dict(orientation='h', yanchor='bottom', y=1.02, font=dict(size=11)),
                         )
                         fig_rv2.add_vline(x=0, line_dash='dash', line_color='gray', line_width=1)
@@ -1227,7 +1301,7 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
  
         st.markdown("---")
 
-        # ── ROW 4: Tabel Detail Evaluasi Harga ────────────────────────────────────
+        # == ROW 4: Tabel Detail Evaluasi Harga ====================================
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:22px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">

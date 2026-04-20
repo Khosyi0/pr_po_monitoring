@@ -5,9 +5,129 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
 import calendar
+from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, idr_axis
+
+DASHBOARD_CSS = """
+<style>
+/* == Card KPI & Chart Wrapper ============================================== */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    min-height: 145px !important;
+    height: 100%;
+    padding: 20px 18px 16px 18px;
+}
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
+}
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
+    font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+}
+
+.dash-value {
+    font-size: 2rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px 0 !important;
+    line-height: 1.1 !important;
+    color: var(--text-color) !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    display: block !important;
+}
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative;
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
+</style>
+"""
+
+ICONS = {
+    "kpi_total_pr": "M5 10.5a.5.5 0 0 1 .5-.5h2a.5.5 0 0 1 0 1h-2a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m0-2a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5 M3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z",
+    "kpi_total_po": "M8 1a2.5 2.5 0 0 1 2.5 2.5V4h-5v-.5A2.5 2.5 0 0 1 8 1m3.5 3v-.5a3.5 3.5 0 1 0-7 0V4H1v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4zM2 5h12v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z",
+    "kpi_produktivitas": "M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07",
+    "kpi_savings": "M8 3.293 4 7.293V13a1 1 0 0 0 1 1h2v-3h2v3h2a1 1 0 0 0 1-1V7.293zM13.207 6 8 .793 2.793 6H1l7-7 7 7z",
+    "kpi_estimasi": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+    "kpi_anggaran": "M1 2.828c.885-.37 2.154-.769 3.388-.893 1.33-.134 2.458.063 3.112.752v9.746c-.935-.53-2.12-.603-3.213-.493-1.18.12-2.37.461-3.287.811zm7.5-.141c.654-.689 1.782-.886 3.112-.752 1.234.124 2.503.523 3.388.893v9.923c-.918-.35-2.107-.692-3.287-.81-1.094-.111-2.278-.039-3.213.492zM8 1.783C7.015.936 5.587.81 4.287.94c-1.514.153-3.042.672-3.994 1.105A.5.5 0 0 0 0 2.5v11a.5.5 0 0 0 .707.455c.882-.4 2.303-.881 3.68-1.02 1.409-.142 2.59.087 3.223.877a.5.5 0 0 0 .78 0c.633-.79 1.814-1.019 3.222-.877 1.378.139 2.8.62 3.681 1.02A.5.5 0 0 0 16 13.5v-11a.5.5 0 0 0-.293-.455c-.952-.433-2.48-.952-3.994-1.105C10.413.809 8.985.936 8 1.783",
+    "kpi_sinergi": "M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5",
+    "kpi_kecepatan_po": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+    "kpi_pengiriman": "M0 3.5A1.5 1.5 0 0 1 1.5 2h9A1.5 1.5 0 0 1 12 3.5V5h1.02a1.5 1.5 0 0 1 1.17.563l1.481 1.85a1.5 1.5 0 0 1 .329.938V10.5a1.5 1.5 0 0 1-1.5 1.5H14a2 2 0 1 1-4 0H5a2 2 0 1 1-3.998-.085A1.5 1.5 0 0 1 0 10.5zm1.294 7.456A2 2 0 0 1 4.732 11h5.536a2 2 0 0 1 .732-.732V3.5a.5.5 0 0 0-.5-.5h-9a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .294.456M12 10a2 2 0 0 1 1.732 1h.768a.5.5 0 0 0 .5-.5V8.35a.5.5 0 0 0-.11-.312l-1.48-1.85A.5.5 0 0 0 13.02 6H12zm-9 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2m9 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2",
+    "kpi_ketepatan": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+    "kpi_otobos": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
+    "kpi_efisiensi_pengadaan": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
+    "kpi_izin_impor": "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2",
+    "kpi_pembebasan": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z",
+}
+
+def _svg(path_d: str, size: int = 40) -> str:
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>'
+    )
+
+def _card(icon_d: str, label: str, value: str,
+          delta: str = "", delta_type: str = "neutral") -> str:
+    delta_cls = {
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    delta_html = f'<p class="{delta_cls}">{delta}</p>' if delta else ""
+    return f"""<div class="dash-card">
+    <div class="dash-icon">{_svg(icon_d, 36)}</div>
+    <div class="dash-body">
+        <p class="dash-label">{label}</p>
+        <p class="dash-value">{value}</p>{delta_html}
+    </div>
+</div>"""
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
         
@@ -27,19 +147,10 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 PR-PO SAP Monitoring Dashboard
             </h1>
         """, unsafe_allow_html=True)
-        st.markdown("""
-            <style>
-            [data-testid="stMetricValue"] > div {
-                font-size: 2rem !important; /* Ukuran font standar yang nyaman dibaca, tidak terlalu besar/kecil */
-                white-space: normal !important; /* KUNCI: Mencegah teks dipotong (...) dan memungkinkannya turun baris */
-                word-wrap: break-word !important; /* Memastikan angka/kata panjang bisa patah dengan rapi */
-                line-height: 1.2 !important; /* Mengatur jarak vertikal jika teks menjadi 2 baris */
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
         st.markdown("---")
 
-        # ── KPI ──────────────────────────────────────────
+        # == KPI ===========================================
         st.markdown("""
             <h1 style='display: flex; align-items: center;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
@@ -52,7 +163,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         date_from = kwargs.get('date_from')
         date_to   = kwargs.get('date_to')
 
-        # ── Query PR: filter by first_full_release (hanya PR yang sudah full release) ─
+        # == Query PR: filter by first_full_release (hanya PR yang sudah full release) =
         pr_kpi_query = f"""
         WITH unique_pr AS (
             SELECT 
@@ -73,7 +184,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         FROM unique_pr
         """
 
-        # ── Query PO: filter by date_ordered langsung dari tabel po_items ──────
+        # == Query PO: filter by date_ordered langsung dari tabel po_items ======
         bagian_po_poi = bagian_po_cond.replace('bagian_po', 'poi.bagian_po')
         filter_po = filter_conditions.replace('department_code', 'poi.department_code').replace('plant_code', 'poi.plant_code').replace('tgl_create_pr', 'poh.date_ordered').replace('first_full_release', 'poh.date_ordered')
 
@@ -128,7 +239,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         ketepatan_pct    = (po_ontime / po_del_tot * 100) if po_del_tot > 0 else 0.0
         sinergi_pi_val   = float(po_kpi['total_sinergi_pi'][0] or 0)
 
-        # ── KPI_DASH: 14 item, 3 per baris ────────────────────────────────────
+        # == KPI_DASH: 14 item, 3 per baris ====================================
         KPI_DASH = [
             {
                 "key": "kpi_total_pr",
@@ -171,7 +282,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M0 0h1v15h15v1H0zm14.817 3.113a.5.5 0 0 1 .07.704l-4.5 5.5a.5.5 0 0 1-.74.037L7.06 6.767l-3.656 5.027a.5.5 0 0 1-.808-.588l4-5.5a.5.5 0 0 1 .758-.06l2.609 2.61 4.15-5.073a.5.5 0 0 1 .704-.07",
                 "label": "Produktivitas PR-PO",
                 "value": f"{format_number(produktivitas, decimals=2)}%",
-                "delta": "Target: -%",
+                "delta": "Target: -",
                 "formula": """\
 **Produktivitas PR-PO**: Persentase total item PO dibanding total item PR.
 
@@ -194,7 +305,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 "icon_path": "M8 3.293 4 7.293V13a1 1 0 0 0 1 1h2v-3h2v3h2a1 1 0 0 0 1-1V7.293zM13.207 6 8 .793 2.793 6H1l7-7 7 7z",
                 "label": "Total Savings",
                 "value": format_idr(savings),
-                "delta": f"{format_number(savings_pct, decimals=1)}% avg",
+                "delta": f"Efisiensi: {format_number(savings_pct, decimals=2)}%",
                 "formula": f"""\
 **Total Savings**: Selisih OE dengan realisasi PO.
 
@@ -336,50 +447,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 """,
             },
             {
-                "key": "kpi_otobos",
-                "icon_path": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
-                "label": "Pemenuhan SLA OTOBOS",
-                "value": "99,33%",
-                "delta": "Target: > 90%",
-                "formula": """\
-**Pemenuhan SLA OTOBOS**: Tingkat pemenuhan SLA sistem OTOBOS.
-
-**Status:** OTOBOS adalah sistem terpisah, tidak terhubung ke database PR-PO ini.
-
-**Formula Excel (jika data tersedia):**
-```
-= COUNT(request selesai dalam SLA) / COUNT(total request) × 100%
-```
-
-**Target:** -\
-""",
-            },
-            {
                 "key": "kpi_efisiensi_pengadaan",
                 "icon_path": "M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41m-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9 M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5 5 0 0 0 8 3M3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9z",
                 "label": "Efisiensi Pengadaan",
                 "value": f"{format_number(savings_pct, decimals=2)}%",
                 "delta": "Target: > 2%",
-                "formula": """\
-**Efisiensi Pengadaan (PO/OE)**: Rata-rata persentase penghematan dari nilai OE per item PO.
-
-**Formula Excel:** (PO SAP)
-- Filter **Material No** selain `1000076`
-- Filter **PO Deletion Flag** selain `L`
-- Buat kolom **Efisiensi**: =`(Estimasi PR × Quantity PR) - Total Amount in Local Curr`
-- Bagi jumlah **Efisiensi** dengan jumlah **Total Amount in Local Curr**
-
-Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evaluasi Harga Barang.
-
-**Target:** -\
-""",
-            },
-            {
-                "key": "kpi_izin_impor",
-                "icon_path": "M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2m3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2",
-                "label": "Pemenuhan Izin Impor",
-                "value": "100%",
-                "delta": "Target: 2 / 2",
                 "formula": """\
 **Pemenuhan Izin Impor**: Persentase PO impor yang memiliki izin impor lengkap dan valid.
 
@@ -392,140 +464,39 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
 **Target:** -\
 """,
-            },
-            {
-                "key": "kpi_pembebasan",
-                "icon_path": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16 M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z",
-                "label": "Pemenuhan SLA Pembebasan Barang",
-                "value": "85,71%",
-                "delta": "Target: 80%",
-                "formula": """\
-**Pemenuhan SLA Pembebasan Barang**: Persentase pengajuan pembebasan barang selesai dalam SLA.
-
-**Status:** Tidak ada kolom pembebasan barang di `vw_pr_po_complete`. Membutuhkan tabel proses bea cukai.
-
-**Formula Excel (jika data tersedia):**
-```
-= COUNT(selesai dalam SLA) / COUNT(total pengajuan) × 100%
-```
-
-**Target:** -\
-""",
-            },
+            }
         ]
 
-        # ── CSS card ───────────────────────────────────────────────────────────
-        st.markdown("""
-        <style>
-        .kpi-card {
-            display: flex;
-            align-items: center;
-            background: var(--secondary-background-color);
-            border-radius: 10px;
-            padding: 16px 14px;
-            gap: 12px; /* Dipersempit agar lebih rapat */
-            height: 100%;
-        }
-        .kpi-icon {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            opacity: 1; /* Icon sekarang full color */
-        }
-        .kpi-body {
-            flex: 1;
-            min-width: 0;
-        }
-        .kpi-label {
-            font-size: 13px;
-            opacity: 0.9;
-            margin: 0 0 2px 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .kpi-value {
-            font-size: 2rem !important;
-            font-weight: 600 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            line-height: 1.1 !important;
-            display: block !important;
-        }
-        .kpi-delta {
-            font-size: 12px;
-            color: #09ab3b;
-            margin: 0;
-        }
-        .kpi-delta-neutral {
-            font-size: 12px;
-            opacity: 0.55;
-            margin: 0;
-        }
-        /* Menghilangkan padding default streamlit pada kolom tombol agar bisa lebih mepet */
-        [data-testid="column"]:nth-child(2) {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # == Render 5 baris × 3 kolom ==========================================
+        for row_start in range(0, len(KPI_DASH), 3):
+            cols = st.columns(3, gap="medium")
+            row_items = KPI_DASH[row_start : row_start + 3]
+            for i, kpi in enumerate(row_items):
+                with cols[i]:
+                    # Tentukan warna delta berdasarkan logika performa
+                    delta_type = "neutral"
+                    # if kpi['key'] == 'kpi_produktivitas':
+                    #     delta_type = "green" if produktivitas >= 90 else ("orange" if produktivitas >= 70 else "red")
+                    # elif kpi['key'] == 'kpi_savings':
+                    #     delta_type = "green" if savings >= 0 else "red"
+                    if kpi['key'] == 'kpi_kecepatan_po':
+                        delta_type = "green" if avg_lt_val <= 55 else "red"
+                    elif kpi['key'] == 'kpi_pengiriman':
+                        delta_type = "green" if pct_pengiriman > 80 else "red"
+                    elif kpi['key'] == 'kpi_ketepatan':
+                        delta_type = "green" if ketepatan_pct > 90 else "red"
+                    elif kpi['key'] == 'kpi_efisiensi_pengadaan':
+                        delta_type = "green" if savings_pct > 2 else "red"
 
-        # ── Helper: render satu baris (max 3 KPI) ─────────────────────────────
-        def render_kpi_row(items):
-            n = len(items)
-            cols = st.columns(3)
-            for i, col in enumerate(cols):
-                with col:
-                    if i >= n:
-                        continue
-                    kpi = items[i]
-                    
-                    # Logika panah: sembunyikan panah '↑' jika teks berupa Target atau value kosong
-                    no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:")
-                    delta_arrow = "" if no_arrow else "↑ "
-                    
-                    # --- KUNCI PERBAIKAN: Paksa semua tulisan bawah menggunakan class hijau ---
-                    delta_cls = "kpi-delta" 
-
-                    card_html = f"""
-                    <div class="kpi-card">
-                        <div class="kpi-icon">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"
-                                 fill="currentColor" viewBox="0 0 16 16">
-                                <path d="{kpi['icon_path']}"/>
-                            </svg>
-                        </div>
-                        <div class="kpi-body">
-                            <p class="kpi-label">{kpi['label']}</p>
-                            <p class="kpi-value">{kpi['value']}</p>
-                            <p class="{delta_cls}">{delta_arrow}{kpi['delta']}</p>
-                        </div>
-                    </div>"""
-
-                    # Menggunakan perbandingan 10:2 agar tombol "Mata" lebih masuk ke kiri
-                    c_card, c_btn = st.columns([10, 2])
-                    with c_card:
-                        st.markdown(card_html, unsafe_allow_html=True)
-                    with c_btn:
-                        # Mengurangi margin top agar icon mata sejajar dengan tengah kartu
-                        st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                        with st.popover(":material/visibility:", help="Lihat Formula"):
-                            st.info(kpi["formula"])
-
-        # ── Render 5 baris × 3 kolom ──────────────────────────────────────────
-        for row in range(0, len(KPI_DASH), 3):
-            # 1. Ambil 3 item untuk baris saat ini
-            current_row_items = KPI_DASH[row:row + 3]
-            
-            # 2. Render ketiga kartu tersebut
-            render_kpi_row(current_row_items)
+                    card_html = _card(ICONS[kpi['key']], kpi['label'], kpi['value'], kpi['delta'], delta_type)
+                    st.markdown(card_html, unsafe_allow_html=True)
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info(kpi["formula"])
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ── CHARTS ROW 1 ─────────────────────────────────
+        # == CHARTS ROW 1 =================================
         col1, col2 = st.columns(2)
 
         with col1:
@@ -589,7 +560,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     
                     go.Bar(name='PR without PO', x=dept_data['department'], y=pr_without_po_series, marker_color='#ff7f0e')
                 ])
-                fig.update_layout(barmode='group', height=400, separators=",.")
+                fig.update_layout(barmode='group', height=400, separators=",.",
+                                    margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
@@ -621,7 +593,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
 
             st.caption("Top 10 vendor dengan total nilai PO terbesar.")
 
-            # ── Filter lokal vendor ───────────────────────────────────────────
+            # == Filter lokal vendor ===========================================
             vendor_filter_opts = ["ALL", "B01", "Investasi", "Lainnya"]
             selected_vendor_filter = st.pills(
                 "Filter Vendor",
@@ -687,7 +659,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     height=400,
                     yaxis={'categoryorder': 'total ascending'},
                     xaxis=idr_axis(max_vendor_val),
-                    separators=",."
+                    separators=",.",
+                    margin=dict(t=20, b=20, l=20, r=20)
                 )
                 fig.update_traces(
                     textfont_size=11, textposition="outside", cliponaxis=False,
@@ -697,7 +670,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             else:
                 st.info("Tidak ada data yang tersedia.")
 
-        # ── CHARTS ROW 2 ─────────────────────────────────
+        # == CHARTS ROW 2 =================================
         col1, col2 = st.columns(2)
 
         with col1:
@@ -821,7 +794,8 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                         tickvals=tick_vals,
                         ticktext=tick_text,
                         tickangle=-30
-                    )
+                    ),
+                    margin=dict(t=20, b=20, l=20, r=20)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -886,12 +860,12 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                 fig = px.pie(leadtime_data, values='count', names='lead_time_range', hole=0.4,
                             category_orders={'lead_time_range': category_order})
                 fig.update_traces(sort=False)
-                fig.update_layout(height=400)
+                fig.update_layout(height=400, margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")
 
-        # ── ADDITIONAL INSIGHTS ──────────────────────────
+        # == ADDITIONAL INSIGHTS ==========================
         st.markdown("---")
         st.markdown("""
             <h1 style='display: flex; align-items: center;'>
@@ -950,6 +924,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
             pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
                 lambda x: format_currency(x) if pd.notna(x) else ""
             )
+            pr_without_po.index = pr_without_po.index + 1
             st.dataframe(
                 pr_without_po.rename(columns={
                     'no_pr':          'No PR',
@@ -1038,7 +1013,7 @@ Nilai ini setara dengan **Total Savings %**. Detail per material: halaman Evalua
                     delivery_data, values='count', names='status_delivery',
                     color='status_delivery', color_discrete_map=color_map, hole=0.4
                 )
-                fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0), separators=",.")
+                fig.update_layout(height=400, margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data yang tersedia.")

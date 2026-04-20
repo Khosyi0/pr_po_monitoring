@@ -6,7 +6,106 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short, render_chat_analyst
+from utils import format_idr, format_idr_short, format_number, render_chat_analyst
+
+ALERT_CSS = """
+<style>
+/* Copied from v_dashboard.py for consistency */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    min-height: 120px !important;
+    height: 100%;
+    padding: 20px 18px 16px 18px;
+}
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
+}
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
+    font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+}
+
+.dash-value {
+    font-size: 2rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px 0 !important;
+    line-height: 1.1 !important;
+    color: var(--text-color) !important;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+    display: block !important;
+}
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+</style>
+"""
+
+ICONS = {
+    "kpi_outstanding_total": "M8 1a2.5 2.5 0 0 1 2.5 2.5V4h-5v-.5A2.5 2.5 0 0 1 8 1m3.5 3v-.5a3.5 3.5 0 1 0-7 0V4H1v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4zM2 5h12v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z",
+    "kpi_outstanding_kritis": "M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2",
+    "kpi_outstanding_pantau": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
+    "kpi_outstanding_nilai": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+}
+
+def _svg(path_d: str, size: int = 40) -> str:
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+        f'fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>'
+    )
+
+def _card(icon_d: str, label: str, value: str,
+          delta: str = "", delta_type: str = "neutral") -> str:
+    delta_cls = {
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    delta_html = f'<p class="{delta_cls}">{delta}</p>' if delta else ""
+    return f"""<div class="dash-card">
+    <div class="dash-icon">{_svg(icon_d, 36)}</div>
+    <div class="dash-body">
+        <p class="dash-label">{label}</p>
+        <p class="dash-value">{value}</p>{delta_html}
+    </div>
+</div>"""
 
 def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwargs):
 
@@ -26,6 +125,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 Warning & Action Required - SAP
             </h1>
         """, unsafe_allow_html=True)
+        st.markdown(ALERT_CSS, unsafe_allow_html=True)
         st.markdown("<p style='font-size: 18px; color: gray;'>Halaman ini menampilkan anomali data dan dokumen yang membutuhkan tindakan segera!</p>", unsafe_allow_html=True)
         st.markdown("---")
         st.markdown("<br>", unsafe_allow_html=True) # Tambahan spasi
@@ -89,6 +189,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             alert_pr_data['estimasi_pr'] = alert_pr_data['estimasi_pr'].apply(
                 lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
             )
+            alert_pr_data.index = alert_pr_data.index + 1
             st.dataframe(
                 alert_pr_data.rename(columns={
                     'no_pr':        'No PR',
@@ -182,6 +283,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             if not alert_po_data.empty:
                 alert_po_data['date_ordered']    = pd.to_datetime(alert_po_data['date_ordered']).dt.strftime('%Y-%m-%d')
                 alert_po_data['target_delivery'] = pd.to_datetime(alert_po_data['target_delivery']).dt.strftime('%Y-%m-%d')
+                alert_po_data.index = alert_po_data.index + 1
                 st.dataframe(
                     alert_po_data.rename(columns={
                         'nomor_po':       'No PO',
@@ -268,7 +370,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 
                 fig.update_layout(
                     height=400,
-                    margin=dict(t=20, b=0, l=0, r=0)
+                    margin=dict(t=20, b=20, l=20, r=20)
                 )
                 st.plotly_chart(fig, use_container_width=True)
             else:
@@ -371,7 +473,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     xaxis_title="PO Status",
                     yaxis_title="Jumlah",
                     legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                    margin=dict(t=40, b=10, l=0, r=0),
+                    margin=dict(t=40, b=20, l=20, r=20),
                 )
                 st.plotly_chart(fig_status, use_container_width=True)
 
@@ -426,7 +528,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         else:
             st.info("Tidak ada data PO Status untuk filter yang dipilih.")
 
-        # ── Tabel List PO per Status ──────────────────────────────────────────
+        # == Tabel List PO per Status ==========================================
         if not po_status_data.empty:
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
@@ -529,7 +631,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             AND {pg_cond}
             AND {status_where}
             ORDER BY poh.date_ordered DESC, poh.nomor_po, poi.item_po
-            LIMIT 500
+            LIMIT 1000
             """
 
             with st.spinner("Memuat list PO..."):
@@ -537,6 +639,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
             if not list_po_data.empty:
                 df_display_po = list_po_data.copy()
+                df_display_po.index = df_display_po.index + 1
                 df_display_po['tgl_po'] = pd.to_datetime(
                     df_display_po['tgl_po'], errors='coerce'
                 ).dt.strftime('%Y-%m-%d')
@@ -549,8 +652,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 df_display_po['description'] = df_display_po['description'].str[:50] if 'description' in df_display_po.columns else ""
 
                 count_label = f"Menampilkan **{len(df_display_po):,}** item PO"
-                if len(df_display_po) == 500:
-                    count_label += " *(limit 500, gunakan filter untuk mempersempit hasil)*"
+                if len(df_display_po) == 1000:
+                    count_label += " *(limit 1000, gunakan filter untuk mempersempit hasil)*"
                 st.caption(count_label)
 
                 st.dataframe(
@@ -654,7 +757,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         if not grafik_terlambat_data.empty:
             col_dist, col_pg, col_vendor = st.columns(3)
 
-            # ── Chart 1: Distribusi bucket keterlambatan ──
+            # == Chart 1: Distribusi bucket keterlambatan ==
             with col_dist:
                 st.markdown("**Distribusi Keterlambatan**")
                 grafik_terlambat_data['bucket'] = pd.cut(
@@ -678,7 +781,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 fig_dist.update_coloraxes(showscale=False)
                 fig_dist.update_traces(textposition='outside')
                 fig_dist.update_layout(
-                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    height=320, margin=dict(t=20, b=20, l=20, r=20),
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     font_color='gray',
                     xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
@@ -686,7 +789,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 )
                 st.plotly_chart(fig_dist, use_container_width=True)
 
-            # ── Chart 2: Top 10 Purchasing Group terlambat ──
+            # == Chart 2: Top 10 Purchasing Group terlambat ==
             with col_pg:
                 st.markdown("**Top 10 Purchasing Group**")
                 pg_late = (grafik_terlambat_data
@@ -713,7 +816,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 )
                 fig_pg_late.update_coloraxes(colorbar=dict(title='Avg Hari'))
                 fig_pg_late.update_layout(
-                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    height=320, margin=dict(t=20, b=20, l=20, r=20),
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     font_color='gray',
                     xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
@@ -721,7 +824,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 )
                 st.plotly_chart(fig_pg_late, use_container_width=True)
 
-            # ── Chart 3: Top 10 Vendor terlambat ──
+            # == Chart 3: Top 10 Vendor terlambat ==
             with col_vendor:
                 st.markdown("**Top 10 Vendor Terlambat**")
                 vendor_late = (grafik_terlambat_data
@@ -750,7 +853,7 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 )
                 fig_vnd_late.update_coloraxes(colorbar=dict(title='Avg Hari'))
                 fig_vnd_late.update_layout(
-                    height=320, margin=dict(t=10, b=10, l=10, r=10),
+                    height=320, margin=dict(t=20, b=20, l=20, r=20),
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                     font_color='gray',
                     xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
@@ -763,11 +866,43 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             avg_hari_late    = grafik_terlambat_data['hari_terlambat'].mean()
             max_hari_late    = grafik_terlambat_data['hari_terlambat'].max()
             total_val_late   = grafik_terlambat_data['total_amount_local_curr'].sum()
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total Item PO Terlambat", f"{total_item_late:,}")
-            m2.metric("Rata-rata Keterlambatan", f"{avg_hari_late:.1f} Hari")
-            m3.metric("Keterlambatan Terpanjang", f"{int(max_hari_late)} Hari")
-            m4.metric("Total Nilai PO Terlambat", format_idr(total_val_late))
+            
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+            
+            # Menggunakan struktur _card yang baru
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_total", ""),
+                    "Total Item PO Terlambat",
+                    f"{total_item_late:,}",
+                    "",
+                    "neutral"
+                ), unsafe_allow_html=True)
+            with c2:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_kritis", ""),
+                    "Rata-rata Keterlambatan",
+                    f"{avg_hari_late:.1f} Hari",
+                    "",
+                    "red"
+                ), unsafe_allow_html=True)
+            with c3:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_pantau", ""),
+                    "Keterlambatan Terpanjang",
+                    f"{int(max_hari_late)} Hari",
+                    "",
+                    "orange"
+                ), unsafe_allow_html=True)
+            with c4:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_nilai", ""),
+                    "Total Nilai PO Terlambat",
+                    format_idr(total_val_late),
+                    "",
+                    "neutral"
+                ), unsafe_allow_html=True)
 
         else:
             st.success("Bagus! Tidak ada PO yang melewati delivery date saat ini.")
@@ -870,7 +1005,7 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
           AND {pg_cond}
           {sisa_cond}
         ORDER BY sisa_hari ASC, poh.nomor_po, poi.item_po
-        LIMIT 500
+        LIMIT 1000
         """
 
         with st.spinner("Memuat PO Outstanding..."):
@@ -883,16 +1018,46 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
             perlu_pantau       = int(((outstanding_data['sisa_hari'] > 7) & (outstanding_data['sisa_hari'] <= 30)).sum())
             total_val_outs     = outstanding_data['nilai_po'].sum()
 
-            ok1, ok2, ok3, ok4 = st.columns(4)
-            ok1.metric("Total Item PO Outstanding", f"{total_outstanding:,}")
-            ok2.metric("Kritis (≤ 7 Hari)", f"{kritis_7:,}", delta="Perlu follow-up segera" if kritis_7 > 0 else "Aman", delta_color="inverse" if kritis_7 > 0 else "normal")
-            ok3.metric("Perlu Pantau (8–30 Hari)", f"{perlu_pantau:,}")
-            ok4.metric("Total Nilai Outstanding", format_idr(total_val_outs))
+            # Menggunakan struktur _card yang baru
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_total", ""),
+                    "Total Item PO Outstanding",
+                    f"{total_outstanding:,}",
+                    "",
+                    "neutral"
+                ), unsafe_allow_html=True)
+            with c2:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_kritis", ""),
+                    "Kritis (≤ 7 Hari)",
+                    f"{kritis_7:,}",
+                    "Perlu follow-up segera" if kritis_7 > 0 else "Aman",
+                    "red" if kritis_7 > 0 else "green"
+                ), unsafe_allow_html=True)
+            with c3:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_pantau", ""),
+                    "Perlu Pantau (8–30 Hari)",
+                    f"{perlu_pantau:,}",
+                    "",
+                    "orange"
+                ), unsafe_allow_html=True)
+            with c4:
+                st.markdown(_card(
+                    ICONS.get("kpi_outstanding_nilai", ""),
+                    "Total Nilai Outstanding",
+                    format_idr(total_val_outs),
+                    "",
+                    "neutral"
+                ), unsafe_allow_html=True)
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
             # Format kolom untuk tampilan
             df_outs_display = outstanding_data.copy()
+            df_outs_display.index = df_outs_display.index + 1
             df_outs_display['tgl_po']          = pd.to_datetime(df_outs_display['tgl_po'], errors='coerce').dt.strftime('%Y-%m-%d')
             df_outs_display['target_delivery'] = pd.to_datetime(df_outs_display['target_delivery'], errors='coerce').dt.strftime('%Y-%m-%d')
             df_outs_display['nilai_po']        = df_outs_display['nilai_po'].apply(
@@ -929,8 +1094,8 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
             styled_outs = df_outs_renamed.style.map(_color_sisa, subset=['Sisa Hari'])
 
             count_label_outs = f"Menampilkan **{total_outstanding:,}** item PO outstanding"
-            if total_outstanding == 500:
-                count_label_outs += " *(limit 500, gunakan filter untuk mempersempit)*"
+            if total_outstanding == 1000:
+                count_label_outs += " *(limit 1000, gunakan filter untuk mempersempit)*"
             st.caption(count_label_outs)
 
             # 3. RENDER DATAFRAME

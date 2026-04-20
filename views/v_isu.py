@@ -12,9 +12,9 @@ from datetime import datetime
 from sqlalchemy import text
 from config_db import get_db_engine
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # KONSTANTA
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 KATEGORI_LIST  = ["Operasional", "Harga", "Kebijakan", "Vendor", "Logistik", "Lainnya"]
 PRIORITAS_LIST = ["Kritis", "Tinggi", "Normal", "Rendah"]
@@ -38,24 +38,29 @@ STATUS_COLOR = {
     "Closed":      ("#888888", "🔒"),
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # CSS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 ISU_CSS = """
 <style>
 .isu-card {
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.15);
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
     border-radius: 12px;
     padding: 18px 20px 14px 20px;
     margin-bottom: 12px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
     transition: border-color 0.15s, box-shadow 0.15s, transform 0.10s;
 }
 .isu-card:hover {
-    border-color: rgba(31,119,180,0.45);
-    box-shadow: 0 4px 18px rgba(0,0,0,0.10);
-    transform: translateY(-1px);
+    border-color: rgba(31,119,180,0.6) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important;
+    transform: translateY(-2px);
 }
 .isu-judul {
     font-size: 17px; font-weight: 700;
@@ -101,9 +106,9 @@ ISU_CSS = """
 </style>
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # DATABASE HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _engine():
     return get_db_engine()
@@ -220,9 +225,9 @@ def _delete(isu_id: int):
         _load_detail.clear()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # UI HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _fmt_dt(dt) -> str:
     if dt is None:
@@ -239,7 +244,7 @@ def _fmt_dt(dt) -> str:
         return f"{h} jam lalu" if h > 0 else (f"{m} menit lalu" if m > 0 else "Baru saja")
     if diff.days < 7:
         return f"{diff.days} hari lalu"
-    return dt.strftime("%-d %b %Y")
+    return dt.strftime("%d %b %Y")
 
 
 def _go(view, isu_id=None):
@@ -388,9 +393,9 @@ def _validate(judul, deskripsi, konten, dibuat_oleh) -> list:
     return errs
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # VIEW: FEED
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _render_feed(is_admin: bool):
     st.markdown(ISU_CSS, unsafe_allow_html=True)
@@ -493,9 +498,9 @@ def _render_feed(is_admin: bool):
             _render_card(row, idx, is_admin)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # VIEW: DETAIL
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _render_detail(isu_id: int, is_admin: bool):
     st.markdown(ISU_CSS, unsafe_allow_html=True)
@@ -590,9 +595,9 @@ def _render_detail(isu_id: int, is_admin: bool):
         """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # VIEW: CREATE
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _render_create():
     st.markdown(ISU_CSS, unsafe_allow_html=True)
@@ -631,9 +636,9 @@ def _render_create():
             _go('feed')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # VIEW: EDIT
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _render_edit(isu_id: int):
     st.markdown(ISU_CSS, unsafe_allow_html=True)
@@ -678,9 +683,9 @@ def _render_edit(isu_id: int):
             _go('detail', isu_id)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render(**kwargs):
     # is_admin dikirim dari app.py melalui _summary_view_args
