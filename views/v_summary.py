@@ -10,26 +10,39 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_number, idr_axis
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # CSS: tampilan kartu KPI yang bersih & print-friendly
-# ─────────────────────────────────────────────────────────────────────────────
-
+# =============================================================================
 SUMMARY_CSS = """
 <style>
-/* ── Card KPI ────────────────────────────────────────────────────────────── */
-.sum-card {
-    background: var(--secondary-background-color);
-    border-radius: 12px;
-    padding: 20px 18px 16px 18px;
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    height: 100%;
-    border: 1px solid rgba(128,128,128,0.12);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+/* == Card KPI & Chart Wrapper ============================================== */
+.sum-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
     page-break-inside: avoid;
     break-inside: avoid;
 }
+
+.sum-card {
+    /* Memaksa spesifikasi sisi kiri untuk menimpa aturan border umum di atas */
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+}
+
+/* Kelas tambahan untuk warna dinamis */
+.sum-card.border-green { border-left-color: #09ab3b !important; }
+.sum-card.border-red   { border-left-color: #e03c3c !important; }
+
+div[data-testid="stPlotlyChart"] {
+    /* Jangan gunakan padding di sini agar iframe tidak overflow! */
+    overflow: hidden !important; 
+}
+
+/* == Text Colors (Pasti Aman Mengikuti Tema Streamlit) == */
 .sum-icon {
     flex-shrink: 0;
     display: flex;
@@ -38,115 +51,86 @@ SUMMARY_CSS = """
     width: 48px;
     height: 48px;
     border-radius: 10px;
-    background: rgba(31,119,180,0.10);
-    color: var(--text-color);
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important; /* Warna ikon aman */
 }
-.sum-body { flex: 1; min-width: 0; }
+
+.sum-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    
+    /* Hapus height: 145px yang kaku, ganti dengan ini: */
+    min-height: 145px !important; 
+    height: 100%; 
+    
+    padding: 20px 18px 16px 18px;
+}
+
+.sum-body { 
+    flex: 1; 
+    min-width: 0; 
+}
+
 .sum-label {
     font-size: 12.5px;
-    opacity: 0.65;
-    margin: 0 0 6px 0;
+    margin: 0 0 6px 0 !important; /* Memaksa jarak judul ke angka hanya 6px */
     line-height: 1.3;
     font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+    /* Pastikan TIDAK ADA min-height atau display: flex di sini */
 }
+
 .sum-value {
     font-size: 2rem !important;
     font-weight: 600 !important;
-    margin: 0 0 4px 0 !important;
+    margin: 0 0 4px 0 !important; /* Memaksa jarak angka ke Target hanya 4px */
     line-height: 1.1 !important;
-    color: var(--text-color);
+    color: var(--text-color) !important;
     white-space: normal !important;
     word-wrap: break-word !important;
     display: block !important;
 }
-.sum-delta {
-    font-size: 12px;
-    opacity: 0.55;
-    margin: 0;
-}
-.sum-delta-green { font-size: 12px; color: #09ab3b; margin: 0; font-weight: 600; }
-.sum-delta-red   { font-size: 12px; color: #e03c3c; margin: 0; font-weight: 600; }
-.sum-delta-orange{ font-size: 12px; color: #f0a500; margin: 0; font-weight: 600; }
 
-/* ── Row separator ───────────────────────────────────────────────────────── */
+.sum-delta { 
+    font-size: 12px; 
+    margin: 0; 
+    color: var(--text-color) !important;
+    opacity: 0.6;
+}
+
+/* Warna KPI khusus (Hijau, Merah, Oranye) dipertahankan karena terlihat di kedua mode */
+.sum-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.sum-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.sum-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
 .sum-row-label {
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: #1f77b4;
-    margin: 32px 0 12px 4px;
+    font-size: 14px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; color: #1f77b4; margin: 32px 0 12px 4px;
 }
 
-@media screen {
-    .pagebreak { display: none; }
-}
+@media screen { .pagebreak { display: none; } }
 
-/* ── Print styles ─────────────────────────────────────────────────────────── */
+/* == Print styles =========================================================== */
 @media print {
-    body {
-            zoom: 0.75 !important; 
-        }
-
-        [data-testid="stSidebar"],
-        [data-testid="stSidebarNav"],
-        [data-testid="stToolbar"],
-        footer,
-        header { display: none !important; }
-
-        @page {
-            margin: 1.5cm;
-            size: A4 portrait;
-        }
-
-    /* Memaksa pindah ke halaman baru saat di-print */
-    .pagebreak {
-        page-break-before: always !important;
-        break-before: page !important;
-        display: block !important;
-        height: 0;
+    body { zoom: 0.75 !important; }
+    [data-testid="stSidebar"], [data-testid="stSidebarNav"], [data-testid="stToolbar"], footer, header { display: none !important; }
+    @page { margin: 1.5cm; size: A4 portrait; }
+    .pagebreak { page-break-before: always !important; display: block !important; height: 0; }
+    .sum-card, div[data-testid="stPlotlyChart"] {
+        page-break-inside: avoid !important; border: 1px solid #ccc !important;
+        box-shadow: none !important; background: transparent !important;
     }
-
-    .sum-card {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-        border: 1px solid #ccc !important;
-        box-shadow: none !important;
-    }
-
-    .sum-value  { color: #111 !important; }
-    .sum-label  { color: #444 !important; }
-    .sum-delta  { color: #666 !important; }
-    .sum-delta-green  { color: #1a7a2e !important; }
-    .sum-delta-red    { color: #b71c1c !important; }
-    .sum-delta-orange { color: #b25500 !important; }
-
-    /* KUNCI PERBAIKAN: Mencegah kolom dan grafik terpotong di tengah halaman */
-    [data-testid="stHorizontalBlock"],
-    [data-testid="stPlotlyChart"],
-    [data-testid="stElementContainer"] {
-        page-break-inside: avoid !important;
-        break-inside: avoid !important;
-    }
-
-    /* Mencegah judul terpisah dari grafik di bawahnya */
-    h1, h2, h3, h4 {
-        page-break-after: avoid !important;
-        break-after: avoid !important;
-        page-break-inside: avoid !important;
-    }
-
-    [data-testid="stSpinner"],
-    [data-testid="stButton"],
-    [data-testid="stForm"],
-    [data-testid="stChatInput"] { display: none !important; }
+    .sum-value, .sum-label, .sum-delta { color: #111 !important; }
+    [data-testid="stHorizontalBlock"], div[data-testid="stPlotlyChart"] { break-inside: avoid !important; }
 }
 </style>
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _svg(path_d: str, size: int = 40) -> str:
     return (
@@ -155,14 +139,14 @@ def _svg(path_d: str, size: int = 40) -> str:
     )
 
 def _card(icon_d: str, label: str, value: str,
-          delta: str = "", delta_type: str = "neutral") -> str:
+          delta: str = "", delta_type: str = "neutral", border_class: str = "") -> str:
     delta_cls = {
         "green":  "sum-delta-green",
         "red":    "sum-delta-red",
         "orange": "sum-delta-orange",
     }.get(delta_type, "sum-delta")
     delta_html = f'<p class="{delta_cls}">{delta}</p>' if delta else ""
-    return f"""<div class="sum-card">
+    return f"""<div class="sum-card {border_class}">
     <div class="sum-icon">{_svg(icon_d, 36)}</div>
     <div class="sum-body">
         <p class="sum-label">{label}</p>
@@ -173,9 +157,9 @@ def _card(icon_d: str, label: str, value: str,
 def _row_label(text: str) -> None:
     st.markdown(f'<div class="sum-row-label">{text}</div>', unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Icon path constants (Bootstrap Icons)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 ICONS = {
     "file_text":   "M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5M5 8a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1zM3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z",
@@ -198,9 +182,9 @@ ICONS = {
     "building":    "M4 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zM4 5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM7.5 5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zM4.5 8a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5zm2.5.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3.5-.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5z M2 1a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1zm11 0H3v14h3v-2.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5V15h3z"
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # RENDER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render(load_data, **kwargs):
     st.markdown(SUMMARY_CSS, unsafe_allow_html=True)
@@ -208,7 +192,7 @@ def render(load_data, **kwargs):
     current_year = datetime.now().year
     DATA_UPDATE  = datetime(2026, 3, 31).date()
 
-    # ── Header Utama ─────────────────────────────────────────────────────────
+    # == Header Utama =========================================================
     st.markdown("""
         <h1 style='display:flex; align-items:center; font-size:52px; margin-bottom:0;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" fill="currentColor"
@@ -226,7 +210,7 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # ── Filter Bulan Dinamis ─────────────────────────────────────────────────
+    # == Filter Bulan Dinamis =================================================
     months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
     options = ["ALL"] + [f"{m} {current_year}" for m in months_id]
     
@@ -256,7 +240,7 @@ def render(load_data, **kwargs):
 
     # Info Teks Periode
     st.markdown(
-        f"<p style='font-size:12px; opacity:0.5; margin-top:6px;'>"
+        f"<p style='font-size:16px; margin-top:6px;'>"
         f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b> "
         f"&nbsp;|&nbsp; Data per {DATA_UPDATE.strftime('%d %B %Y')} "
         f"&nbsp;|&nbsp; Dicetak: {datetime.now().strftime('%d %B %Y %H:%M')}</p>",
@@ -264,7 +248,7 @@ def render(load_data, **kwargs):
     )
     st.markdown("---")
 
-    # ── Eksekusi Kueri ───────────────────────────────────────────────────────
+    # == Eksekusi Kueri =======================================================
     pr_kpi_query = f"""
     WITH unique_pr AS (
         SELECT
@@ -437,18 +421,36 @@ def render(load_data, **kwargs):
     pct_kirim     = (po_delivered / total_po * 100) if total_po > 0    else 0.0
     ketepatan     = (po_ontime / po_del_tot * 100)  if po_del_tot > 0  else 0.0
 
-    def _pct_color(val, good=80, warn=60):
-        if val >= good:  return "green"
-        if val >= warn:  return "orange"
-        return "red"
+    # Performance flags for row 1
+    color_produktivitas = "green" if produktivitas > 90 else "red"
+
+    # Performance flags for row 2 to determine colors for row 2 and 3
+    perf_kecepatan = avg_lt_val <= 55
+    perf_pengiriman = pct_kirim > 80
+    perf_ketepatan = ketepatan > 90
+
+    # Hardcoded values for row 3 & 4 KPIs
+    sla_pembebasan_pct = 88.89
+    otobos_val = 99.33
+
+    # Dynamic color logic based on targets
+    color_pembebasan = "green" if sla_pembebasan_pct >= 80 else "red"
+    color_efisiensi_pengadaan = "green" if savings_pct > 2 else "red"
+    color_izin_impor = "green"  # Value is 100%, target is 2/2 (100%)
+    color_otobos = "green" if otobos_val > 90 else "red"
+
+    # Map performance color names to CSS class names for borders
+    border_class_map = {
+        "green": "border-green",
+        "red":   "border-red",
+    }
 
 
     # ═════════════════════════════════════════════════════════════════════════
     # BAGIAN 1: KPI PENGADAAN BARANG
     # ═════════════════════════════════════════════════════════════════════════
-    
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 32px 0 16px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['graph_up'], 32)}</span>"
         f"KPI Pengadaan Barang"
         f"</h2>", 
@@ -458,31 +460,34 @@ def render(load_data, **kwargs):
     # Baris 1
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "neutral"), unsafe_allow_html=True)
     with c2:
         st.markdown(_card(ICONS["people"], "Sinergi PI Group", format_idr(sinergi_pi_val), "Target: -", "neutral"), unsafe_allow_html=True)
     with c3:
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target: > 90%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target: > 90%", color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 2
     c4, c5, c6 = st.columns(3)
     with c4:
-        st.markdown(_card(ICONS["clock"], "Kecepatan Proses PO", f"{format_number(avg_lt_val, decimals=2)} Hari", "Target: ≤ 55 Hari", "green"), unsafe_allow_html=True)
+        color_kecepatan = "green" if perf_kecepatan else "red"
+        st.markdown(_card(ICONS["clock"], "Kecepatan Proses PO", f"{format_number(avg_lt_val, decimals=2)} Hari", "Target: ≤ 55 Hari", color_kecepatan, border_class=border_class_map.get(color_kecepatan, "")), unsafe_allow_html=True)
     with c5:
-        st.markdown(_card(ICONS["truck"], "% Pengiriman Barang (GR/PO)", f"{format_number(pct_kirim, decimals=1)}%", "Target: > 80%", "green"), unsafe_allow_html=True)
+        color_pengiriman = "green" if perf_pengiriman else "red"
+        st.markdown(_card(ICONS["truck"], "% Pengiriman Barang (GR/PO)", f"{format_number(pct_kirim, decimals=1)}%", "Target: > 80%", color_pengiriman, border_class=border_class_map.get(color_pengiriman, "")), unsafe_allow_html=True)
     with c6:
-        st.markdown(_card(ICONS["check_circle"], "Ketepatan Pengiriman Barang", f"{format_number(ketepatan, decimals=1)}%", "Target: > 90%", "green"), unsafe_allow_html=True)
+        color_ketepatan = "green" if perf_ketepatan else "red"
+        st.markdown(_card(ICONS["check_circle"], "Ketepatan Pengiriman Barang", f"{format_number(ketepatan, decimals=1)}%", "Target: > 90%", color_ketepatan, border_class=border_class_map.get(color_ketepatan, "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 3
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", "88,89%", "Target: 80%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", f"{format_number(sla_pembebasan_pct, decimals=2)}%", "Target: 80%", color_pembebasan, border_class=border_class_map.get(color_pembebasan, "")), unsafe_allow_html=True)
     with c8:
-        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(savings_pct, decimals=2)}%", "Target: > 2%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(savings_pct, decimals=2)}%", "Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
     with c9:
-        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", color_izin_impor, border_class=border_class_map.get(color_izin_impor, "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 4: Rincian Pemenuhan SLA OTOBOS
@@ -495,7 +500,7 @@ def render(load_data, **kwargs):
     
     c10, c11, c12, c13 = st.columns(4)
     with c10:
-        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", "99,33%", "Target: > 90%", "green"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", "99,33%", "Target: > 90%", color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
     with c11:
         st.markdown(_card(ICONS["clock"], "SLA - On Time", "98,7%"), unsafe_allow_html=True)
     with c12:
@@ -504,6 +509,8 @@ def render(load_data, **kwargs):
         st.markdown(_card(ICONS["check_all"], "SLA - On Spec", "99,3%"), unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
     # ═════════════════════════════════════════════════════════════════════════
@@ -512,9 +519,9 @@ def render(load_data, **kwargs):
     
     # --- PEMBATAS HALAMAN 2 ---
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
-
+    
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 40px 0 16px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['file_text'], 32)}</span>"
         f"Laporan Pengadaan Barang"
         f"</h2>", 
@@ -524,7 +531,7 @@ def render(load_data, **kwargs):
     # Membuat 2 kolom besar dengan jarak (gap) yang lebar sebagai "pembagi" tengah
     col_kiri, col_kanan = st.columns(2, gap="large")
 
-    # ── SISI KIRI: VOLUME PENGADAAN ──────────────────────────────────────────
+    # == SISI KIRI: VOLUME PENGADAAN ==========================================
     with col_kiri:
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
@@ -603,16 +610,20 @@ def render(load_data, **kwargs):
                 y_axis_title = 'Count per Month'
         
             fig1.update_layout(
-                height=320, xaxis_title='', yaxis_title=y_axis_title,
+                height=350, # Sedikit dinaikkan untuk menampung margin atas
+                xaxis_title='', yaxis_title=y_axis_title,
                 xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_text, tickangle=-30),
-                margin=dict(t=10, b=0, l=0, r=0),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                # t=60 memberi ruang di atas untuk legend & toolbar, r=30 mencegah kanan terpotong
+                margin=dict(t=60, b=10, l=10, r=30), 
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig1, use_container_width=True)
         else:
             st.info("Tidak ada data tren.")
 
-    # ── SISI KANAN: NILAI PENGADAAN ──────────────────────────────────────────
+    # == SISI KANAN: NILAI PENGADAAN ==========================================
     with col_kanan:
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
@@ -712,32 +723,32 @@ def render(load_data, **kwargs):
                 max_val = max(val_trend_data['total_oe'].max(), val_trend_data['total_po_val'].max())
 
             fig2.update_layout(
-                height=320,
+                height=350,
                 xaxis_title='',
                 yaxis_title='Total Value (IDR)',
                 yaxis={**idr_axis(max_val), 'gridcolor': 'rgba(128,128,128,0.1)'},
                 xaxis=dict(
-                    tickmode='array',
-                    tickvals=val_trend_data['month_display'].tolist(),
-                    ticktext=val_trend_data['hover_label'].tolist(),
-                    tickangle=-30,
-                    showgrid=False
+                    tickmode='array', tickvals=val_trend_data['month_display'].tolist(),
+                    ticktext=val_trend_data['hover_label'].tolist(), tickangle=-30, showgrid=False
                 ),
-                margin=dict(t=20, b=0, l=0, r=0),
-                plot_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                margin=dict(t=60, b=10, l=10, r=30), # <-- Tambahkan padding internal di sini
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Tidak ada data tren nilai.")
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
     # Garis pemisah besar sebelum masuk Laporan Bagian
-    st.markdown("<hr style='margin: 48px 0 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
     # ═════════════════════════════════════════════════════════════════════════
     # BAGIAN 3: LAPORAN BAGIAN
     # ═════════════════════════════════════════════════════════════════════════
-
+    
     # --- PEMBATAS HALAMAN 3 ---
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
 
@@ -818,7 +829,7 @@ def render(load_data, **kwargs):
         tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
 
 
-        # ── 4 KARTU KPI LAPORAN BAGIAN ──
+        # == 4 KARTU KPI LAPORAN BAGIAN ==
         c1, c2, c3, c4 = st.columns(4)
         
         with c1:
@@ -836,7 +847,7 @@ def render(load_data, **kwargs):
 
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
-        # ── CHART TREN REALISASI ITEM PR-PO BAGIAN ──
+        # == CHART TREN REALISASI ITEM PR-PO BAGIAN ==
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
             f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['box'], 26)}</span>"
@@ -881,15 +892,19 @@ def render(load_data, **kwargs):
             ))
             
             fig_trend_bagian.update_layout(
-                barmode='group', height=350, xaxis_title='', yaxis_title='Jumlah Item',
+                barmode='group', height=360, xaxis_title='', yaxis_title='Jumlah Item',
                 xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30),
-                margin=dict(t=10, b=0, l=0, r=0),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                margin=dict(t=60, b=10, l=10, r=30), # <-- Tambahkan padding internal di sini
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig_trend_bagian, use_container_width=True)
         else:
             st.info(f"Tidak ada data tren untuk bagian **{pilihan_bagian}**.")
             
         st.markdown("<br><br>", unsafe_allow_html=True) # Jarak aman di paling bawah halaman
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info(f"Tidak ada transaksi PO untuk bagian **{pilihan_bagian}** pada periode ini.")
