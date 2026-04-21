@@ -34,7 +34,7 @@ def render(**kwargs):
     )
     st.markdown("---")
 
-    # ── Info Placeholder ──────────────────────────────────────────────────────
+    # == Info Placeholder ======================================================
     st.info(
         "🚧 **Halaman ini sedang dalam tahap perencanaan.**\n\n"
         "Halaman ini akan memantau perkiraan kedatangan sparepart yang dipesan dari Luar Negeri (LN), "
@@ -51,7 +51,7 @@ def render(**kwargs):
         "_Detail kolom dan format data akan dikonfirmasi lebih lanjut._"
     )
 
-    # ── Gambaran Kolom yang Direncanakan ─────────────────────────────────────
+    # == Gambaran Kolom yang Direncanakan =====================================
     st.markdown("### 📋 Rencana Struktur Data")
     st.markdown("""
     | Kolom | Keterangan |

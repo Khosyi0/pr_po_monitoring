@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 from sqlalchemy import text
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # CSS & ICONS UNTUK KARTU METRIK
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 USER_METRIC_CSS = """
 <style>
@@ -77,9 +77,9 @@ def _user_card(icon_d: str, label: str, value: str, delta: str = "") -> str:
     </div>
 </div>"""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # DATABASE HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _get_engine():
     from config_db import get_db_engine
@@ -169,9 +169,9 @@ def _update_user_db_full(user_id, nama_lengkap, role, bagian, aktif, new_passwor
     except Exception as e:
         return False, f"Gagal menyimpan perubahan: {e}"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # RENDER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render(**kwargs):
     is_admin_flag = kwargs.get("is_admin", False)
@@ -208,7 +208,7 @@ def render(**kwargs):
     user_admin = len(df_all[df_all['role'] == 'admin']) if not df_all.empty else 0
     user_viewer = len(df_all[df_all['role'] == 'viewer']) if not df_all.empty else 0
 
-    # ── Bagian 1: Metrik Singkat (Atas) ───────────────────────────────────────
+    # == Bagian 1: Metrik Singkat (Atas) =======================================
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -226,7 +226,7 @@ def render(**kwargs):
         
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    # ── Bagian 2: Tabel Daftar User (Read-Only) ───────────────────────────────
+    # == Bagian 2: Tabel Daftar User (Read-Only) ===============================
     st.subheader("Daftar Pengguna Sistem")
     
     search_query = st.text_input("Cari Username atau Nama Lengkap:", placeholder="Ketik lalu tekan Enter...")
@@ -258,7 +258,7 @@ def render(**kwargs):
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Bagian 3: Formulir Manajemen Data (Edit & Tambah) ─────────────────────
+    # == Bagian 3: Formulir Manajemen Data (Edit & Tambah) =====================
     
     with st.expander("Edit Data User", expanded=False, icon=":material/edit:"):
         if not df_all.empty:

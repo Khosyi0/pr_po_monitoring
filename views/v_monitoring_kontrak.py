@@ -31,7 +31,7 @@ def render(**kwargs):
     )
     st.markdown("---")
 
-    # ── Info Placeholder ──────────────────────────────────────────────────────
+    # == Info Placeholder ======================================================
     st.info(
         "🚧 **Halaman ini sedang dalam tahap perencanaan.**\n\n"
         "Halaman ini akan memantau seluruh kontrak pengadaan yang aktif maupun yang akan "
@@ -46,7 +46,7 @@ def render(**kwargs):
         "_ETL untuk data kontrak perlu ditambahkan setelah format export SAP ME 3N dikonfirmasi._"
     )
 
-    # ── Gambaran Kolom yang Direncanakan ─────────────────────────────────────
+    # == Gambaran Kolom yang Direncanakan =====================================
     st.markdown("### 📋 Rencana Struktur Data")
     st.markdown("""
     | Kolom | Keterangan |

@@ -29,7 +29,7 @@ def render(**kwargs):
     )
     st.markdown("---")
 
-    # ── Info Placeholder ──────────────────────────────────────────────────────
+    # == Info Placeholder ======================================================
     st.info(
         "🚧 **Halaman ini sedang dalam tahap perencanaan.**\n\n"
         "Halaman ini akan memungkinkan tim pengadaan untuk mencari riwayat vendor "
@@ -45,7 +45,7 @@ def render(**kwargs):
         "_Data ini sudah tersedia di database, tinggal dibuatkan antarmuka pencarian._"
     )
 
-    # ── Gambaran Kolom yang Direncanakan ─────────────────────────────────────
+    # == Gambaran Kolom yang Direncanakan =====================================
     st.markdown("### 📋 Rencana Tampilan Hasil Pencarian")
     st.markdown("""
     | Kolom | Keterangan |

@@ -41,7 +41,7 @@ class StreamlitCapture:
         self.last_update = time.time()
 
 def render(**kwargs):
-    # ── Header Halaman ────────────────────────────────────────────────────────
+    # == Header Halaman ========================================================
     st.markdown("""
         <h1 style='display:flex; align-items:center; font-size:42px; margin-bottom:0;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" fill="currentColor" 
@@ -75,7 +75,7 @@ def render(**kwargs):
     try: DATA_UPDATE_INKLARING = datetime.strptime(inklaring_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
 
-    # ── Bagian 1: Informasi Status Data ───────────────────────────────────────
+    # == Bagian 1: Informasi Status Data =======================================
     st.markdown("""
         <h3 style='display: flex; align-items: center; font-size:20px; margin-bottom:12px; color:var(--text-color);'>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-arrow-repeat" viewBox="0 0 16 16" style="margin-bottom: 2px; margin-right: 8px;">
@@ -132,7 +132,7 @@ def render(**kwargs):
 
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
-    # ── Bagian 2: Placeholder Backup & Upload ─────────────────────────────────
+    # == Bagian 2: Placeholder Backup & Upload =================================
     col_kiri, col_kanan = st.columns(2, gap="large")
     
     with col_kiri:
@@ -561,7 +561,7 @@ def render(**kwargs):
                         except Exception as e:
                             st.error(f"Gagal memproses data Inklaring: {e}")
 
-    # ── Bagian 3: Zona Berbahaya (Reset Data) ─────────────────────────────────
+    # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     
     st.markdown("""

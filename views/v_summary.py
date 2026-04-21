@@ -8,7 +8,7 @@ import pandas as pd
 import calendar
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_number, idr_axis
+from utils import format_idr, format_number, format_idr_short, idr_axis
 
 # =============================================================================
 # CSS: tampilan kartu KPI yang bersih & print-friendly
@@ -776,7 +776,7 @@ def render(load_data, **kwargs):
     SELECT
         COUNT(*) AS total_pr,
         COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
-        ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
@@ -845,6 +845,61 @@ def render(load_data, **kwargs):
         with c4:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
 
+        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+
+        # == TABEL KINERJA KARYAWAN PER BAGIAN ==
+        st.markdown(
+            f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
+            f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['people'], 26)}</span>"
+            f"<span style='vertical-align: middle;'>Kinerja Karyawan</span>"
+            f"</h3>", 
+            unsafe_allow_html=True
+        )
+
+        karyawan_query = f"""
+        SELECT
+            nama,
+            COUNT(*) AS total_pr,
+            COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
+            ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+            COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
+            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
+            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
+            COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
+        FROM vw_sips
+        WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+          AND bagian = '{pilihan_bagian}'
+        GROUP BY nama
+        ORDER BY total_pr DESC
+        """
+
+        with st.spinner(f"Memuat kinerja karyawan {pilihan_bagian}..."):
+            karyawan_data = load_data(karyawan_query)
+
+        if not karyawan_data.empty:
+            df_karyawan = karyawan_data.copy()
+            df_karyawan['Total PR'] = df_karyawan['total_pr']
+            df_karyawan['Total PO'] = df_karyawan['total_po']
+            df_karyawan['PO/PR'] = (df_karyawan['total_po'] / df_karyawan['total_pr'].replace(0, float('nan')) * 100).fillna(0).apply(lambda x: f"{x:.1f}%")
+            df_karyawan['PR-PO (Hari)'] = df_karyawan['avg_pr_po'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "0.0")
+            df_karyawan['% On Time'] = (df_karyawan['sla_ontime'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
+            df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_total'] - df_karyawan['sips_po_total']
+            df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_total'].replace(0, float('nan')) * 100).fillna(0)
+            df_karyawan['% On Budget'] = (df_karyawan['on_budget_count'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
+            df_karyawan['% On Spec'] = 99.30
+            df_karyawan['OTOBOS'] = ((df_karyawan['% On Time'] + df_karyawan['% On Budget'] + df_karyawan['% On Spec']) / 3).fillna(0)
+            df_karyawan['% On Time'] = df_karyawan['% On Time'].apply(lambda x: f"{x:.2f}%")
+            df_karyawan['Efisiensi %'] = df_karyawan['Efisiensi %'].apply(lambda x: f"{x:.2f}%")
+            df_karyawan['Efisiensi Rp'] = df_karyawan['Efisiensi Rp_val'].apply(lambda x: format_idr_short(x) if pd.notna(x) else "0")
+            df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
+            df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
+            df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
+            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS']].rename(columns={'nama': 'Nama'})
+            df_table.index = df_table.index + 1
+            st.dataframe(df_table, use_container_width=True)
+        else:
+            st.info(f"Tidak ada data kinerja karyawan untuk bagian **{pilihan_bagian}** pada periode ini.")
+            
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
         # == CHART TREN REALISASI ITEM PR-PO BAGIAN ==

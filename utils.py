@@ -10,9 +10,9 @@ import base64
 import os
 import numpy as np
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FORMAT ANGKA & RUPIAH (STANDAR INDONESIA)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def format_number(x, decimals=0) -> str:
     """Format angka biasa ke standar Indonesia (titik untuk ribuan, koma untuk desimal)."""
@@ -112,9 +112,9 @@ def idr_axis(max_val, n_ticks=6) -> dict:
         range=[0, max_val],
     )
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # CUSTOM CSS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def inject_css():
     """Inject custom CSS adaptive light/dark mode ke halaman."""
@@ -135,9 +135,9 @@ def inject_css():
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FILTER SQL BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def build_filter_conditions(
     date_from, date_to,
@@ -253,9 +253,9 @@ def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
             return f"{col} IN ('{pg_list}')"
     return "1=1"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # SIPS WHERE CLAUSE BUILDER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def build_sips_where(date_from=None, date_to=None,
                      selected_nama=None, selected_bagian=None,
@@ -290,9 +290,9 @@ def build_sips_where(date_from=None, date_to=None,
         wp.append(f"nama IN ({nms})")
     return " AND ".join(wp)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FILTER BAR: horizontal filter di atas konten halaman
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render_filter_bar(mode: str, load_data_fn) -> dict:
     """
@@ -339,7 +339,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         )
 
     if mode == 'sap':
-        # ── Load options ───────────────────────────────────────────────────────
+        # == Load options =======================================================
         try:
             dept_df = load_data_fn(
                 "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
@@ -403,7 +403,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                 st.cache_data.clear()
                 st.rerun()
 
-        # ── Info data update + divider ─────────────────────────────────────────
+        # == Info data update + divider =========================================
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
             f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
@@ -496,7 +496,7 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                 st.cache_data.clear()
                 st.rerun()
 
-        # ── Info data update + divider ─────────────────────────────────────────
+        # == Info data update + divider =========================================
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
             f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
@@ -514,9 +514,9 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
             selected_nama   = st.session_state.fb_sips_nama,
         )
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # SCROLL TO TOP BUTTON
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def inject_scroll_to_top():
     """
@@ -588,9 +588,9 @@ def inject_scroll_to_top():
 </script>
 """, height=0)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # PETA SISTEM: LAZY LOAD: hanya dimuat saat user bertanya soal struktur
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 # Kata kunci yang mengindikasikan pertanyaan tentang struktur/letak di dashboard
 _TRIGGER_PETA = [
@@ -652,13 +652,12 @@ def _fetch_peta_sistem(load_data_fn) -> str:
         # Tabel belum ada atau error, kembalikan string kosong, tidak crash
         return ""
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # KOMPONEN AI ANALYST (GEMINI)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=None):
     """Merender antarmuka chat LLM secara sebaris (inline) dengan kotak scrollable."""
-    st.divider()
 
     img_path = "assets/Melati_icon.png"
     img_b64 = ""

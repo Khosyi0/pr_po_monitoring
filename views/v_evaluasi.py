@@ -1390,6 +1390,8 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
         else:
             st.info("Tidak ada data evaluasi harga untuk filter yang dipilih.")
 
+        st.markdown("---")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -1445,8 +1447,9 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
         # Render kolom chat di paling bawah halaman
-        render_chat_analyst(
-            konteks_data_teks=konteks_final, 
-            nama_halaman="Evaluasi Harga Barang",
-            load_data_fn=load_data,
-        )
+        with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+            render_chat_analyst(
+                konteks_data_teks=konteks_final, 
+                nama_halaman="Evaluasi Harga Barang",
+                load_data_fn=load_data,
+            )

@@ -1347,6 +1347,8 @@ Lihat tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk identifi
                         mime="text/csv"
                     )
 
+    st.markdown("---")
+
     # ══════════════════════════════════════════════════════════════════════════
     # INTEGRASI AI
     # ══════════════════════════════════════════════════════════════════════════
@@ -1387,8 +1389,9 @@ Lihat tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk identifi
     suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Kinerja Purchasing Group)\n" + "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Kinerja Purchasing Group",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Kinerja Purchasing Group",
+            load_data_fn=load_data,
+        )

@@ -1088,6 +1088,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             else:
                 st.info("Tidak ada data yang tersedia.")
 
+        st.markdown("---")
+
         # =====================================================================
         # INTEGRASI AI: PANGGIL MELATI DENGAN KONTEKS GLOBAL
         # =====================================================================
@@ -1164,8 +1166,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
 
         konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)
 
-        render_chat_analyst(
-            konteks_data_teks=konteks_final,
-            nama_halaman="PR-PO Monitoring Dashboard",
-            load_data_fn=load_data,
-        )
+        with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+            render_chat_analyst(
+                konteks_data_teks=konteks_final,
+                nama_halaman="PR-PO Monitoring Dashboard",
+                load_data_fn=load_data,
+            )

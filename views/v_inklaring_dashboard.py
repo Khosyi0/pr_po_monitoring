@@ -10,8 +10,117 @@ from datetime import datetime
 
 from utils import render_chat_analyst, format_number, format_idr, format_idr_short, idr_axis
 
+KPI_CSS = """
+<style>
+/* Copied from v_dashboard.py for consistency */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 120px !important;
+    height: 100%;
+    padding: 20px 18px 16px 18px;
+}
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
+}
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
+    font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+}
+
+.dash-value {
+    font-size: 2rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px 0 !important;
+    padding: 0 !important;
+    line-height: 1.1 !important;
+    display: block !important;
+}
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
+/* Posisi tombol popover di dalam kartu KPI */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
+</style>
+"""
+
+ICONS = {
+    "file": "M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2l-3-3z",
+    "check": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+    "target": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05",
+    "currency": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
+    "clock": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z"
+}
+
+def _svg(path_d: str, size: int = 40) -> str:
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+            f'fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>')
+
+def _card(icon_d: str, label: str, value: str, delta: str = "", delta_type: str = "neutral") -> str:
+    delta_class = {
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    delta_html = f'<p class="{delta_class}">{delta}</p>' if delta else ""
+    return f"""<div class="dash-card">
+    <div class="dash-icon">{_svg(icon_d, 36)}</div>
+    <div class="dash-body">
+        <p class="dash-label">{label}</p>
+        <p class="dash-value">{value}</p>{delta_html}
+    </div>
+</div>"""
+
 def render(load_data, date_from=None, date_to=None, **kwargs):
-    # ── HEADER ───────────────────────────────────────────────────────────────
+    st.markdown(KPI_CSS, unsafe_allow_html=True)
+
+    # == HEADER ===============================================================
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:60px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-box-seam-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
@@ -21,26 +130,16 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             Dashboard Inklaring Impor
         </h1>
     """, unsafe_allow_html=True)
-    st.markdown("""
-        <style>
-        [data-testid="stMetricValue"] > div {
-            font-size: 2rem !important;
-            white-space: normal !important;
-            word-wrap: break-word !important;
-            line-height: 1.2 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # ── FILTER TANGGAL ───────────────────────────────────────────────────────
+    # == FILTER TANGGAL =======================================================
     date_filter = ""
     if date_from and date_to:
         start_str = date_from.strftime('%Y-%m-%d')
         end_str = date_to.strftime('%Y-%m-%d')
         date_filter = f"WHERE tgl_eta >= '{start_str}' AND tgl_eta <= '{end_str}'"
 
-    # ── LOAD DATA ────────────────────────────────────────────────────────────
+    # == LOAD DATA ============================================================
     query = f"""
         SELECT 
             id as no, tgl_pib, aju_pib, no_aju, sap, nama_kapal, tgl_eta, 
@@ -58,7 +157,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         st.warning("Tidak ada data Inklaring pada rentang waktu ini.")
         return
 
-    # ── PANDAS DATA TRANSFORMATIONS (RUMUS EXCEL) ─────────────────────────────
+    # == PANDAS DATA TRANSFORMATIONS (RUMUS EXCEL) =============================
     
     date_cols = ['tgl_pib', 'tgl_eta', 'start_bongkar', 'selesai_bongkar', 'tgl_sppb']
     for col in date_cols:
@@ -95,7 +194,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     pib_selesai = df['tgl_sppb'].notna().sum()
     pib_on_progress = total_data - pib_selesai
 
-    # ── METRICS CARDS (ROW 1) ─────────────────────────────────────────────────
+    # == METRICS CARDS (ROW 1) =================================================
     st.markdown("""
         <h1 style='display: flex; align-items: center;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
@@ -108,149 +207,87 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     total_biaya_sum = df['TOTAL_BIAYA'].sum()
     avg_waiting = df['Waiting_Time'].mean()
     avg_bongkar = df['Lama_Bongkar_Hari'].mean()
+    avg_bebas_hari = df['Bebas_Hari'].mean()
 
     KPI_DASH = [
         {
             "key": "kpi_total_pib",
-            "icon_path": "M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2l-3-3z",
+            "icon": "file",
             "label": "Total PIB",
             "value": f"{format_number(total_data)}",
-            "delta": f"{format_number(pib_on_progress)} On Progress",
-            "formula": "Jumlah total PIB pada periode filter. Dokumen On Progress adalah selisih Total PIB dengan PIB Selesai."
+            "delta": "Kapal",
+            "dtype": "neutral",
+            "formula": "Jumlah total PIB pada periode filter."
         },
         {
             "key": "kpi_pib_selesai",
-            "icon_path": "M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+            "icon": "check",
             "label": "PIB Selesai",
             "value": f"{format_number(pib_selesai)}",
-            "delta": "SPPB Terbit",
-            "formula": "Jumlah dokumen PIB yang Tanggal SPPB-nya sudah terisi."
+            "delta": f"{format_number(pib_on_progress)} On Progress",
+            "dtype": "neutral",
+            "formula": "Jumlah dokumen PIB yang Tanggal SPPB-nya sudah terisi. Dokumen On Progress adalah selisih Total PIB dengan PIB Selesai."
         },
         {
             "key": "kpi_kinerja_sla",
-            "icon_path": "M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05",
+            "icon": "target",
             "label": "Kinerja SLA EPP",
             "value": f"{format_number(persen_sla_epp, decimals=2)}%",
             "delta": "Target: > 80%",
+            "dtype": "green" if persen_sla_epp >= 80 else "red",
             "formula": "Persentase dokumen dengan Score SLA = 1 dibagi total dokumen."
         },
         {
-            "key": "kpi_total_biaya",
-            "icon_path": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
-            "label": "Total Biaya",
-            "value": f"{format_idr(total_biaya_sum)}",
-            "delta": "Bea Masuk + PPN + PPH",
-            "formula": "Total nilai Bea Masuk + PPN + PPH dari seluruh dokumen pada periode filter."
+            "key": "kpi_avg_bebas",
+            "icon": "clock",
+            "label": "Rata-rata Bebas (Hari)",
+            "value": f"{format_number(avg_bebas_hari, decimals=2)} Hari" if pd.notna(avg_bebas_hari) else "-",
+            "delta": "Tgl SPPB - Selesai Bongkar",
+            "dtype": "neutral",
+            "formula": "Rata-rata selisih hari dari Selesai Bongkar hingga Tgl SPPB diterbitkan."
         },
         {
             "key": "kpi_avg_waiting",
-            "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+            "icon": "clock",
             "label": "Rata-rata Waiting Time",
-            "value": f"{format_number(avg_waiting, decimals=1)} Hari" if pd.notna(avg_waiting) else "-",
+            "value": f"{format_number(avg_waiting, decimals=2)} Hari" if pd.notna(avg_waiting) else "-",
             "delta": "Start Bongkar - Tgl PIB",
+            "dtype": "neutral",
             "formula": "Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar."
         },
         {
             "key": "kpi_avg_bongkar",
-            "icon_path": "M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71V3.5zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0z",
+            "icon": "clock",
             "label": "Rata-rata Waktu Proses Bongkar",
-            "value": f"{format_number(avg_bongkar, decimals=1)} Hari" if pd.notna(avg_bongkar) else "-",
+            "value": f"{format_number(avg_bongkar, decimals=2)} Hari" if pd.notna(avg_bongkar) else "-",
             "delta": "Selesai Bongkar - Start Bongkar",
+            "dtype": "neutral",
             "formula": "Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar."
+        },
+        {
+            "key": "kpi_total_biaya",
+            "icon": "currency",
+            "label": "Total Biaya",
+            "value": f"{format_idr(total_biaya_sum)}",
+            "delta": "Bea Masuk + PPN + PPH",
+            "dtype": "neutral",
+            "formula": "Total nilai Bea Masuk + PPN + PPH dari seluruh dokumen pada periode filter."
         }
     ]
 
-    st.markdown("""
-    <style>
-    .kpi-card {
-        display: flex;
-        align-items: center;
-        background: var(--secondary-background-color);
-        border-radius: 10px;
-        padding: 16px 14px;
-        gap: 12px;
-        height: 100%;
-    }
-    .kpi-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        opacity: 1;
-    }
-    .kpi-body {
-        flex: 1;
-        min-width: 0;
-    }
-    .kpi-label {
-        font-size: 13px;
-        opacity: 0.9;
-        margin: 0 0 2px 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .kpi-value {
-        font-size: 2rem !important;
-        font-weight: 600 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 1.1 !important;
-        display: block !important;
-    }
-    .kpi-delta {
-        font-size: 12px;
-        color: #09ab3b;
-        margin: 0;
-    }
-    .kpi-delta-neutral {
-        font-size: 12px;
-        opacity: 0.55;
-        margin: 0;
-    }
-    [data-testid="column"]:nth-child(2) {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
     def render_kpi_row(items):
-        n = len(items)
         cols = st.columns(3)
         for i, col in enumerate(cols):
             with col:
-                if i >= n:
+                if i >= len(items):
                     continue
                 kpi = items[i]
+                delta_arrow = ""
+                delta_text = f"{delta_arrow}{kpi['delta']}" if kpi['delta'] else ""
                 
-                no_arrow = kpi["value"] == "-" or kpi["delta"].startswith("Target:") or kpi["delta"].startswith("PIB") or kpi["delta"].startswith("Dokumen") or kpi["delta"].startswith("SPPB") or kpi["delta"].startswith("Bea Masuk") or kpi["delta"].startswith("Start Bongkar") or kpi["delta"].endswith("On Progress") or kpi["delta"].startswith("Selesai Bongkar")
-                delta_arrow = "" if no_arrow else "↑ "
-                delta_cls = "kpi-delta"
-
-                card_html = f"""
-                <div class="kpi-card">
-                    <div class="kpi-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"
-                             fill="currentColor" viewBox="0 0 16 16">
-                            <path d="{kpi['icon_path']}"/>
-                        </svg>
-                    </div>
-                    <div class="kpi-body">
-                        <p class="kpi-label">{kpi['label']}</p>
-                        <p class="kpi-value">{kpi['value']}</p>
-                        <p class="{delta_cls}">{delta_arrow}{kpi['delta']}</p>
-                    </div>
-                </div>"""
-
-                c_card, c_btn = st.columns([10, 2])
-                with c_card:
-                    st.markdown(card_html, unsafe_allow_html=True)
-                with c_btn:
-                    st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                    with st.popover(":material/visibility:", help="Lihat Formula"):
-                        st.info(kpi["formula"])
+                st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], delta_text, kpi["dtype"]), unsafe_allow_html=True)
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info(kpi["formula"])
 
     for row_start in range(0, len(KPI_DASH), 3):
         row_items = KPI_DASH[row_start:row_start + 3]
@@ -258,7 +295,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # ── CHARTS (ROW 2) ────────────────────────────────────────────────────────
+    # == CHARTS (ROW 2) ========================================================
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
@@ -330,87 +367,64 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     st.markdown("---")
 
-    # ── CHARTS (ROW 3) - GANTT CHART TIMELINE ─────────────────────────────────
-    title_col, btn_col = st.columns([19, 1])
-    with title_col:
+    # --- ROW 3: PETA DUNIA ASAL NEGARA ---
+    title_col_map, btn_col_map = st.columns([19, 1])
+    with title_col_map:
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:30px;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-view-list" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                    <path d="M3 4.5h10a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H3zM1 2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 2zm0 12a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 14z"/>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-globe-americas" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                    <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0M2.04 4.326c.325 1.329 2.532 2.54 3.717 3.19.48.263.793.434.743.484-.08.08-.162.158-.242.234-.416.416-.682.906-.682 1.484 0 .578.266 1.068.682 1.484.416.416.906.682 1.484.682.578 0 1.068-.266 1.484-.682.416-.416.682-.906.682-1.484 0-.578-.266-1.068-.682-1.484a6.7 6.7 0 0 0-.242-.234c-.05-.05-.263-.22-.743-.484.325-1.329 2.532-2.54 3.717-3.19.48-.263.793-.434.743-.484-.08-.08-.162-.158-.242-.234a1.5 1.5 0 0 0-.682-1.484 6.7 6.7 0 0 0-1.484-.682c-.578 0-1.068.266-1.484.682-.416.416-.682.906-.682 1.484 0 .578.266 1.068.682 1.484.416.416.906.682 1.484.682.578 0 1.068-.266 1.484-.682.416-.416.682-.906.682-1.484 0-.578-.266-1.068-.682-1.484a6.7 6.7 0 0 0-1.484-.682c-.578 0-1.068.266-1.484.682z"/>
                 </svg>
-                Timeline Operasional (Waiting Time & Bongkar)
+                Peta Asal Negara Impor
             </h1>
         """, unsafe_allow_html=True)
-    with btn_col:
+    with btn_col_map:
         st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-**Timeline Operasional (Waiting Time & Bongkar)**: Gantt Chart yang memvisualisasikan perjalanan waktu setiap kapal.
+**Peta Asal Negara Impor**: Peta dunia yang menunjukkan negara asal barang impor.
 
 **Logika Visual:**
-- Garis **Merah (Waiting Time)**: Dihitung dari tanggal `Tgl PIB` hingga waktu `Start Bongkar`. Menunjukkan durasi kapal menunggu izin atau antrian sandar.
-- Garis **Biru (Proses Bongkar)**: Dihitung dari waktu `Start Bongkar` hingga `Selesai Bongkar`. Menunjukkan durasi nyata operasional bongkar muat.
+- Setiap negara asal direpresentasikan oleh sebuah lingkaran.
+- Ukuran lingkaran proporsional dengan jumlah dokumen impor (PIB) dari negara tersebut. Semakin besar lingkaran, semakin banyak impor dari negara itu.
 """)
-    st.caption("Timeline durasi waktu tunggu (dari PIB diterbitkan) hingga selesai bongkar muat per dokumen.")
-    
-    # Siapkan data untuk Timeline (Gantt)
-    df_timeline = df.dropna(subset=['tgl_pib', 'start_bongkar', 'selesai_bongkar']).copy()
-    
-    if not df_timeline.empty:
-        # Kita hanya ambil 15 data terbaru agar chart tidak terlalu sesak (opsional)
-        df_timeline = df_timeline.sort_values('tgl_pib', ascending=False).head(15)
-        
-        # FIX LABEL: Mengubah label Kapal menjadi hanya Nomor AJU
-        df_timeline['Kapal_Label'] = 'AJU ' + df_timeline['no_aju'].fillna('-').astype(str)
-        
-        timeline_data = []
-        for _, row in df_timeline.iterrows():
-            # 1. Fase Waiting Time (Tgl PIB sampai Start Bongkar)
-            if pd.notna(row['tgl_pib']) and pd.notna(row['start_bongkar']):
-                timeline_data.append({
-                    'No AJU': row['Kapal_Label'],
-                    'Tahap': 'Waiting Time',
-                    'Start': row['tgl_pib'],
-                    'Finish': row['start_bongkar']
-                })
-            
-            # 2. Fase Proses Bongkar (Start Bongkar sampai Selesai Bongkar)
-            if pd.notna(row['start_bongkar']) and pd.notna(row['selesai_bongkar']):
-                timeline_data.append({
-                    'No AJU': row['Kapal_Label'],
-                    'Tahap': 'Proses Bongkar',
-                    'Start': row['start_bongkar'],
-                    'Finish': row['selesai_bongkar']
-                })
-        
-        df_gantt = pd.DataFrame(timeline_data)
-        
-        # Mapping warna
-        color_discrete_map = {'Waiting Time': '#d62728', 'Proses Bongkar': '#1f77b4'}
-        
-        fig_gantt = px.timeline(
-            df_gantt, 
-            x_start="Start", 
-            x_end="Finish", 
-            y="No AJU", 
-            color="Tahap",
-            color_discrete_map=color_discrete_map,
-            hover_data={"No AJU": True, "Tahap": True, "Start": "|%d %b %Y %H:%M", "Finish": "|%d %b %Y %H:%M"}
-        )
-        
-        fig_gantt.update_yaxes(autorange="reversed")
-        fig_gantt.update_layout(
-            barmode='group',
-            margin=dict(t=20, b=20, l=20, r=20),
-            legend_title_text="",
-            xaxis_title="Tanggal Operasional",
-            height=400 + (len(df_timeline) * 15)
-        )
-        st.plotly_chart(fig_gantt, use_container_width=True)
-    else:
-        st.info("Data Tanggal PIB, Start Bongkar, atau Selesai Bongkar tidak lengkap untuk merender timeline.")
+    st.caption("Distribusi geografis asal barang impor. Ukuran lingkaran menunjukkan frekuensi impor.")
 
-    # ── CHARTS (ROW 4) ────────────────────────────────────────────────────────
+    country_counts = df['asal_negara'].str.upper().value_counts().reset_index()
+    country_counts.columns = ['country', 'count']
+
+    country_mapping = {
+        'VIETNAM': 'Vietnam', 'CHINA': 'China', 'RRC': 'China',
+        'TAIWAN, PROVINCE OF CHINA': 'Taiwan', 'UNITED ARAB EMIRATES': 'United Arab Emirates',
+        'RUSSIAN FEDERATION': 'Russia', 'KOREA, REPUBLIC OF': 'South Korea',
+        'UNITED STATES': 'United States of America', 'USA': 'United States of America',
+    }
+    country_counts['country'] = country_counts['country'].replace(country_mapping)
+
+    country_counts = country_counts.groupby('country')['count'].sum().reset_index()
+
+    fig_map = px.scatter_geo(
+        country_counts, locations="country", locationmode="country names",
+        size="count", hover_name="country", hover_data={"count": True},
+        projection="natural earth", color="country",
+        size_max=40
+    )
+
+    fig_map.update_layout(
+        height=450, margin={"r":0,"t":10,"l":0,"b":0},
+        geo=dict(
+            showcoastlines=True, coastlinecolor="rgba(128,128,128,0.3)",
+            showcountries=True, countrycolor="rgba(128,128,128,0.3)",
+            showland=True, landcolor="rgba(128,128,128,0.08)",
+            showocean=True, oceancolor="rgba(31,119,180,0.1)",
+            bgcolor='rgba(0,0,0,0)'
+        ), paper_bgcolor='rgba(0,0,0,0)',
+        showlegend=False
+    )
+    fig_map.update_traces(marker=dict(sizemin=4, line=dict(width=0)))
+    st.plotly_chart(fig_map, use_container_width=True)
+
+    # == CHARTS (ROW 3) ========================================================
     st.markdown("---")
     title_col2, btn_col2 = st.columns([19, 1])
     with title_col2:
@@ -435,7 +449,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     df_top10 = df.nlargest(10, 'TOTAL_BIAYA').copy()
 
-    df_top10['Label'] = 'AJU ' + df_top10['no_aju'].fillna('-').astype(str)
+    df_top10['Label'] = df_top10['nama_kapal'].fillna('-').astype(str) + ' - AJU ' + df_top10['no_aju'].fillna('-').astype(str)
     
     df_top10_chart = df_top10.rename(columns={
         'bea_masuk_rp': 'Bea Masuk (Rp)',
@@ -469,7 +483,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     st.plotly_chart(fig_top10, use_container_width=True)
 
-    # ── TABEL RINCIAN SLA ─────────────────────────────────────────────────────
+    # == TABEL RINCIAN SLA =====================================================
     st.markdown("---")
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:30px;'>
@@ -479,15 +493,18 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             Tabel Rincian SLA per Kapal
         </h1>
     """, unsafe_allow_html=True)
-    with st.expander("Lihat Rincian Data SLA per Kapal"):
-        df_sla = df[['no_aju', 'nama_kapal', 'komoditi', 'Keterangan_Jalur', 
-                     'SLA_Target', 'Bebas_Hari', 'Score_SLA', 'Check_List']].copy()
-        
-        df_sla['Check_List'] = df_sla['Check_List'].apply(lambda x: "✅ Selesai" if x else "⏳ Proses")
-        df_sla['Score_SLA'] = df_sla['Score_SLA'].apply(lambda x: "⭐ Memenuhi (1)" if x == 1 else "❌ Melampaui (0)")
-        
-        df_sla.columns = ['No AJU', 'Nama Kapal', 'Komoditi', 'Jalur', 'SLA (Target Hari)', 'Bebas (Realisasi Hari)', 'Score SLA', 'Status']
-        st.dataframe(df_sla, use_container_width=True)
+
+    df_sla = df[['no_aju', 'nama_kapal', 'komoditi', 'Keterangan_Jalur', 
+                 'SLA_Target', 'Bebas_Hari', 'Score_SLA', 'Check_List']].copy()
+    
+    df_sla['Check_List'] = df_sla['Check_List'].apply(lambda x: "✅ Selesai" if x else "⏳ Proses")
+    df_sla['Score_SLA'] = df_sla['Score_SLA'].apply(lambda x: "⭐ Memenuhi (1)" if x == 1 else "❌ Melampaui (0)")
+    
+    df_sla.index = df_sla.index + 1
+    df_sla.columns = ['No AJU', 'Nama Kapal', 'Komoditi', 'Jalur', 'SLA (Target Hari)', 'Bebas (Realisasi Hari)', 'Score SLA', 'Status']
+    st.dataframe(df_sla, use_container_width=True)
+
+    st.markdown("---")
 
     # =====================================================================
     # INTEGRASI AI CHAT ANALYST
@@ -502,6 +519,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     konteks_lines.append(f"- Total Pajak Impor Dibayarkan: Rp {total_biaya_sum:,.0f}")
     konteks_lines.append(f"- Rata-rata Waiting Time: {avg_waiting:.1f} Hari")
     konteks_lines.append(f"- Rata-rata Waktu Proses Bongkar: {avg_bongkar:.1f} Hari")
+    val_bebas = f"{avg_bebas_hari:.1f} Hari" if pd.notna(avg_bebas_hari) else "-"
+    konteks_lines.append(f"- Rata-rata Bebas: {val_bebas}")
     konteks_lines.append(f"- Filter Aktif: {info_filter}")
     konteks_lines.append("")
     
@@ -509,11 +528,16 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     hijau = (df['Keterangan_Jalur'] == 'HIJAU').sum()
     konteks_lines.append(f"- Distribusi Jalur Kepabeanan: {merah} Jalur Merah, {hijau} Jalur Hijau.")
 
+    if 'country_counts' in locals() and not country_counts.empty:
+        konteks_lines.append(f"- Top 5 Negara Asal Impor: {', '.join(country_counts.head(5)['country'].tolist())}")
+        konteks_lines.append("")
+
     suplemen = "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Dashboard Inklaring Impor",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Dashboard Inklaring Impor",
+            load_data_fn=load_data,
+        )

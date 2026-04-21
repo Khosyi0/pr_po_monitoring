@@ -16,7 +16,7 @@ import base64
 import os
 warnings.filterwarnings('ignore')
 
-# ── Load Dashboard icon (untuk page_icon & halaman login) ────────────────────
+# == Load Dashboard icon (untuk page_icon & halaman login) ====================
 def _load_icon_b64(path: str) -> str | None:
     try:
         with open(path, "rb") as f:
@@ -45,14 +45,14 @@ from views import v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 
 # Views - Inklaring Barang Impor
-from views import v_inklaring_dashboard, v_inklaring_detail
+from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
 # Views - Lainnya
 from views import v_tren_harga_bb, v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # PAGE CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 from PIL import Image
 _page_icon = Image.open(_ICON_PATH) if os.path.exists(_ICON_PATH) else "📊"
@@ -66,9 +66,9 @@ st.set_page_config(
 
 inject_css()
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # AUTENTIKASI  ← diganti total ke sistem username+password via auth.py
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 # Inisialisasi session state auth
 if "authenticated" not in st.session_state:
@@ -84,9 +84,9 @@ if not render_login():
 # Scroll-to-top: dipanggil setelah auth agar tidak tampil di halaman login
 inject_scroll_to_top()
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # SESSION STATE
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def init_state(key, value):
     if key not in st.session_state:
@@ -109,9 +109,9 @@ init_state('sips_prev_bagian',    ['All'])
 init_state('sips_filter_pgroup',  ['All'])
 init_state('sips_prev_pgroup',    ['All'])
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # DIALOG KONFIRMASI LOGOUT
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 @st.dialog("Konfirmasi Logout")
 def dialog_logout():
@@ -145,9 +145,9 @@ div[data-testid="stDialog"] > div > div {
                      use_container_width=True, key="dlg_logout_tidak"):
             st.rerun()
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # HALAMAN: render functions
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _render_summary():                  v_summary.render(**st.session_state.get('_summary_view_args', {}))
 def _render_isu():                      v_isu.render(**st.session_state.get('_summary_view_args', {}))
@@ -170,10 +170,11 @@ def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_st
 def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 summary_pages = [
     st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
@@ -211,7 +212,8 @@ nav_dict.update({
     ],
     "Inklaring Barang Impor": [
         st.Page(_render_inklaring_dashboard, title="Dashboard Inklaring", icon=":material/directions_boat:"),
-        st.Page(_render_inklaring_detail,    title="Detailed Inklaring Data", icon=":material/inventory_2:"),
+        st.Page(_render_inklaring_detail,    title="Detailed Inklaring Data", icon=":material/unknown_document:"),
+        st.Page(_render_inklaring_waktu,     title="Analisis Waktu Proses Inklaring", icon=":material/schedule:"),
     ],
     "Lainnya": [
         st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
@@ -228,7 +230,7 @@ pg = st.navigation(nav_dict, position="sidebar")
 SUMMARY_TITLES   = {"Executive Summary", "Isu"} 
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
-INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data"}
+INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
 LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
 current_page = pg.title
@@ -245,9 +247,9 @@ if current_page != st.session_state.last_page:
     st.session_state.show_changelog = False
     st.session_state.last_page = current_page
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # CSS: section headers menjadi toggle pill
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 # Pill aktif: disesuaikan dengan posisi urutan di sidebar berdasarkan hak akses admin
 if is_admin():
@@ -266,7 +268,7 @@ else:
 
 st.markdown(f"""
 <style>
-/* ── Judul "Main Menu" ───────────────────────────────────────────────── */
+/* == Judul "Main Menu" ================================================= */
 [data-testid="stSidebarNav"]::before {{
     content: "☰  Main Menu";
     display: block;
@@ -277,7 +279,7 @@ st.markdown(f"""
     border-bottom: 1px solid rgba(128,128,128,0.2);
     margin-bottom: 4px;
 }}
-/* ── Section headers → satu baris pill toggle ────────────────────────── */
+/* == Section headers → satu baris pill toggle ========================== */
 [data-testid="stSidebarNavSeparator"] {{ display: none; }}
 
 /* Reset: semua item di dalam nav menjadi block full-width dulu */
@@ -327,7 +329,7 @@ st.markdown(f"""
     margin: 0 !important;
 }}
 
-/* ── Nav link style ──────────────────────────────────────────────────── */
+/* == Nav link style ==================================================== */
 [data-testid="stSidebarNav"] a {{
     border-radius: 8px;
     margin: 2px 6px;
@@ -397,9 +399,9 @@ st.components.v1.html("""
 </script>
 """, height=0)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # SIDEBAR FILTERS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 # Default values (dipakai jika filter tidak ter-render / error)
 current_year = datetime.now().year
@@ -438,7 +440,7 @@ sips_selected_pgroup     = ['All']
 inklaring_date_from      = default_start_date
 inklaring_date_to        = DATA_UPDATE_INKLARING
 
-# ── Info data terakhir diambil ────────────────────────────────────────────────
+# == Info data terakhir diambil ================================================
 st.sidebar.markdown(f"""
     <div style='
         background: rgba(31, 119, 180, 0.08);
@@ -467,7 +469,7 @@ st.sidebar.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# ── Toggle filter mode + header ──────────────────────────────────────────────
+# == Toggle filter mode + header ==============================================
 if not is_summary and not is_admin_pg:
     _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
     _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
@@ -600,7 +602,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         if not any(v in options_bagian for v in st.session_state.get('filter_bagian', [])):
             st.session_state.filter_bagian = ['All']
 
-        # ── Department ────────────────────────────────────────────────────────
+        # == Department ========================================================
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:0 0 2px 0; display:flex; align-items:center; gap:6px;'>
@@ -631,7 +633,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         if 'All' not in selected_department and selected_department:
             exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
 
-        # ── Purchasing Group ──────────────────────────────────────────────────
+        # == Purchasing Group ==================================================
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 2px 0; display:flex; align-items:center; gap:6px;'>
@@ -659,7 +661,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         if 'All' not in selected_p_group and selected_p_group:
             exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
 
-        # ── Bagian ────────────────────────────────────────────────────────────
+        # == Bagian ============================================================
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
@@ -691,7 +693,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         )
         selected_bagian = st.session_state.get('filter_bagian', ['All']) or ['All']
 
-        # ── Date Range ────────────────────────────────────────────────────────
+        # == Date Range ========================================================
         st.sidebar.markdown("""
         <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered'
            style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -746,7 +748,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         if not st.session_state.get('sips_filter_pgroup'):
             st.session_state.sips_filter_pgroup = ['All']
 
-        # ── Filter Nama ───────────────────────────────────────────────────────
+        # == Filter Nama =======================================================
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
@@ -787,7 +789,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             st.session_state.sips_filter_nama = ['All']
             st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
 
-        # ── Filter Purchasing Group SIPS ──────────────────────────────────────
+        # == Filter Purchasing Group SIPS ======================================
         try:
             pg_sips_data = load_data("""
                 SELECT DISTINCT purchasing_group FROM sips_data
@@ -829,7 +831,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         if not sips_selected_pgroup:
             sips_selected_pgroup = ['All']
 
-        # ── Filter Bagian ─────────────────────────────────────────────────────
+        # == Filter Bagian =====================================================
         st.sidebar.markdown("""
         <p style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
@@ -886,15 +888,15 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
     except Exception as e:
         st.sidebar.error(f"Error loading SIPS filters: {e}")
 
-# ── Tombol Logout + info user: selalu di paling bawah sidebar ───────────────
+# == Tombol Logout + info user: selalu di paling bawah sidebar ===============
 st.sidebar.markdown("---")
 render_user_info_sidebar() 
 if st.sidebar.button("Logout", use_container_width=True, key="btn_logout"):
     dialog_logout()
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # DEFAULT FILTER VALUES  (dipakai untuk sistem yang TIDAK aktif saat ini)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 _default_start_date = datetime(current_year, 1, 1).date()
 _default_date_from = _default_start_date
@@ -921,9 +923,9 @@ _default_teks_sips = f"""
 - Nama: All
 """
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # BUILD VIEW ARGS
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 # SAP view args
 filter_conditions = build_filter_conditions(
@@ -954,7 +956,7 @@ teks_filter_inklaring = f"""
 - Tanggal (Tgl ETA): {inklaring_date_from} s.d {inklaring_date_to}
 """
 
-# ── Bangun / refresh konteks global untuk Melati ─────────────────────────────
+# == Bangun / refresh konteks global untuk Melati =============================
 global_context = build_global_context(
     load_data      = load_data,
     is_sips        = is_sips,
@@ -1025,9 +1027,9 @@ st.session_state['_inklaring_view_args'] = dict(
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_lainnya:
     if is_sips:
@@ -1101,15 +1103,15 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
             date_to           = date_to,
         ))
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # ROUTING
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 pg.run()
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FOOTER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 st.markdown("---")
 col_foot1, col_foot2 = st.columns([4, 1])

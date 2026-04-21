@@ -29,7 +29,7 @@ def render(**kwargs):
     )
     st.markdown("---")
 
-    # ── Info Placeholder ──────────────────────────────────────────────────────
+    # == Info Placeholder ======================================================
     st.info(
         "🚧 **Halaman ini sedang dalam tahap perencanaan.**\n\n"
         "Halaman ini akan menampilkan grafik perkiraan apakah vendor sudah mengirim jaminan pelaksanaan.\n\n"
@@ -38,7 +38,7 @@ def render(**kwargs):
         "**Sumber Data:** \n - List PO : EPP\n - List Realisasi : Masing-masing Buyer"
     )
 
-    # ── Gambaran Kolom yang Direncanakan ─────────────────────────────────────
+    # == Gambaran Kolom yang Direncanakan =====================================
     st.markdown("### 📋 Rencana Struktur Data")
     st.markdown("""
     | Kolom | Keterangan |

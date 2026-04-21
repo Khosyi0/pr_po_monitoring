@@ -6,69 +6,84 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CSS (dari file user yang diperbarui)
-# ─────────────────────────────────────────────────────────────────────────────
+from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, build_sips_where
 
 KPI_CSS = """
 <style>
-.sips-kpi-card {
+/* Copied from v_dashboard.py for consistency */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
     display: flex;
     align-items: center;
-    background: var(--secondary-background-color);
-    border-radius: 10px;
-    padding: 16px 14px;
-    gap: 16px;
+    gap: 14px;
+    min-height: 120px !important;
     height: 100%;
+    padding: 20px 18px 16px 18px;
 }
-.sips-kpi-icon {
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
 }
-.sips-kpi-body { flex: 1; min-width: 0; }
-.sips-kpi-label {
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
     font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
     opacity: 0.75;
-    margin: 0 0 4px 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
-.sips-kpi-value {
+
+.dash-value {
     font-size: 2rem !important;
     font-weight: 600 !important;
-    margin: 0 !important;
+    margin: 0 0 4px 0 !important;
     padding: 0 !important;
     line-height: 1.1 !important;
     display: block !important;
 }
-.sips-kpi-delta {
-    font-size: 12px;
-    color: #09ab3b;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
+/* Posisi tombol popover di dalam kartu KPI */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
 }
-.sips-kpi-delta-neutral {
-    font-size: 12px;
-    opacity: 0.55;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.sips-kpi-delta-red {
-    font-size: 12px;
-    color: #e03c3c;
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
 }
 </style>
 """
@@ -87,48 +102,25 @@ ICONS = {
     "budget":            "M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v1h14V3a1 1 0 0 0-1-1zm13 4H1v2h.5a.5.5 0 0 1 0 1H1v2h.5a.5.5 0 0 1 0 1H1v1a1 1 0 0 0 1 1h1v-1a.5.5 0 0 1 1 0v1h3v-1a.5.5 0 0 1 1 0v1h3v-1a.5.5 0 0 1 1 0v1h1a1 1 0 0 0 1-1v-1h-.5a.5.5 0 0 1 0-1H15V9h-.5a.5.5 0 0 1 0-1H15V6z",
 }
 
-def icon_svg(name, size=42):
-    path = ICONS.get(name, ICONS["file-text"])
+def _svg(path_d: str, size: int = 40) -> str:
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
-            f'fill="currentColor" viewBox="0 0 16 16"><path d="{path}"/></svg>')
+            f'fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>')
 
-def kpi_card(icon_name, label, value, delta="", delta_type="neutral"):
+def _card(icon_d: str, label: str, value: str,
+          delta: str = "", delta_type: str = "neutral") -> str:
     delta_class = {
-        "positive": "sips-kpi-delta",
-        "negative": "sips-kpi-delta-red",
-        "neutral":  "sips-kpi-delta-neutral",
-    }.get(delta_type, "sips-kpi-delta-neutral")
-    arrow = {"positive": "↑ ", "negative": "↓ "}.get(delta_type, "")
-    delta_html = f'<p class="{delta_class}">{arrow}{delta}</p>' if delta else ""
-    return f"""
-    <div class="sips-kpi-card">
-        <div class="sips-kpi-icon">{icon_svg(icon_name)}</div>
-        <div class="sips-kpi-body">
-            <p class="sips-kpi-label">{label}</p>
-            <p class="sips-kpi-value">{value}</p>
-            {delta_html}
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    delta_html = f'<p class="{delta_class}">{delta}</p>' if delta else ""
+    return f"""<div class="dash-card">
+    <div class="dash-icon">{_svg(icon_d, 36)}</div>
+    <div class="dash-body">
+        <p class="dash-label">{label}</p>
+        <p class="dash-value">{value}</p>{delta_html}
         </div>
     </div>"""
-
-def format_idr(v):
-    """Format nilai ke miliar (M) atau juta (Jt) dengan pemisah ribuan & desimal Indonesia."""
-    if v == 0:
-        return "0"
-    
-    if abs(v) >= 1:
-        raw_formatted = f"{v:,.2f}"
-        formatted = raw_formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
-        
-        if formatted.endswith(',00'):
-            formatted = formatted[:-3]
-        return f"{formatted} M"
-        
-    raw_formatted = f"{v * 1000:,.1f}"
-    formatted = raw_formatted.replace(',', 'X').replace('.', ',').replace('X', '.')
-    
-    if formatted.endswith(',0'):
-        formatted = formatted[:-2]
-    return f"{formatted} Jt"
 
 def section_header(title, subtitle=""):
     sub_html = f"<p style='opacity:0.55; font-size:13px; margin:2px 0 0 0;'>{subtitle}</p>" if subtitle else ""
@@ -139,17 +131,13 @@ def section_header(title, subtitle=""):
         </div>
     """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RENDER
-# ─────────────────────────────────────────────────────────────────────────────
-
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
 
     info_filter      = kwargs.get('info_filter', 'Tidak ada filter spesifik')
     selected_pgroup  = kwargs.get('selected_pgroup', ['All'])
 
-    # ── Header ────────────────────────────────────────────────────────────────
+    # == Header ================================================================
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:60px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor"
@@ -168,19 +156,19 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # ── WHERE clause ──────────────────────────────────────────────────────────
+    # == WHERE clause ==========================================================
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
         selected_pgroup=selected_pgroup
     )
 
-    # ── Query KPI ─────────────────────────────────────────────────────────────
+    # == Query KPI =============================================================
     kpi_query = f"""
         SELECT
             COUNT(*)                                                              AS total_pr,
             COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END)          AS total_po,
-            ROUND(AVG(CASE WHEN pr_po_days > 0 THEN pr_po_days END)::numeric, 2)  AS avg_pr_po,
+            ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
             COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
                               THEN nilai_sla END), 0)                             AS sla_ontime,
             COALESCE(SUM(CASE WHEN status='Proses PO' THEN oe_pr END),0)          AS oe_proses,
@@ -192,7 +180,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         FROM vw_sips WHERE {where}
     """
 
-    # ── Query chart data (satu round-trip) ───────────────────────────────────
+    # == Query chart data (satu round-trip) ===================================
     chart_query = f"""
         SELECT
             nama,
@@ -223,7 +211,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     if not no_data:
         r = df_kpi.iloc[0]
 
-        # ── Kalkulasi KPI ─────────────────────────────────────────────────────────
+        # == Kalkulasi KPI =========================================================
         total_pr      = int(r['total_pr']       or 0)
         total_po      = int(r['total_po']       or 0)
         avg_pr_po     = float(r['avg_pr_po']    or 0)
@@ -241,9 +229,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         efisiensi_rp  = oe_total - po_total
         pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
 
-        # ── KPI_DASH: definisi 15 KPI dengan formula masing-masing ──────────────
+        # == KPI_DASH: definisi 15 KPI dengan formula masing-masing ==============
         KPI_DASH = [
-            # ── Baris 1: PR / PO / PO-PR ─────────────────────────────────────────
+            # == Baris 1: PR / PO / PO-PR =========================================
             {
                 "key":      "sips_kpi_total_pr",
                 "icon":     "file-text",
@@ -308,19 +296,20 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     **Target:** -""",
             },
-            # ── Baris 2: PR-PO / SLA On Time / % On Time ─────────────────────────
+            # == Baris 2: PR-PO / SLA On Time / % On Time =========================
             {
                 "key":      "sips_kpi_avg_pr_po",
                 "icon":     "clock",
                 "label":    "Rata-rata PR-PO",
                 "value":    f"{format_number(avg_pr_po, decimals=2)} hari",
-                "delta":    "Waktu PR → PO",
+                "delta":    "Waktu PR → PO (Closed)",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Rata-rata PR-PO**: Rata-rata jumlah hari semua PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+    **Rata-rata PR-PO**: Rata-rata jumlah hari semua PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan, khusus untuk dokumen yang sudah selesai/ditutup.
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
+    - Filter **Status** menjadi `Closed`
     - Hitung rata-rata **PR-PO**
 
     **Target:** -""",
@@ -366,21 +355,23 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     **Target:** -""",
             },
-            # ── Baris 3: OE ───────────────────────────────────────────────────────
+            # == Baris 3: OE =======================================================
             {
                 "key":      "sips_kpi_oe_proses",
                 "icon":     "currency-exchange",
                 "label":    "OE Proses PO",
-                "value":    f"Rp {format_idr(oe_proses)}",
+                "value":    format_idr(oe_proses),
                 "delta":    "Nilai OE status Proses PO",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO*.
 
+    **Nilai saat ini: {format_currency(oe_proses)}**
+
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
-    - Jumlahkan **OE PR** lalu dibagi 1.000.000.000
+    - Jumlahkan **OE PR**
 
     **Target:** -""",
             },
@@ -388,16 +379,18 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_oe_closed",
                 "icon":     "currency-exchange",
                 "label":    "OE Closed",
-                "value":    f"Rp {format_idr(oe_closed)}",
+                "value":    format_idr(oe_closed),
                 "delta":    "Nilai OE status Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed*.
 
+    **Nilai saat ini: {format_currency(oe_closed)}**
+
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed`
-    - Jumlahkan **OE PR** lalu dibagi 1.000.000.000
+    - Jumlahkan **OE PR**
 
     **Target:** -""",
             },
@@ -405,38 +398,42 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_oe_total",
                 "icon":     "currency-exchange",
                 "label":    "Total OE",
-                "value":    f"Rp {format_idr(oe_total)}",
+                "value":    format_idr(oe_total),
                 "delta":    "OE Proses PO + OE Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **Total OE**: Gabungan OE untuk status *Proses PO* dan *Closed*.
 
+    **Nilai saat ini: {format_currency(oe_total)}**
+
     **Kalkulasi:**
     ```
     Total OE = OE Proses PO + OE Closed
-             = Rp {format_idr(oe_proses)} + Rp {format_idr(oe_closed)}
-             = Rp {format_idr(oe_total)}
+             = {format_currency(oe_proses)} + {format_currency(oe_closed)}
+             = {format_currency(oe_total)}
     ```
 
     Dipakai sebagai pembagi dalam rumus Efisiensi.
 
     **Target:** -""",
             },
-            # ── Baris 4: Nilai PO ─────────────────────────────────────────────────
+            # == Baris 4: Nilai PO =================================================
             {
                 "key":      "sips_kpi_po_proses",
                 "icon":     "budget",
                 "label":    "PO Proses PO",
-                "value":    f"Rp {format_idr(po_proses)}",
+                "value":    format_idr(po_proses),
                 "delta":    "Nilai PO status Proses PO",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO*.
 
+    **Nilai saat ini: {format_currency(po_proses)}**
+
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
-    - Jumlahkan **Nilai Item PO** lalu dibagi 1.000.000.000
+    - Jumlahkan **Nilai Item PO**
 
     **Target:** -""",
             },
@@ -444,16 +441,18 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_po_closed",
                 "icon":     "budget",
                 "label":    "PO Closed",
-                "value":    f"Rp {format_idr(po_closed)}",
+                "value":    format_idr(po_closed),
                 "delta":    "Nilai PO status Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed*.
 
+    **Nilai saat ini: {format_currency(po_closed)}**
+
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed`
-    - Jumlahkan **Nilai Item PO** lalu dibagi 1.000.000.000
+    - Jumlahkan **Nilai Item PO**
 
     **Target:** -""",
             },
@@ -461,24 +460,26 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_po_total",
                 "icon":     "budget",
                 "label":    "Total PO",
-                "value":    f"Rp {format_idr(po_total)}",
+                "value":    format_idr(po_total),
                 "delta":    "PO Proses PO + PO Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
     **Total PO (Nilai)**: Gabungan realisasi nilai PO untuk status *Proses PO* dan *Closed*.
 
+    **Nilai saat ini: {format_currency(po_total)}**
+
     **Kalkulasi:**
     ```
     Total PO = PO Proses PO + PO Closed
-             = Rp {format_idr(po_proses)} + Rp {format_idr(po_closed)}
-             = Rp {format_idr(po_total)}
+             = {format_currency(po_proses)} + {format_currency(po_closed)}
+             = {format_currency(po_total)}
     ```
 
     Dipakai sebagai pembilang dalam rumus Efisiensi.
 
     **Target:** -""",
             },
-            # ── Baris 5: Efisiensi & On Budget ───────────────────────────────────
+            # == Baris 5: Efisiensi & On Budget ===================================
             {
                 "key":      "sips_kpi_efisiensi_pct",
                 "icon":     "graph-up",
@@ -497,7 +498,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Kalkulasi:**
     ```
     Efisiensi % = 1 - (Total PO / Total OE) × 100%
-                = 1 - (Rp {format_idr(po_total)} / Rp {format_idr(oe_total)}) × 100%
+                = 1 - ({format_currency(po_total)} / {format_currency(oe_total)}) × 100%
                 = {efisiensi_pct:.2f}%
     ```
 
@@ -513,11 +514,13 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_efisiensi_rp",
                 "icon":     "piggy-bank",
                 "label":    "Efisiensi Rp",
-                "value":    f"Rp {format_idr(efisiensi_rp)}",
+                "value":    format_idr(efisiensi_rp),
                 "delta":    "OE Total − PO Total",
                 "dtype":    "positive" if efisiensi_rp > 0 else "negative",
                 "formula":  f"""\
     **Efisiensi Rp**: Nominal penghematan dalam Rupiah.
+
+    **Nilai saat ini: {format_currency(efisiensi_rp)}**
 
     **Formula Excel:**
     ```
@@ -527,8 +530,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Kalkulasi:**
     ```
     Efisiensi Rp = Total OE - Total PO
-                 = Rp {format_idr(oe_total)} - Rp {format_idr(po_total)}
-                 = Rp {format_idr(efisiensi_rp)}
+                 = {format_currency(oe_total)} - {format_currency(po_total)}
+                 = {format_currency(efisiensi_rp)}
     ```
 
     Nilai positif berarti realisasi PO lebih rendah dari anggaran OE.
@@ -560,7 +563,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             },
         ]
 
-        # ── Helper: render satu baris (max 3 KPI) dengan tombol formula ──────────
+        # == Helper: render satu baris (max 3 KPI) dengan tombol formula ==========
         def render_kpi_row(items):
             cols = st.columns(3)
             for i, col in enumerate(cols):
@@ -569,26 +572,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         continue
                     kpi     = items[i]
 
-                    card_html = kpi_card(kpi["icon"], kpi["label"],
-                                         kpi["value"], kpi["delta"], kpi["dtype"])
+                    delta_type_map = {"positive": "green", "negative": "red"}
+                    delta_type = delta_type_map.get(kpi["dtype"], "neutral")
+                    st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], kpi["delta"], delta_type), unsafe_allow_html=True)
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info(kpi["formula"])
 
-                    c_card, c_btn = st.columns([10, 2])
-                    with c_card:
-                        st.markdown(card_html, unsafe_allow_html=True)
-                    with c_btn:
-                        st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-                        with st.popover(":material/visibility:", help="Lihat Formula"):
-                            st.info(kpi["formula"])
-
-        # ── Render 5 baris × 3 KPI ───────────────────────────────────────────────
+        # == Render 5 baris × 3 KPI ===============================================
         for row_start in range(0, len(KPI_DASH), 3):
             row_items = KPI_DASH[row_start:row_start + 3]
             render_kpi_row(row_items)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # =========================================================================
     # CHARTS
-    # ─────────────────────────────────────────────────────────────────────────
+    # =========================================================================
 
     COLORS = {
         "Open":      "#6c8ebf",
@@ -596,11 +594,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         "Closed":    "#09ab3b",
     }
 
-    # ── ROW 1: PR-PO Trend & Distribusi Status ─────────────────────────────
+    # == ROW 1: PR-PO Trend & Distribusi Status =============================
     st.markdown("---")
     
     col1, col2 = st.columns(2)
-    # ── KIRI: LINE CHART TREND ──
+    # == KIRI: LINE CHART TREND ==
     with col1:
         title_col, btn_col = st.columns([9, 1])
         with title_col:
@@ -663,7 +661,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             
             fig_trend.update_layout(
                 height=300, 
-                margin=dict(t=10, b=10, l=10, r=10),
+                margin=dict(t=40, b=40, l=20, r=20),
                 legend=dict(orientation='h', yanchor='bottom', y=1.02),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
@@ -676,7 +674,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
-    # ── KANAN: PIE CHART DISTRIBUSI STATUS ──
+    # == KANAN: PIE CHART DISTRIBUSI STATUS ==
     with col2:
         title_col, btn_col = st.columns([9, 1])
         with title_col:
@@ -717,17 +715,17 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             fig_donut.update_layout(
                 showlegend=True,
                 legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=1.05),
-                margin=dict(t=20, b=20, l=20, r=0), height=300,
+                margin=dict(t=40, b=40, l=20, r=20), height=300,
                 paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                 font_color='gray', separators=",."
             )
             st.plotly_chart(fig_donut, use_container_width=True)
 
-    # ── ROW 2: Performa SLA & Histori Lead Time ─────────────────────────────
+    # == ROW 2: Performa SLA & Histori Lead Time =============================
     st.markdown("---")
 
     col_l, col_r = st.columns(2)
-    # ── KIRI: HORIZONTAL BAR % ON TIME ──
+    # == KIRI: HORIZONTAL BAR % ON TIME ==
     with col_l:
         title_col, btn_col = st.columns([9, 1])
         with title_col:
@@ -777,7 +775,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 fig_ontime.update_coloraxes(showscale=False)
                 fig_ontime.update_layout(
                     height=max(250, len(perf) * 38),
-                    margin=dict(t=10, b=10, l=10, r=60),
+                    margin=dict(t=20, b=20, l=20, r=60),
                     xaxis=dict(title='% On Time', range=[0, 115],
                             gridcolor='rgba(128,128,128,0.15)'),
                     yaxis=dict(title=''),
@@ -792,7 +790,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
-    # ── KANAN: HISTOGRAM PR-PO DAYS ──
+    # == KANAN: HISTOGRAM PR-PO DAYS ==
     with col_r:
         title_col, btn_col = st.columns([9, 1])
         with title_col:
@@ -828,8 +826,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                             annotation_text=f"Rata-rata {format_number(avg_days, decimals=2)} hari",
                             annotation_position='top right')
             fig_hist.update_layout(
-                height=max(250, len(perf) * 38) if ('perf' in locals() and not perf.empty) else 300,
-                margin=dict(t=10, b=10, l=10, r=10),
+                height=max(250, len(perf) * 38) if ('perf' in locals() and not perf.empty) else 320,
+                margin=dict(t=20, b=20, l=20, r=20),
                 xaxis=dict(title='Hari PR → PO', gridcolor='rgba(128,128,128,0.15)'),
                 yaxis=dict(title='Jumlah PR', gridcolor='rgba(128,128,128,0.15)'),
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -842,7 +840,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
-# ── ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ────────────────────
+# == ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ====================
     st.markdown("---")
 
     title_col, btn_col = st.columns([19, 1])
@@ -882,7 +880,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             fig_vol.update_layout(
                 barmode='group',
                 height=max(250, len(vol) * 48),
-                margin=dict(t=10, b=10, l=10, r=40), 
+                margin=dict(t=20, b=20, l=20, r=40), 
                 legend=dict(orientation='h', yanchor='bottom', y=1.01),
                 xaxis=dict(title='Jumlah Dokumen', gridcolor='rgba(128,128,128,0.15)'), 
                 yaxis=dict(title=''),
@@ -897,7 +895,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     else:
         st.info("Tidak ada data untuk filter yang dipilih.")
 
-    # ── ROW 4: Proporsi PO Kontrak vs Non-Kontrak ────────────────────────────
+    # == ROW 4: Proporsi PO Kontrak vs Non-Kontrak ============================
     st.markdown("---")
 
     title_col_k, btn_col_k = st.columns([19, 1])
@@ -951,7 +949,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             fig_kontrak.update_layout(
                 barmode='stack',
                 height=max(250, len(kontrak_df) * 48),
-                margin=dict(t=10, b=10, l=10, r=40), 
+                margin=dict(t=20, b=20, l=20, r=40), 
                 legend=dict(orientation='h', yanchor='bottom', y=1.01),
                 xaxis=dict(title='Jumlah Item PO', gridcolor='rgba(128,128,128,0.15)'), 
                 yaxis=dict(title=''),
@@ -965,7 +963,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
     else:
         st.info("Tidak ada data untuk filter yang dipilih.")
 
-    # ── ROW 5: Efisiensi Nilai (OE vs PO) ───────────────────────────────────
+    # == ROW 5: Efisiensi Nilai (OE vs PO) ===================================
     st.markdown("---")
 
     title_col, btn_col = st.columns([19, 1])
@@ -1029,7 +1027,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             fig_eff.update_layout(
                 barmode='group',
                 height=max(250, len(eff) * 48),
-                margin=dict(t=10, b=10, l=10, r=60), 
+                margin=dict(t=20, b=20, l=20, r=60), 
                 legend=dict(orientation='h', yanchor='bottom', y=1.01),
                 xaxis=dict(title='Total Nilai (IDR)', gridcolor='rgba(128,128,128,0.15)'), 
                 yaxis=dict(title=''),
@@ -1043,6 +1041,8 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             st.info("Tidak ada data untuk filter yang dipilih.")
     else:
         st.info("Tidak ada data untuk filter yang dipilih.")
+    
+    st.markdown("---")
 
     # =====================================================================
     # INTEGRASI AI: PANGGIL MELATI DENGAN KONTEKS GLOBAL
@@ -1084,8 +1084,9 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
 
     konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)
 
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Dashboard SIPS",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Dashboard SIPS",
+            load_data_fn=load_data,
+        )

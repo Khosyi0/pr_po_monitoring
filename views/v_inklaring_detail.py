@@ -7,11 +7,16 @@ from datetime import datetime
 from utils import render_chat_analyst
 
 def render(load_data, date_from=None, date_to=None, **kwargs):
-    # ── DATA TABLE ───────────────────────────────────
+    # == DATA TABLE ===================================
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:60px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor" class="bi bi-box-seam-fill" viewBox="0 0 16 16" style="margin-bottom: 10px; margin-right: 8px;">
-                <path fill-rule="evenodd" d="M15.528 2.973a.75.75 0 0 1 .472.696v8.662a.75.75 0 0 1-.472.696l-7.25 2.9a.75.75 0 0 1-.556 0l-7.25-2.9A.75.75 0 0 1 0 12.331V3.669a.75.75 0 0 1 .471-.696L7.443.184l.01-.003.268-.108a.75.75 0 0 1 .558 0l.269.108.01.003 6.97 2.789ZM10.404 2 4.25 4.461 1.846 3.5 8 1.039zM8 7.993c1.664-1.711 5.825-1.283 0 5.132-5.825-6.415-1.664-6.843 0-5.132"/>
+            <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" fill="currentColor"
+                 viewBox="0 0 16 16" style="margin-bottom:10px; margin-right:8px;">
+                <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0
+                         2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0M9.5
+                         3.5v-2l3 3h-2a1 1 0 0 1-1-1M4.5 9a.5.5 0 0 1 0-1h7a.5.5 0
+                         0 1 0 1zM4 10.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5
+                         0 0 1-.5-.5m.5 2.5a.5.5 0 0 1 0-1h4a.5.5 0 0 1 0 1z"/>
             </svg>
             Detailed Inklaring Data
         </h1>
@@ -71,6 +76,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             # Handle Null values untuk display UI
             table_data['sap'] = table_data['sap'].fillna('-')
             table_data['no_aju'] = table_data['no_aju'].fillna('-')
+            
+            table_data.index = table_data.index + 1
 
             # Formatting Angka / Uang (Bea Masuk, PPN, PPH, Kurs)
             for col in ['bea_masuk_rp', 'ppn_rp', 'pph_rp', 'kurs']:
@@ -93,7 +100,30 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 table_data_display = table_data
 
             st.caption(count_label)
-            st.dataframe(table_data_display, use_container_width=True, height=400)
+            st.dataframe(
+                table_data_display.rename(columns={
+                    'tgl_pib': 'Tgl PIB',
+                    'aju_pib': 'AJU PIB',
+                    'no_aju': 'No AJU',
+                    'sap': 'SAP',
+                    'nama_kapal': 'Nama Kapal',
+                    'tgl_eta': 'Tgl ETA',
+                    'quantity_mt': 'Quantity (MT)',
+                    'komoditi': 'Komoditi',
+                    'pemasok': 'Pemasok',
+                    'asal_negara': 'Asal Negara',
+                    'bea_masuk_rp': 'Bea Masuk (Rp)',
+                    'ppn_rp': 'PPN (Rp)',
+                    'pph_rp': 'PPH (Rp)',
+                    'kurs': 'Kurs (Rp)',
+                    'start_bongkar': 'Start Bongkar',
+                    'selesai_bongkar': 'Selesai Bongkar',
+                    'ppjk': 'PPJK',
+                    'status': 'Status',
+                    'tgl_sppb': 'Tgl SPPB'
+                }),
+                use_container_width=True, height=400
+            )
             
             # Tombol Download CSV
             csv = table_data.to_csv(index=False)
@@ -108,6 +138,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             st.info("Tidak ada data yang cocok dengan pencarian.")
     else:
         st.info("Tidak ada data inklaring yang ditemukan pada rentang tanggal ini.")
+
+    st.markdown("---")
 
     # =====================================================================
     # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
@@ -151,8 +183,9 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Detailed Inklaring Impor)\n" + "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Detailed Inklaring Impor",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Detailed Inklaring Impor",
+            load_data_fn=load_data,
+        )

@@ -1122,6 +1122,8 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
         else:
             st.success("Tidak ada PO outstanding dalam filter yang dipilih.")
 
+        st.markdown("---")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -1208,8 +1210,9 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
 
 
         # Render chat di bawah halaman Alert SAP
-        render_chat_analyst(
-            konteks_data_teks=konteks_final,
-            nama_halaman="Halaman Alert (Warning & Action Required - SAP)",
-            load_data_fn=load_data,
-        )
+        with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+            render_chat_analyst(
+                konteks_data_teks=konteks_final,
+                nama_halaman="Halaman Alert (Warning & Action Required - SAP)",
+                load_data_fn=load_data,
+            )

@@ -128,6 +128,8 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         else:
             st.info("Tidak ada data yang cocok dengan filter yang dipilih.")
 
+        st.markdown("---")
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -171,8 +173,9 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Detailed PR-PO Data)\n" + "\n".join(konteks_lines)
         konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-        render_chat_analyst(
-            konteks_data_teks=konteks_final,
-            nama_halaman="Detailed PR-PO Data",
-            load_data_fn=load_data,
-        )
+        with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+            render_chat_analyst(
+                konteks_data_teks=konteks_final,
+                nama_halaman="Detailed PR-PO Data",
+                load_data_fn=load_data,
+            )

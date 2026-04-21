@@ -358,7 +358,7 @@ def sync_master_data(df_pr, df_po, engine):
 def sync_purchase_requisitions(df_pr, engine):
     pr_headers = df_pr.groupby('No PR').first().reset_index()
 
-    # ── HAPUS DATA LAMA YANG SUDAH TIDAK ADA DI FILE TERBARU ─────────────────
+    # == HAPUS DATA LAMA YANG SUDAH TIDAK ADA DI FILE TERBARU =================
     # File Excel bersifat akumulatif & definitif: jika suatu No PR + Line Item PR
     # sudah tidak ada di file (misal karena dibatalkan / dihapus di SAP),
     # maka baris tersebut harus dihapus dari DB agar tidak menggembungkan hitungan.
@@ -529,7 +529,7 @@ def sync_purchase_orders(df_po, engine):
     # Ambil data header dari baris pertama per PO untuk kolom statis
     po_headers = df_po.groupby('Nomor PO').first().reset_index()
 
-    # ── HAPUS DATA LAMA YANG SUDAH TIDAK ADA DI FILE TERBARU ─────────────────
+    # == HAPUS DATA LAMA YANG SUDAH TIDAK ADA DI FILE TERBARU =================
     # File Excel PO bersifat akumulatif & definitif. PO/item yang sudah tidak
     # ada (dibatalkan, dihapus, atau difilter karena Created By tidak dikenal)
     # harus dihapus dari DB agar hitungan Total PO tidak menggelembung.

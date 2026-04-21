@@ -24,9 +24,9 @@ from sqlalchemy import text
 import base64
 import os
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # HELPERS DB
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _get_engine():
     """Ambil engine dari config_db (sudah cached)."""
@@ -103,9 +103,9 @@ def _update_last_login(user_id: int):
         pass
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # ICON HELPER
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _load_icon_b64(path: str) -> str | None:
     try:
@@ -118,9 +118,9 @@ _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # HALAMAN LOGIN
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def render_login() -> bool:
     """
@@ -136,7 +136,7 @@ def render_login() -> bool:
     if st.session_state.authenticated and st.session_state.current_user:
         return True
 
-    # ── CSS halaman login ─────────────────────────────────────────────────────
+    # == CSS halaman login =====================================================
     st.markdown("""
         <style>
             [data-testid="stSidebar"], 
@@ -183,7 +183,7 @@ def render_login() -> bool:
         </style>
     """, unsafe_allow_html=True)
 
-    # ── Layout terpusat ───────────────────────────────────────────────────────
+    # == Layout terpusat =======================================================
     _, col_m, _ = st.columns([1, 1.6, 1])
     with col_m:
         # Logo / icon
@@ -210,7 +210,7 @@ def render_login() -> bool:
         # Cek status loading
         _is_loading = st.session_state.get("_login_loading", False)
 
-        # ── Form Login (Dinamis: Normal vs Loading) ───────────────────────────
+        # == Form Login (Dinamis: Normal vs Loading) ===========================
         with st.form("login_form", clear_on_submit=False):
             
             # Jika loading, tampilkan animasi di bagian paling atas form
@@ -259,7 +259,7 @@ def render_login() -> bool:
                 "Masuk", use_container_width=True, type="primary", disabled=_is_loading
             )
 
-        # ── Proses Verifikasi (Berjalan saat _is_loading True) ────────────────
+        # == Proses Verifikasi (Berjalan saat _is_loading True) ================
         if _is_loading:
             _ensure_table()
             _user = _verify_password(st.session_state["_login_username"], st.session_state["_login_password"])
@@ -277,11 +277,11 @@ def render_login() -> bool:
             # Rerun untuk masuk dashboard atau menampilkan error
             st.rerun()
 
-        # ── Tampilkan error jika ada (setelah loading selesai) ────────────────
+        # == Tampilkan error jika ada (setelah loading selesai) ================
         if st.session_state.get("_login_error") and not _is_loading:
             st.error(st.session_state.pop("_login_error"))
 
-        # ── Proses saat tombol ditekan (Set Loading = True) ───────────────────
+        # == Proses saat tombol ditekan (Set Loading = True) ===================
         if submitted and not _is_loading:
             if not username_input.strip() or not password_input:
                 st.error("Username dan password tidak boleh kosong.")
@@ -300,9 +300,9 @@ def render_login() -> bool:
 
     return False
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # HELPERS YANG DIPAKAI DI SELURUH APP
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def get_current_user() -> dict | None:
     """Kembalikan dict user yang sedang login, atau None."""

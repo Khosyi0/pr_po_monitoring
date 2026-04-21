@@ -10,12 +10,42 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
  
+SIPS_ALERT_CSS = """
+<style>
+/* Styling untuk Chart Plotly agar dibungkus kotak seperti di halaman lain */
+div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    overflow: hidden !important;
+}
+
+/* Posisi tombol popover (Lihat Formula) di sebelah judul */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
+</style>
+"""
+
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
+
+    st.markdown(SIPS_ALERT_CSS, unsafe_allow_html=True)
  
     info_filter     = kwargs.get('info_filter', 'Tidak ada filter spesifik')
     selected_pgroup = kwargs.get('selected_pgroup', ['All'])
  
-    # ── Header ────────────────────────────────────────────────────────────────
+    # == Header ================================================================
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:55px; margin-bottom: 0px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="45" height="45" fill="currentColor"
@@ -36,7 +66,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
     st.markdown("<br>", unsafe_allow_html=True)
  
-    # ── WHERE clause dasar (tanpa filter status agar bisa ambil semua status) ─
+    # == WHERE clause dasar (tanpa filter status agar bisa ambil semua status) =
     where_all = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
@@ -84,6 +114,8 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
 - Filter nilai > 30
         """)
 
+    st.caption("Menampilkan PR SIPS berstatus selain 'Closed' dan 'Proses PO' yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
+
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     alert_pr_query = f"""
@@ -115,6 +147,8 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         alert_pr_data['oe_pr'] = alert_pr_data['oe_pr'].apply(
             lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
         )
+        
+        alert_pr_data.index = alert_pr_data.index + 1
 
         st.caption(f"Ditemukan **{len(alert_pr_data):,}** PR pending > 30 hari.")
         st.dataframe(
@@ -342,8 +376,6 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
 - Hitung jumlah baris dan jumlahkan kolom **OE PR**
         """)
 
-    st.caption("Menampilkan PR SIPS berstatus selain 'Closed' dan 'Proses PO' yang belum diproses menjadi PO lebih dari 30 hari sejak tanggal disposisi buyer.")
-
     st.caption("Distribusi jumlah PR dan total OE berdasarkan status dokumen SIPS.")
 
     status_dist_query = f"""
@@ -464,6 +496,8 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     else:
         st.info("Tidak ada data status PR SIPS untuk filter yang dipilih.")
 
+    st.markdown("---")
+
     # =====================================================================
     # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
     # =====================================================================
@@ -507,8 +541,9 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert SIPS)\n" + "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Halaman Alert SIPS (Warning & Action Required)",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Halaman Alert SIPS (Warning & Action Required)",
+            load_data_fn=load_data,
+        )

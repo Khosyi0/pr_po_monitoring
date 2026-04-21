@@ -11,23 +11,86 @@ from datetime import datetime
 from utils import format_number, render_chat_analyst, build_sips_where
 
 LAYOUT = dict(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-              font_color="gray", margin=dict(t=16, b=16, l=10, r=10), separators=",.")
+              font_color="gray", margin=dict(t=40, b=40, l=20, r=20), separators=",.")
 GRID   = dict(gridcolor="rgba(128,128,128,0.15)")
 
 KPI_CSS = """
 <style>
-.wt-card{display:flex;align-items:center;background:var(--secondary-background-color);
-  border-radius:10px;padding:16px 14px;gap:14px;height:100%;}
-.wt-icon{display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.wt-body{flex:1;min-width:0;}
-.wt-lbl{font-size:12.5px;opacity:.65;margin:0 0 4px 0;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.wt-val{font-size:2rem!important;font-weight:600!important;margin:0!important;
-  padding:0!important;line-height:1.1!important;display:block!important;}
-.dt-n{font-size:12px;opacity:.55;margin:0;}
-.dt-g{font-size:12px;color:#09ab3b;margin:0;}
-.dt-o{font-size:12px;color:#f0a500;margin:0;}
-.dt-r{font-size:12px;color:#e03c3c;margin:0;}
+/* Copied from v_dashboard.py for consistency */
+.dash-card, div[data-testid="stPlotlyChart"] {
+    border-radius: 12px !important;
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
+.dash-card {
+    border-left-width: 6px !important;
+    border-left-style: solid !important;
+    border-left-color: var(--text-color) !important;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 120px !important;
+    height: 100%;
+    padding: 20px 18px 16px 18px;
+}
+
+div[data-testid="stPlotlyChart"] {
+    overflow: hidden !important;
+}
+
+.dash-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: rgba(128, 128, 128, 0.1) !important;
+    color: var(--text-color) !important;
+}
+
+.dash-body { flex: 1; min-width: 0; }
+
+.dash-label {
+    font-size: 12.5px;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--text-color) !important;
+    opacity: 0.75;
+}
+
+.dash-value {
+    font-size: 2rem !important;
+    font-weight: 600 !important;
+    margin: 0 0 4px 0 !important;
+    padding: 0 !important;
+    line-height: 1.1 !important;
+    display: block !important;
+}
+
+.dash-delta { font-size: 12px; margin: 0; color: var(--text-color) !important; opacity: 0.6; }
+.dash-delta-green { font-size: 12px; color: #09ab3b !important; margin: 0; font-weight: 600; }
+.dash-delta-red   { font-size: 12px; color: #e03c3c !important; margin: 0; font-weight: 600; }
+.dash-delta-orange{ font-size: 12px; color: #f0a500 !important; margin: 0; font-weight: 600; }
+
+/* Posisi tombol popover di dalam kartu KPI */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
 </style>"""
 
 ICONS = {
@@ -39,17 +102,24 @@ ICONS = {
     "route":  "M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0M4.5 7.5a.5.5 0 0 0 0 1h5.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L10.293 7.5z",
 }
 
-def svg(name, size=42):
+def svg(name, size=36):
     p = ICONS.get(name, ICONS["clock"])
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
             f'fill="currentColor" viewBox="0 0 16 16"><path d="{p}"/></svg>')
 
 def kpi_card(icon, label, value, delta="", dc="n"):
-    cls = {"n":"dt-n","g":"dt-g","o":"dt-o","r":"dt-r"}.get(dc,"dt-n")
-    d = f'<p class="{cls}">{delta}</p>' if delta else ""
-    return (f'<div class="wt-card"><div class="wt-icon">{svg(icon)}</div>'
-            f'<div class="wt-body"><p class="wt-lbl">{label}</p>'
-            f'<p class="wt-val">{value}</p>{d}</div></div>')
+    dc_map = {"n": "neutral", "g": "green", "o": "orange", "r": "red"}
+    delta_type = dc_map.get(dc, "neutral")
+    delta_class = {
+        "green":  "dash-delta-green",
+        "red":    "dash-delta-red",
+        "orange": "dash-delta-orange",
+    }.get(delta_type, "dash-delta")
+    
+    d_html = f'<p class="{delta_class}">{delta}</p>' if delta else ""
+    return (f'<div class="dash-card"><div class="dash-icon">{svg(icon, 36)}</div>'
+            f'<div class="dash-body"><p class="dash-label">{label}</p>'
+            f'<p class="dash-value">{value}</p>{d_html}</div></div>')
 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
@@ -68,7 +138,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     </h1>""", unsafe_allow_html=True)
     st.markdown("---")
 
-    # ── WHERE clause ─────────────────────────────────────────────────────────
+    # == WHERE clause =========================================================
     where = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
@@ -78,7 +148,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     kpi_q = f"""
     SELECT
-        ROUND(AVG(pr_po_days)::numeric,2)                               AS avg_pr_po,
+        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         ROUND(AVG(realisasi_sla)::numeric,2)                           AS avg_real,
         ROUND(AVG(standar_sla)::numeric,2)                             AS avg_std,
         ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric,2)  AS avg_pra,
@@ -146,24 +216,20 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         </h1>
     """, unsafe_allow_html=True)
 
-    # ── Baris 1: Rata-rata PR-PO | Rata-rata Realisasi SLA | Waktu Pra-Disposisi ──
+    # == Baris 1: Rata-rata PR-PO | Rata-rata Realisasi SLA | Waktu Pra-Disposisi ==
     col1, col2, col3 = st.columns(3)
     with col1:
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("clock", "Rata-rata PR-PO",
-                                 f"{format_number(avg_pr_po, decimals=2)} hari",
-                                 "Proses Po dan Closed", "n"),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
-**Rata-rata Proses Po dan Closed dari PR-PO**: Rata-rata jumlah hari PR-PO dengan **Status** `Proses PO` dan `Closed` dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan.
+        st.markdown(kpi_card("clock", "Rata-rata PR-PO",
+                             f"{format_number(avg_pr_po, decimals=2)} hari",
+                             "Closed", "n"),
+                    unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
+**Rata-rata PR-PO**: Rata-rata jumlah hari PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan, khusus untuk dokumen yang sudah selesai/ditutup.
 
 **Formula Excel:**
 - Filter nama karyawan yang ingin dicari
-- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Filter **Status** menjadi `Closed`
 - Hitung rata-rata **PR-PO**
 
 **Nilai saat ini:** {format_number(avg_pr_po, decimals=2)} hari
@@ -173,16 +239,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     with col2:
         dc = "g" if avg_real <= avg_std else "r"
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("check", "Rata-rata Realisasi SLA",
-                                 f"{format_number(avg_real, decimals=2)} hari",
-                                 f"Disposisi ke PO hari kerja | Standar rata-rata {format_number(avg_std)}H", dc),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
+        st.markdown(kpi_card("check", "Rata-rata Realisasi SLA",
+                             f"{format_number(avg_real, decimals=2)} hari",
+                             f"Disposisi ke PO hari kerja | Standar rata-rata {format_number(avg_std)}H", dc),
+                    unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
 **Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
 
 **Formula Excel:**
@@ -201,16 +263,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 """)
 
     with col3:
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("split", "Waktu Pra-Disposisi",
-                                 f"{format_number(avg_pra, decimals=2)} hari",
-                                 "Req Date ke Disposisi (routing / approval)", "n"),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
+        st.markdown(kpi_card("split", "Waktu Pra-Disposisi",
+                             f"{format_number(avg_pra, decimals=2)} hari",
+                             "Req Date ke Disposisi (routing / approval)", "n"),
+                    unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
 **Waktu Pra-Disposisi**: Rata-rata waktu dari PR dibuat (Requisition Date) hingga PR diterima buyer (Tanggal Disposisi Buyer).
 
 Ini adalah waktu **di luar kendali tim pengadaan**.
@@ -227,20 +285,16 @@ Ini adalah waktu **di luar kendali tim pengadaan**.
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ── Baris 2: Rata-rata End-to-End | SLA Headroom | % On Time SLA ──
+    # == Baris 2: Rata-rata End-to-End | SLA Headroom | % On Time SLA ==
     col4, col5, col6 = st.columns(3)
 
     with col4:
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("route", "Rata-rata End-to-End",
-                                 f"{format_number(avg_e2e, decimals=2)} hari",
-                                 "Req Date ke Tgl PO (total keseluruhan)", "n"),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
+        st.markdown(kpi_card("route", "Rata-rata End-to-End",
+                             f"{format_number(avg_e2e, decimals=2)} hari",
+                             "Req Date ke Tgl PO (total keseluruhan)", "n"),
+                    unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
 **Rata-rata End-to-End**: Total waktu dari PR pertama kali dibuat (Requisition Date) hingga PO terbit (Tanggal PO), mencakup semua tahapan proses.
 
 Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
@@ -257,16 +311,12 @@ Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
 
     with col5:
         dc = "g" if avg_headroom >= 0 else "r"
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("target", "Rata-rata SLA Headroom",
-                                 f"{format_number(avg_headroom, decimals=2)} hari",
-                                 "Standard SLA minus Realisasi SLA (sisa waktu)", dc),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
+        st.markdown(kpi_card("target", "Rata-rata SLA Headroom",
+                             f"{format_number(avg_headroom, decimals=2)} hari",
+                             "Standard SLA minus Realisasi SLA (sisa waktu)", dc),
+                    unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
 **Rata-rata SLA Headroom**: Sisa waktu rata-rata antara target SLA dengan waktu realisasi aktual.
 
 **Formula:**
@@ -294,16 +344,16 @@ SLA Headroom = Standard SLA - Realisasi SLA
 
     with col6:
         dc = "g" if pct_ontime >= 90 else ("o" if pct_ontime >= 75 else "r")
-        c_card, c_btn = st.columns([10, 2])
-        with c_card:
-            st.markdown(kpi_card("check", "% On Time SLA",
-                                 f"{format_number(pct_ontime, decimals=2)}%",
-                                 f"Realisasi SLA <= Standard SLA | Miss: {format_number(cnt_miss)}", dc),
-                        unsafe_allow_html=True)
-        with c_btn:
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""\
+        
+        # Langsung tampilkan card tanpa st.columns tambahan
+        st.markdown(kpi_card("check", "% On Time SLA",
+                             f"{format_number(pct_ontime, decimals=2)}%",
+                             f"Realisasi SLA <= Standard SLA | Miss: {format_number(cnt_miss)}", dc),
+                    unsafe_allow_html=True)
+        
+        # Langsung panggil popover di bawahnya
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""\
 **% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
 
 **Formula Excel:**
@@ -864,7 +914,7 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
             otobos["avg_headroom"] = otobos["avg_headroom"].round(1)
             otobos = otobos.sort_values(["nama", "jenis_kontrak"]).reset_index(drop=True)
 
-            # ── HTML Table dengan warna on-time ──────────────────────────────────
+            # == HTML Table dengan warna on-time ==================================
             BD = "border-bottom:1px solid rgba(128,128,128,0.2)"
             P  = f"padding:8px 10px;{BD};font-size:13px;"
             TH = "padding:8px 10px;font-size:13px;font-weight:600;"
@@ -946,6 +996,8 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
+    st.markdown("---")
+
     # =====================================================================
     # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
     # =====================================================================
@@ -1011,8 +1063,9 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
     # Panggil komponen chat
-    render_chat_analyst(
-        konteks_data_teks=konteks_final,
-        nama_halaman="Analisis Waktu Proses SIPS",
-        load_data_fn=load_data,
-    )
+    with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
+        render_chat_analyst(
+            konteks_data_teks=konteks_final,
+            nama_halaman="Analisis Waktu Proses SIPS",
+            load_data_fn=load_data,
+        )

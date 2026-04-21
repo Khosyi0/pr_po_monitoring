@@ -13,9 +13,9 @@ import streamlit as st
 from datetime import datetime, timedelta
 from utils import format_idr, format_number
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FINGERPRINT FILTER: untuk mendeteksi perubahan filter
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _fingerprint_sap(date_from, date_to, selected_department,
                      exclude_dept, selected_p_group,
@@ -27,9 +27,9 @@ def _fingerprint_sap(date_from, date_to, selected_department,
 def _fingerprint_sips(date_from, date_to, selected_nama, selected_bagian) -> str:
     return f"{date_from}|{date_to}|{sorted(selected_nama)}|{sorted(selected_bagian)}"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # QUERY KPI SAP: hanya agregat
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _fetch_sap_context(load_data, filter_conditions,
                        bagian_pr_cond, bagian_po_cond,
@@ -145,9 +145,9 @@ def _fetch_sap_context(load_data, filter_conditions,
     except Exception as e:
         return f"## [SAP] Konteks tidak tersedia\nError: {e}\n"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # QUERY KPI SIPS: hanya agregat
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def _fetch_sips_context(load_data, date_from, date_to,
                         selected_nama, selected_bagian, teks_filter: str) -> str:
@@ -236,9 +236,9 @@ def _fetch_sips_context(load_data, date_from, date_to,
     except Exception as e:
         return f"## [SIPS] Konteks tidak tersedia\nError: {e}\n"
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # FUNGSI UTAMA: dipanggil dari app.py setiap render
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def build_global_context(
     load_data,
@@ -263,17 +263,17 @@ def build_global_context(
     Saat di halaman SIPS : SIPS pakai filter AKTIF, SAP pakai filter DEFAULT
     """
 
-    # ── Hitung fingerprint kondisi saat ini ──────────────────────────────────
+    # == Hitung fingerprint kondisi saat ini ==================================
     fp_sap_active   = filter_conditions + bagian_pr_cond + bagian_po_cond + str(date_from) + str(date_to)
     fp_sips_active  = _fingerprint_sips(sips_date_from, sips_date_to, sips_selected_nama, sips_selected_bagian)
     fp_now = f"{is_sips}|{fp_sap_active}|{fp_sips_active}"
 
-    # ── Jika filter tidak berubah, pakai cache session_state ─────────────────
+    # == Jika filter tidak berubah, pakai cache session_state =================
     if (st.session_state.get("_ctx_fingerprint") == fp_now
             and "global_context" in st.session_state):
         return st.session_state["global_context"]
 
-    # ── Bangun konteks baru ───────────────────────────────────────────────────
+    # == Bangun konteks baru ===================================================
     if is_sips:
         # Halaman SIPS aktif → SIPS pakai filter AKTIF, SAP pakai filter DEFAULT (DIPERBAIKI)
         ctx_sips = _fetch_sips_context(

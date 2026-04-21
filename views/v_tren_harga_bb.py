@@ -29,7 +29,7 @@ def render(**kwargs):
     )
     st.markdown("---")
 
-    # ── Info Placeholder ──────────────────────────────────────────────────────
+    # == Info Placeholder ======================================================
     st.info(
         "🚧 **Halaman ini sedang dalam tahap perencanaan.**\n\n"
         "Halaman ini akan menampilkan grafik tren harga bahan baku secara historis "
@@ -44,7 +44,7 @@ def render(**kwargs):
         "_Sumber data dan format file akan dikonfirmasi lebih lanjut bersama tim BB._"
     )
 
-    # ── Gambaran Kolom yang Direncanakan ─────────────────────────────────────
+    # == Gambaran Kolom yang Direncanakan =====================================
     st.markdown("### 📋 Rencana Struktur Data")
     st.markdown("""
     | Kolom | Keterangan |
