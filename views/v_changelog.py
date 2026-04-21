@@ -20,6 +20,26 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "16 Apr 2026", "Versi": "v1.8.6", "Perubahan": """
+    - Menambah halaman Manajemen Data untuk admin dengan fitur:
+        - Mengganti Status Pembaruan Data
+        - Download / Backup Data
+        - Upload / Update Data Baru
+        - Reset Data
+    - Menambahkan bagian baru Inklaring Barang Impor:
+        - Dashboard Inklaring
+            - Total PIB
+            - PIB Selesai
+            - Kinerja SLA EPP
+            - Rata-rata Bebas (Hari)
+            - Rata-rata Waiting Time
+            - Rata-rata Waktu Proses Bongkar
+            - Total Biaya
+            - Proporsi Keterangan Jalur
+            - Total Volume Impor per Komoditi
+            - Top 10 PIB dengan Total Biaya Terbesar
+            - Tabel Rincian SLA per Kapal
+        - Detailed Inklaring Data"""},
         {"Tanggal": "9 Apr 2026", "Versi": "v1.8.5", "Perubahan": """
     - Menambah struktur database untuk menampung data user
     - Mengubah tampilan dan sistem login menjadi input user dan password
@@ -290,5 +310,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.5"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.6"])):
             st.markdown(item["Perubahan"])

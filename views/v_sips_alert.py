@@ -128,7 +128,8 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         prioritas,
         tgl_disposisi_buyer,
         oe_pr,
-        (CURRENT_DATE - tgl_disposisi_buyer)::INT       AS umur_hari
+        (CURRENT_DATE - tgl_disposisi_buyer)::INT       AS umur_hari,
+        status
     FROM vw_sips
     WHERE {where_all}
       AND status NOT IN ('Closed', 'Proses PO')
@@ -162,6 +163,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
                 'tgl_disposisi_buyer':'Tgl Disposisi',
                 'oe_pr':              'OE PR (Rp)',
                 'umur_hari':          'Umur (Hari)',
+                'status':             'Status',
             }),
             use_container_width=True,
             height=280,
@@ -511,7 +513,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     if 'alert_pr_data' in locals() and not alert_pr_data.empty:
         konteks_lines.append(f"## 1. ALERT: PR SIPS PENDING > 30 HARI (Total: {len(alert_pr_data)} PR)")
         df_simple = alert_pr_data[['nama', 'no_pr', 'purchasing_group',
-                                    'prioritas', 'tgl_disposisi_buyer', 'umur_hari']].head(20)
+                                    'prioritas', 'tgl_disposisi_buyer', 'umur_hari', 'status']].head(20)
         konteks_lines.append(df_simple.to_csv(index=False))
         konteks_lines.append("")
     else:

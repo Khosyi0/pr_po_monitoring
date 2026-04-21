@@ -5,9 +5,11 @@ Halaman khusus presentasi direksi dengan satu tampilan (Single Page), Filter Bul
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import calendar
 import plotly.graph_objects as go
 from datetime import datetime
+from config_db import get_setting
 from utils import format_idr, format_number, format_idr_short, idr_axis
 
 # =============================================================================
@@ -190,7 +192,14 @@ def render(load_data, **kwargs):
     st.markdown(SUMMARY_CSS, unsafe_allow_html=True)
 
     current_year = datetime.now().year
-    DATA_UPDATE  = datetime(2026, 3, 31).date()
+
+    sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
+    try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
+
+    ink_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
+    try: DATA_UPDATE_INKLARING = datetime.strptime(ink_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
 
     # == Header Utama =========================================================
     st.markdown("""
@@ -234,15 +243,17 @@ def render(load_data, **kwargs):
         last_day = calendar.monthrange(current_year, month_idx)[1]
         date_from = datetime(current_year, month_idx, 1).date()
         date_to = datetime(current_year, month_idx, last_day).date()
+        date_to_ink = date_to
     else:
         date_from = kwargs.get('date_from', datetime(current_year, 1, 1).date())
-        date_to   = kwargs.get('date_to', DATA_UPDATE)
+        date_to   = kwargs.get('date_to', DATA_UPDATE_SAP)
+        date_to_ink = DATA_UPDATE_INKLARING
 
     # Info Teks Periode
     st.markdown(
         f"<p style='font-size:16px; margin-top:6px;'>"
         f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b> "
-        f"&nbsp;|&nbsp; Data per {DATA_UPDATE.strftime('%d %B %Y')} "
+        f"&nbsp;|&nbsp; Data per {DATA_UPDATE_SAP.strftime('%d %B %Y')} "
         f"&nbsp;|&nbsp; Dicetak: {datetime.now().strftime('%d %B %Y %H:%M')}</p>",
         unsafe_allow_html=True
     )
@@ -358,12 +369,29 @@ def render(load_data, **kwargs):
     ORDER BY month
     """
 
+    inklaring_query = f"""
+    SELECT tgl_sppb, selesai_bongkar, spjm, komoditi
+    FROM inklaring_impor
+    WHERE tgl_eta >= '{date_from}' AND tgl_eta <= '{date_to_ink}'
+    """
+
+    sips_otobos_query = f"""
+    SELECT
+        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
+        COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
+        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
+    FROM vw_sips
+    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    """
+
     with st.spinner("Memuat data laporan..."):
         try:
             pr_kpi = load_data(pr_kpi_query)
             po_kpi = load_data(po_kpi_query)
             trend_data = load_data(trend_query)
             val_trend_data = load_data(value_trend_query)
+            ink_data = load_data(inklaring_query)
+            sips_otobos_data = load_data(sips_otobos_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -429,9 +457,43 @@ def render(load_data, **kwargs):
     perf_pengiriman = pct_kirim > 80
     perf_ketepatan = ketepatan > 90
 
-    # Hardcoded values for row 3 & 4 KPIs
-    sla_pembebasan_pct = 88.89
+    # Perhitungan Kinerja SLA Pembebasan Barang (Inklaring SLA EPP)
+    if not ink_data.empty:
+        ink_data['tgl_sppb'] = pd.to_datetime(ink_data['tgl_sppb'], errors='coerce')
+        ink_data['selesai_bongkar'] = pd.to_datetime(ink_data['selesai_bongkar'], errors='coerce')
+        ink_data['Bebas_Hari'] = (ink_data['tgl_sppb'] - ink_data['selesai_bongkar'].dt.normalize()).dt.days
+        
+        is_hijau_mask = ink_data['spjm'].fillna('').astype(str).str.strip().isin(['', '0', '0.0'])
+        ink_data['Keterangan_Jalur'] = np.where(is_hijau_mask, 'HIJAU', 'MERAH')
+        ink_data['SLA_Target'] = np.where(ink_data['komoditi'] == 'SA', 15, 
+                                    np.where(ink_data['Keterangan_Jalur'] == 'MERAH', 8, 0))
+        ink_data['Score_SLA'] = np.where(
+            ink_data['Bebas_Hari'].isna() | (ink_data['Bebas_Hari'] == 0), 
+            0, 
+            np.where(ink_data['SLA_Target'] >= ink_data['Bebas_Hari'], 1, 0)
+        )
+        total_ink_data = len(ink_data)
+        total_score_1 = (ink_data['Score_SLA'] == 1).sum()
+        sla_pembebasan_pct = (total_score_1 / total_ink_data) * 100 if total_ink_data > 0 else 0.0
+    else:
+        sla_pembebasan_pct = 0.0
+
+    # Hardcoded values for row 4 KPIs
     otobos_val = 99.33
+    # Perhitungan OTOBOS (SIPS)
+    if not sips_otobos_data.empty:
+        s_po = int(sips_otobos_data['total_po'][0] or 0)
+        s_ontime = float(sips_otobos_data['sla_ontime'][0] or 0)
+        s_onbudget = int(sips_otobos_data['on_budget_count'][0] or 0)
+        
+        sla_on_time_pct = (s_ontime / s_po * 100) if s_po > 0 else 0.0
+        sla_on_budget_pct = (s_onbudget / s_po * 100) if s_po > 0 else 0.0
+    else:
+        sla_on_time_pct = 0.0
+        sla_on_budget_pct = 0.0
+        
+    sla_on_spec_pct = 99.30
+    otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
 
     # Dynamic color logic based on targets
     color_pembebasan = "green" if sla_pembebasan_pct >= 80 else "red"
@@ -500,13 +562,13 @@ def render(load_data, **kwargs):
     
     c10, c11, c12, c13 = st.columns(4)
     with c10:
-        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", "99,33%", "Target: > 90%", color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", f"{format_number(otobos_val, decimals=2)}%", "Target: > 90%", color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
     with c11:
-        st.markdown(_card(ICONS["clock"], "SLA - On Time", "98,7%"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["clock"], "SLA - On Time", f"{format_number(sla_on_time_pct, decimals=2)}%"), unsafe_allow_html=True)
     with c12:
-        st.markdown(_card(ICONS["currency"], "SLA - On Budget", "100%"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["currency"], "SLA - On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
     with c13:
-        st.markdown(_card(ICONS["check_all"], "SLA - On Spec", "99,3%"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "SLA - On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%"), unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     
