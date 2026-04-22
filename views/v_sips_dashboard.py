@@ -178,8 +178,20 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             COALESCE(SUM(CASE WHEN status='Proses PO' THEN nilai_item_po END),0)  AS po_proses,
             COALESCE(SUM(CASE WHEN status='Closed'    THEN nilai_item_po END),0)  AS po_closed,
             COUNT(CASE WHEN persen_po_sr_mr<=1.0
-                        AND status IN ('Closed','Proses PO') THEN 1 END)          AS on_budget_count
+                        AND status IN ('Closed','Proses PO') THEN 1 END)          AS on_budget_count,
+            COUNT(CASE WHEN nilai_sla = 0 AND status IN ('Closed','Proses PO') THEN 1 END) AS sla_miss
         FROM vw_sips WHERE {where}
+    """
+
+    # Query untuk breakdown SLA per prioritas
+    sla_prio_query = f"""
+        SELECT
+            prioritas,
+            COUNT(*) AS total_po,
+            COALESCE(SUM(nilai_sla), 0) AS sla_ontime
+        FROM vw_sips
+        WHERE {where} AND status IN ('Closed', 'Proses PO')
+        GROUP BY prioritas
     """
 
     # == Query chart data (satu round-trip) ===================================
@@ -187,14 +199,15 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         SELECT
             nama,
             status,
-            TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM')  AS bulan,
             pr_po_days,
             COALESCE(nilai_sla, 0)                                      AS nilai_sla,
             CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END AS is_po,
             COALESCE(oe_pr, 0)                                          AS oe_pr,
-            COALESCE(nilai_item_po, 0)                                  AS nilai_item_po, 
+            COALESCE(nilai_item_po, 0)                                  AS nilai_item_po,
+            b.bulan,
             outline_agreement
         FROM vw_sips
+        LEFT JOIN LATERAL (SELECT TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan) AS b ON true
         WHERE {where}
     """
 
@@ -202,6 +215,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         try:
             df_kpi   = load_data(kpi_query)
             df_chart = load_data(chart_query)
+            df_sla_prio = load_data(sla_prio_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -223,6 +237,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         po_proses     = float(r['po_proses']    or 0)
         po_closed     = float(r['po_closed']    or 0)
         on_budget_cnt = int(r['on_budget_count']or 0)
+        sla_miss      = int(r['sla_miss']       or 0)
         po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
         pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
         oe_total      = oe_proses + oe_closed
@@ -231,6 +246,27 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         efisiensi_rp  = oe_total - po_total
         pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
 
+        # Proses data SLA per prioritas
+        sla_by_prio = {}
+        sla_details_by_prio = {}
+        if not df_sla_prio.empty and total_po > 0:
+            for _, row in df_sla_prio.iterrows():
+                prio = row['prioritas']
+                ontime_prio = row['sla_ontime']
+                total_po_prio = row['total_po']
+                # (Jumlah on-time per prioritas / Total PO keseluruhan) * 100
+                contribution_pct = (ontime_prio / total_po) * 100
+                sla_by_prio[prio] = contribution_pct
+
+                # Kalkulasi detail untuk delta text
+                pct_memenuhi = (ontime_prio / total_po_prio * 100) if total_po_prio > 0 else 0.0
+                sla_details_by_prio[prio] = {"pct_memenuhi": pct_memenuhi, "item_memenuhi": ontime_prio, "total_item": total_po_prio}
+
+        prio_normal_pct = sla_by_prio.get('Normal', 0.0)
+        prio_ta_pct = sla_by_prio.get('TA', 0.0)
+        prio_investasi_pct = sla_by_prio.get('Investasi', 0.0)
+        prio_urgent_pct = sla_by_prio.get('Urgent', 0.0)
+        prio_emergency_pct = sla_by_prio.get('Emergency', 0.0)
         # == KPI_DASH: definisi 15 KPI dengan formula masing-masing ==============
         KPI_DASH = [
             # == Baris 1: PR / PO / PO-PR =========================================
@@ -329,31 +365,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Hitung nilai **1** pada **Nilai SLA**
-
-    **Target:** -""",
-            },
-            {
-                "key":      "sips_kpi_pct_ontime",
-                "icon":     "award",
-                "label":    "% On Time",
-                "value":    f"{format_number(pct_ontime, decimals=2)}%",
-                "delta":    f"{format_number(int(sla_ontime))} / {format_number(total_po)} PO",
-                "dtype":    "positive" if pct_ontime >= 80 else ("negative" if pct_ontime < 60 else "neutral"),
-                "formula":  f"""\
-    **% On Time**: Persentase PO yang diselesaikan tepat waktu.
-
-    **Kalkulasi:**
-    ```
-    % On Time = SLA On Time / Total PO × 100%
-              = {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
-              = {format_number(pct_ontime)}%
-    ```
-
-    | % | Interpretasi |
-    |---|---|
-    | ≥ 80% | 🟢 Baik |
-    | 60–79% | 🟡 Perlu perhatian |
-    | < 60% | 🔴 Banyak yang terlambat |
 
     **Target:** -""",
             },
@@ -586,6 +597,79 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             render_kpi_row(row_items)
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
+        # == Bagian Baru: Pemenuhan SLA berdasarkan Prioritas =====================
+        title_col, btn_col = st.columns([9, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:24px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>
+                    </svg>
+                    Pemenuhan SLA berdasarkan Prioritas
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""**Pemenuhan SLA berdasarkan Prioritas**: Kontribusi persentase dari PO dengan prioritas tertentu yang on-time terhadap total PO keseluruhan.
+
+**Kalkulasi:**
+`% Kontribusi = (Total PO On Time Prioritas X) / (Total PO Keseluruhan) × 100%`""")
+
+        # Data untuk kartu-kartu
+        sla_prio_cards = [
+            {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"},
+            {"label": "% Kontribusi Normal", "value": prio_normal_pct, "icon": "check-circle", "prio": "Normal"},
+            {"label": "% Kontribusi TA", "value": prio_ta_pct, "icon": "check-circle", "prio": "TA"},
+            {"label": "% Kontribusi Investasi", "value": prio_investasi_pct, "icon": "check-circle", "prio": "Investasi"},
+            {"label": "% Kontribusi Urgent", "value": prio_urgent_pct, "icon": "check-circle", "prio": "Urgent"},
+            {"label": "% Kontribusi Emergency", "value": prio_emergency_pct, "icon": "check-circle", "prio": "Emergency"},
+        ]
+
+        # Render baris kartu
+        for i in range(0, len(sla_prio_cards), 3):
+            cols = st.columns(3)
+            for j, card_data in enumerate(sla_prio_cards[i:i+3]):
+                with cols[j]:
+                    if card_data["label"] == "% On Time SLA":
+                        delta_text = f"{format_number(sla_miss)} Item Tidak Memenuhi"
+                    else:
+                        prio_details = sla_details_by_prio.get(card_data["prio"], {"pct_memenuhi": 0.0, "item_memenuhi": 0, "total_item": 0})
+                        pct_memenuhi = prio_details["pct_memenuhi"]
+                        item_memenuhi = prio_details["item_memenuhi"]
+                        total_item_prio = prio_details["total_item"]
+                        delta_text = f"{format_number(pct_memenuhi, decimals=1)}% | {format_number(int(item_memenuhi))} dari {format_number(int(total_item_prio))} Item"
+                    delta_type = "positive" if card_data["value"] >= 80 else "negative"
+                    
+                    st.markdown(_card(
+                        ICONS[card_data["icon"]], 
+                        card_data["label"], 
+                        f"{format_number(card_data['value'], decimals=2)}%",
+                        delta_text, 
+                        delta_type
+                    ), unsafe_allow_html=True)
+                    
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        if card_data["label"] == "% On Time SLA":
+                            st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
+
+**Kalkulasi:**
+```
+% On Time = SLA On Time / Total PO × 100%
+          = {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
+          = {format_number(pct_ontime, decimals=2)}%
+```""")
+                        else:
+                            st.info(f"""**Kontribusi SLA (Prioritas {card_data['prio']})**: Kontribusi persentase dari PO prioritas '{card_data['prio']}' yang on-time terhadap total PO keseluruhan.
+
+**Kalkulasi:**
+```
+% On Time = (Total PO On Time Prioritas '{card_data['prio']}') / (Total PO Prioritas '{card_data['prio']}') × 100%
+```""")
+            if i == 0:
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+
     # =========================================================================
     # CHARTS
     # =========================================================================
@@ -763,12 +847,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         sla_ok=('nilai_sla', 'sum'))
                     .reset_index())
             if not perf.empty:
-                perf['pct_ontime'] = (perf['sla_ok'] / perf['total_po'] * 100).round(1)
+                perf['pct_ontime'] = (perf['sla_ok'] / perf['total_po'] * 100).round(2)
                 perf = perf.sort_values('pct_ontime', ascending=True)
 
                 fig_ontime = px.bar(
                     perf, y='nama', x='pct_ontime', orientation='h',
-                    text=perf['pct_ontime'].apply(lambda x: f"{format_number(x, decimals=1)}%"),
+                    text=perf['pct_ontime'].apply(lambda x: f"{format_number(x, decimals=2)}%"),
                     color='pct_ontime',
                     color_continuous_scale=[[0, '#e03c3c'], [0.6, '#f0a500'], [1, '#09ab3b']],
                     range_color=[0, 100],
