@@ -3,6 +3,7 @@ v_evaluasi.py - Halaman Evaluasi Harga Barang
 """
 import streamlit as st
 import pandas as pd
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -1279,8 +1280,8 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
                 )
                 st.markdown(tabel_rv_html, unsafe_allow_html=True)
  
-                # Download tabel sebagai CSV
-                csv_rv = ranking_vendor_data.drop(columns=['jml_ontime','jml_delivery_ada']).rename(columns={
+                # Download tabel sebagai XLSX
+                df_to_download = ranking_vendor_data.drop(columns=['jml_ontime','jml_delivery_ada']).rename(columns={
                     'vendor_name':    'Vendor',
                     'jumlah_po':      'Jml PO',
                     'jumlah_material':'Jml Material',
@@ -1288,13 +1289,17 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
                     'pct_vs_oe':      '% vs OE',
                     'avg_lead_time':  'Avg Lead Time (hari)',
                     'pct_ontime':     '% On-Time Delivery',
-                }).to_csv(index=False)
+                })
+                excel_buffer_rv = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_rv, engine='openpyxl') as writer:
+                    df_to_download.to_excel(writer, index=False, sheet_name='Ranking_Vendor')
+                excel_buffer_rv.seek(0)
                 st.download_button(
-                    label="Download sebagai CSV",
+                    label="Download sebagai XLSX",
                     icon=":material/download:",
-                    data=csv_rv,
-                    file_name=f"ranking_vendor_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
+                    data=excel_buffer_rv,
+                    file_name=f"ranking_vendor_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
         else:
             st.info("Tidak ada data vendor untuk filter yang dipilih.")
@@ -1379,13 +1384,19 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
                 }),
                 use_container_width=True, height=400
             )
-            csv_harga = detail_harga_data.to_csv(index=False)
+            # Ubah ke XLSX
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                detail_harga_data.to_excel(writer, index=False, sheet_name='Detail_Harga')
+            excel_buffer.seek(0) # Kembali ke awal buffer
+
             st.download_button(
-                label="Download as CSV",
+                label="Download sebagai XLSX",
                 icon=":material/download:",
-                data=csv_harga,
-                file_name=f"evaluasi_harga_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
+                data=excel_buffer,
+                file_name=f"evaluasi_harga_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
             )
         else:
             st.info("Tidak ada data evaluasi harga untuk filter yang dipilih.")

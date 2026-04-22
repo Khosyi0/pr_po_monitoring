@@ -5,6 +5,7 @@ v_sips_waktu.py - Analisis Waktu Proses SIPS
 
 import streamlit as st
 import pandas as pd
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -978,20 +979,24 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
             )
             st.markdown(tabel_html, unsafe_allow_html=True)
 
-            # Download CSV
-            csv_otobos = otobos.rename(columns={
+            # Download XLSX
+            df_to_download = otobos.rename(columns={
                 "nama": "Nama", "jenis_kontrak": "Jenis Kontrak",
                 "total_po": "Total PO", "on_time": "On Time",
                 "terlambat": "Terlambat", "pct_ontime": "% On Time",
                 "avg_real": "Avg Realisasi SLA (H)", "avg_std": "Avg Standard SLA (H)",
                 "avg_headroom": "Avg Headroom (H)",
-            }).to_csv(index=False)
+            })
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                df_to_download.to_excel(writer, index=False, sheet_name='Resume_OTOBOS')
+            excel_buffer.seek(0)
             st.download_button(
-                label="Download Resume OTOBOS sebagai CSV",
+                label="Download Resume OTOBOS sebagai XLSX",
                 icon=":material/download:",
-                data=csv_otobos,
-                file_name=f"resume_otobos_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
+                data=excel_buffer,
+                file_name=f"resume_otobos_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")

@@ -4,6 +4,8 @@ v_sips_dashboard.py - Dashboard Monitoring SIPS
 
 import streamlit as st
 import pandas as pd
+import io
+from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
 from utils import format_idr, format_idr_short, format_number, format_currency, render_chat_analyst, build_sips_where
@@ -1081,6 +1083,19 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         df_eff_simple = eff_ai[['nama', 'oe', 'po', 'efisiensi_rp', 'efisiensi_pct']].sort_values('efisiensi_rp', ascending=False)
         suplemen_lines.append(df_eff_simple.to_csv(index=False))
         suplemen_lines.append("")
+
+    # Download button untuk semua data chart
+    if not df_chart.empty:
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            df_chart.to_excel(writer, index=False, sheet_name='SIPS_Dashboard_Data')
+        excel_buffer.seek(0) # Kembali ke awal buffer
+        st.download_button(
+            label="Download Semua Data Chart (XLSX)",
+            data=excel_buffer,
+            file_name=f"sips_dashboard_data_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     konteks_final = global_context + "\n---\n" + "\n".join(suplemen_lines)
 

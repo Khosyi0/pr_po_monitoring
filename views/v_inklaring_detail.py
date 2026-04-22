@@ -3,6 +3,7 @@ v_inklaring_detail.py - Halaman Detailed Inklaring Barang Impor Data
 """
 import streamlit as st
 import pandas as pd
+import io
 from datetime import datetime
 from utils import render_chat_analyst
 
@@ -125,14 +126,19 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 use_container_width=True, height=400
             )
             
-            # Tombol Download CSV
-            csv = table_data.to_csv(index=False)
+            # Tombol Download XLSX
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                table_data.to_excel(writer, index=False, sheet_name='Inklaring_Data')
+            excel_buffer.seek(0) # Kembali ke awal buffer
+
             st.download_button(
-                label="Download as CSV",
+                label="Download sebagai XLSX",
                 icon=":material/download:",
-                data=csv,
-                file_name=f"inklaring_data_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
+                data=excel_buffer,
+                file_name=f"inklaring_data_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
             )
         else:
             st.info("Tidak ada data yang cocok dengan pencarian.")

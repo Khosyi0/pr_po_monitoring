@@ -1326,25 +1326,36 @@ Lihat tabel **Ringkasan Kecepatan per Purchasing Group** di bawah untuk identifi
                 st.info("Tidak ada data ringkasan kecepatan.")
 
             # ── Download ──────────────────────────────────────────────────────
+            # Tambahkan import io
+            import io
+
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
-                csv_k = kontrak_data.to_csv(index=False)
+                # Ubah ke XLSX
+                excel_buffer_kontrak = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_kontrak, engine='openpyxl') as writer:
+                    kontrak_data.to_excel(writer, index=False, sheet_name='Breakdown_Kontrak')
+                excel_buffer_kontrak.seek(0) # Kembali ke awal buffer
                 st.download_button(
-                    label="Download Data Kontrak (CSV)",
+                    label="Download Data Kontrak (XLSX)",
                     icon=":material/download:",
-                    data=csv_k,
-                    file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
+                    data=excel_buffer_kontrak,
+                    file_name=f"breakdown_kontrak_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
                 )
             with col_dl2:
                 if not lt_tender_data.empty:
-                    csv_speed = lt_tender_data.to_csv(index=False)
+                    excel_buffer_speed = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer_speed, engine='openpyxl') as writer:
+                        lt_tender_data.to_excel(writer, index=False, sheet_name='Kecepatan_Proses')
+                    excel_buffer_speed.seek(0)
                     st.download_button(
-                        label="Download Ringkasan Kecepatan (CSV)",
+                        label="Download Ringkasan Kecepatan (XLSX)",
                         icon=":material/download:",
-                        data=csv_speed,
-                        file_name=f"kecepatan_proses_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv"
+                        data=excel_buffer_speed,
+                        file_name=f"kecepatan_proses_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
 
     st.markdown("---")

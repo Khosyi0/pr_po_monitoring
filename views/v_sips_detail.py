@@ -4,6 +4,7 @@ v_sips_detail.py - Halaman Detailed SIPS Data
 
 import streamlit as st
 import pandas as pd
+import io
 from datetime import datetime
 from utils import build_sips_where, format_number, render_chat_analyst
 
@@ -163,14 +164,19 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
             st.dataframe(styled_display, use_container_width=True, height=480)
 
-            # == Download CSV ==========================================================
-            csv = df.to_csv(index=False)
+            # == Download XLSX ==========================================================
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='SIPS_Data')
+            excel_buffer.seek(0) # Kembali ke awal buffer
+
             st.download_button(
-                label="Download sebagai CSV",
+                label="Download sebagai XLSX",
                 icon=":material/download:",
-                data=csv,
-                file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
+                data=excel_buffer,
+                file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
             )
         else:
             st.info("Tidak ada data yang cocok dengan pencarian.")

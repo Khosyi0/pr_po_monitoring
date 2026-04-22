@@ -5,6 +5,7 @@ Menampilkan PR SIPS yang pending (belum jadi PO) beserta aging-nya.
  
 import streamlit as st
 import pandas as pd
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -169,13 +170,18 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
             height=280,
         )
 
-        # Download CSV
+        # Download XLSX
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            alert_pr_data.to_excel(writer, index=False, sheet_name='PR_Pending')
+        excel_buffer.seek(0)
+
         st.download_button(
-            label="Download sebagai CSV",
+            label="Download sebagai XLSX",
             icon=":material/download:",
-            data=alert_pr_data.to_csv(index=False),
-            file_name=f"sips_pr_pending_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-            mime="text/csv",
+            data=excel_buffer,
+            file_name=f"sips_pr_pending_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
     else:
         st.success("Kerja bagus! Tidak ada PR SIPS yang pending lebih dari 30 hari.")

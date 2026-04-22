@@ -4,6 +4,7 @@ v_inklaring_dashboard.py - Halaman Dashboard Inklaring Barang Impor
 import streamlit as st
 import pandas as pd
 import numpy as np
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -504,6 +505,18 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     df_sla.columns = ['No AJU', 'Nama Kapal', 'Komoditi', 'Jalur', 'SLA (Target Hari)', 'Bebas (Realisasi Hari)', 'Score SLA', 'Status']
     st.dataframe(df_sla, use_container_width=True)
 
+    # Tombol Download untuk Tabel Rincian SLA per Kapal (XLSX)
+    if not df_sla.empty:
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            df_sla.to_excel(writer, index=False, sheet_name='Rincian_SLA_Kapal')
+        excel_buffer.seek(0) # Kembali ke awal buffer
+        st.download_button(
+            label="Download Rincian SLA per Kapal (XLSX)",
+            data=excel_buffer,
+            file_name=f"inklaring_sla_kapal_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
     st.markdown("---")
 
     # =====================================================================

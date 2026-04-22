@@ -397,7 +397,7 @@ def render(**kwargs):
                             file_name=f"Backup_{jenis_data.replace(' ', '_')}_{start_str}_{end_str}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             icon=":material/download:",
-                            type="primary"
+                            type="primary",
                         )
                 except Exception as e:
                     st.error(f"Terjadi kesalahan saat menyiapkan backup: {e}")

@@ -3,6 +3,7 @@ v_alert.py - Halaman Alert SAP
 """
 import streamlit as st
 import pandas as pd
+import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -673,20 +674,25 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                     height=380,
                 )
 
-                # Download CSV
-                csv_list_po = list_po_data.copy()
-                csv_list_po['tgl_po'] = pd.to_datetime(
-                    csv_list_po['tgl_po'], errors='coerce'
+                # Download XLSX
+                xlsx_list_po = list_po_data.copy()
+                xlsx_list_po['tgl_po'] = pd.to_datetime(
+                    xlsx_list_po['tgl_po'], errors='coerce'
                 ).dt.strftime('%Y-%m-%d')
-                csv_list_po['nilai_item'] = csv_list_po['nilai_item'].apply(
+                xlsx_list_po['nilai_item'] = xlsx_list_po['nilai_item'].apply(
                     lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
                 )
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    xlsx_list_po.to_excel(writer, index=False, sheet_name='List_PO')
+                excel_buffer.seek(0)
+                
                 st.download_button(
-                    label="Download sebagai CSV",
+                    label="Download sebagai XLSX",
                     icon=":material/download:",
-                    data=csv_list_po.to_csv(index=False),
-                    file_name=f"list_po_status_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv",
+                    data=excel_buffer,
+                    file_name=f"list_po_status_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             else:
                 st.info("Tidak ada PO untuk status yang dipilih.")
@@ -1105,19 +1111,25 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
                 height=380,
             )
 
-            # Download CSV
-            csv_outs = outstanding_data.copy()
-            csv_outs['tgl_po']          = pd.to_datetime(csv_outs['tgl_po'], errors='coerce').dt.strftime('%Y-%m-%d')
-            csv_outs['target_delivery'] = pd.to_datetime(csv_outs['target_delivery'], errors='coerce').dt.strftime('%Y-%m-%d')
-            csv_outs['nilai_po']        = csv_outs['nilai_po'].apply(
+            # Download XLSX
+            xlsx_outs = outstanding_data.copy()
+            xlsx_outs['tgl_po']          = pd.to_datetime(xlsx_outs['tgl_po'], errors='coerce').dt.strftime('%Y-%m-%d')
+            xlsx_outs['target_delivery'] = pd.to_datetime(xlsx_outs['target_delivery'], errors='coerce').dt.strftime('%Y-%m-%d')
+            xlsx_outs['nilai_po']        = xlsx_outs['nilai_po'].apply(
                 lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
             )
+            
+            excel_buffer_outs = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer_outs, engine='openpyxl') as writer:
+                xlsx_outs.to_excel(writer, index=False, sheet_name='PO_Outstanding')
+            excel_buffer_outs.seek(0)
+
             st.download_button(
-                label="Download PO Outstanding sebagai CSV",
+                label="Download PO Outstanding sebagai XLSX",
                 icon=":material/download:",
-                data=csv_outs.to_csv(index=False),
-                file_name=f"po_outstanding_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
+                data=excel_buffer_outs,
+                file_name=f"po_outstanding_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
         else:
             st.success("Tidak ada PO outstanding dalam filter yang dipilih.")
