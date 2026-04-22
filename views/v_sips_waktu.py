@@ -144,7 +144,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
         selected_pgroup=selected_pgroup,
-        extra=["nilai_sla IS NOT NULL", "status IN ('Closed','Proses PO')"]
+        extra=["status IN ('Closed','Proses PO')"]
     )
 
     kpi_q = f"""
@@ -371,8 +371,6 @@ SLA Headroom = Standard SLA - Realisasi SLA
 | < 75% | 🔴 Kritis |
 
 **Nilai saat ini:** {format_number(pct_ontime, decimals=2)}% &nbsp;|&nbsp; **Miss:** {format_number(cnt_miss)} PR
-
-**Target:** ≥ 90%
 """)
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -447,20 +445,21 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info("""\
-**Standard SLA per jenis pengadaan:** Bar Chart % On Time dan rata-rata Realisasi SLA per Standard SLA dan jenis kontrak.
+            st.info("""
+**Pemenuhan SLA per Jenis Pengadaan**: Bar Chart % On Time dan rata-rata Realisasi SLA, dikelompokkan berdasarkan **Jenis Kontrak** (Agreement/Non-Agreement) dan **Prioritas** (Normal, Urgent, dll).
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
-- Filter **Nilai SLA** menjadi `1` dan `0`
-- Hitung jumlah **Standard SLA** dengan nilai `12 Hari`, `24 Hari`, `48 Hari`, dan `57 Hari`
+- Buat kolom **Tipe Kontrak**: Jika `kontrak_status` berisi, maka "Agreement", jika tidak "Non-Agreement".
+- Kelompokkan data berdasarkan **Tipe Kontrak** dan **Prioritas**.
+- Hitung **% On Time** (`Nilai SLA = 1` / Total) dan **Rata-rata Realisasi SLA** untuk setiap kelompok.
                 
-| Standard SLA | Jenis | Prioritas |
+| Tipe Kontrak | Prioritas | Standard SLA |
 |---|---|---|
-| 12 Hari | Agreement | Semua |
-| 24 Hari | Non Agreement | Urgent |
-| 48 Hari | Non Agreement | TA / Investasi / Emergency |
-| 57 Hari | Non Agreement | Normal |
+| Agreement | Semua | 12 Hari |
+| Non-Agreement | Emergency | 12 Hari |
+| Non-Agreement | Urgent | 24 Hari |
+| Non-Agreement | TA / Investasi | 48 Hari |
+| Non-Agreement | Normal | 57 Hari |
 
 `Nilai SLA = 1` = Realisasi <= Standard (on-time), `= 0` = miss, `= '-'` = belum PO (dikecualikan).
 
@@ -469,45 +468,76 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
     if df.empty:
             st.info("Tidak ada data untuk filter yang dipilih.")
     else:
-        sla_g = df.groupby("standar_sla").agg(
+        # Buat kolom tipe kontrak (Agreement/Non-Agreement)
+        df['tipe_kontrak'] = df['kontrak_status'].apply(
+            lambda v: "Agreement" if (pd.notna(v) and str(v).strip().lower() not in ("", "nan", "non agreement", "non-agreement"))
+            else "Non-Agreement"
+        )
+
+        # Grouping berdasarkan tipe kontrak dan prioritas
+        sla_g = df.groupby(["tipe_kontrak", "prioritas"]).agg(
             total =("nilai_sla","count"),
             ontime=("nilai_sla", lambda x: (pd.to_numeric(x,errors="coerce")==1).sum()),
             avg_r =("realisasi_sla","mean"),
+            avg_std=("standar_sla", "mean")
         ).reset_index()
 
         if not sla_g.empty:
-            sla_g["pct"]       = (sla_g["ontime"] / sla_g["total"] * 100)
-            sla_g["std_num"]   = sla_g["standar_sla"].astype(float)
-            sla_g["standar_sla"] = sla_g["std_num"].apply(lambda x: f"{int(x)} Hari" if pd.notna(x) else "N/A")
+            sla_g["pct"] = (sla_g["ontime"] / sla_g["total"] * 100)
+            
+            # Urutkan berdasarkan tipe kontrak lalu prioritas
+            prio_order = ["Emergency", "Urgent", "TA", "Investasi", "Normal"]
+            sla_g['_prio_order'] = sla_g['prioritas'].apply(lambda x: prio_order.index(x) if x in prio_order else 99)
+            sla_g = sla_g.sort_values(['tipe_kontrak', '_prio_order'], ascending=[True, True])
 
             col_l, col_r = st.columns(2)
             with col_l:
-                st.caption("% On Time per Standard SLA")
-                f1 = px.bar(sla_g, x="standar_sla", y="pct",
+                st.caption("% On Time per Jenis Pengadaan")
+                f1 = px.bar(sla_g, x="prioritas", y="pct",
                             text=sla_g["pct"].apply(lambda x: f"{x:.1f}%"),
-                            color="pct",
-                            color_continuous_scale=[[0,"#e03c3c"],[0.75,"#f0a500"],[1,"#09ab3b"]],
-                            range_color=[0,100])
-                f1.add_hline(y=90, line_dash="dash", line_color="rgba(128,128,128,0.5)",
-                                annotation_text="Target 90%")
-                f1.update_coloraxes(showscale=False)
-                f1.update_traces(textposition="outside")
+                            color="tipe_kontrak",
+                            barmode="group",
+                            category_orders={"prioritas": prio_order},
+                            color_discrete_map={
+                                "Agreement": "#1f77b4",
+                                "Non-Agreement": "#ff7f0e"
+                            },
+                            labels={"tipe_kontrak": "Tipe Kontrak", "prioritas": "Prioritas Pengadaan"})
+                f1.update_traces(textposition="outside", textangle=0)
                 f1.update_layout(height=300,
-                                    xaxis=dict(title="Standard SLA", **GRID),
-                                    yaxis=dict(title="% On Time", range=[0,115], **GRID), **LAYOUT)
+                                    xaxis=dict(title="Prioritas Pengadaan", tickangle=0, **GRID),
+                                    yaxis=dict(title="% On Time", range=[0,115], **GRID), legend=dict(orientation="h", yanchor="bottom", y=1.02), **LAYOUT)
                 st.plotly_chart(f1, use_container_width=True)
             with col_r:
-                st.caption("Rata-rata Realisasi SLA vs Standard SLA (target)")
+                st.caption("Rata-rata Realisasi vs Standard SLA (target)")
                 f2 = go.Figure()
-                f2.add_bar(x=sla_g["standar_sla"], y=sla_g["avg_r"],
-                            name="Realisasi SLA rata-rata", marker_color="#6c8ebf",
-                            text=sla_g["avg_r"].round(1), textposition="outside")
-                f2.add_scatter(x=sla_g["standar_sla"], y=sla_g["std_num"],
-                                name="Standard SLA (target)", mode="markers",
-                                marker=dict(color="#e03c3c", size=12, symbol="line-ew-open",
-                                            line=dict(width=3, color="#e03c3c")))
-                f2.update_layout(height=300,
-                                    xaxis=dict(title="Jenis SLA", **GRID),
+
+                df_agreement = sla_g[sla_g['tipe_kontrak'] == 'Agreement']
+                df_non_agreement = sla_g[sla_g['tipe_kontrak'] == 'Non-Agreement']
+
+                f2.add_trace(go.Bar(
+                    x=df_agreement['prioritas'], y=df_agreement['avg_r'],
+                    name='Realisasi (Agreement)', marker_color='#1f77b4',
+                    text=df_agreement['avg_r'].round(1), textposition='outside'
+                ))
+                f2.add_trace(go.Bar(
+                    x=df_non_agreement['prioritas'], y=df_non_agreement['avg_r'],
+                    name='Realisasi (Non-Agreement)', marker_color='#ff7f0e',
+                    text=df_non_agreement['avg_r'].round(1), textposition='outside'
+                ))
+                f2.add_trace(go.Scatter(
+                    x=df_agreement['prioritas'], y=df_agreement['avg_std'],
+                    name='Target (Agreement)', mode='markers', showlegend=False,
+                    marker=dict(symbol='line-ew-open', color='#1f77b4', size=15, line=dict(width=3))
+                ))
+                f2.add_trace(go.Scatter(
+                    x=df_non_agreement['prioritas'], y=df_non_agreement['avg_std'],
+                    name='Target (Non-Agreement)', mode='markers', showlegend=False,
+                    marker=dict(symbol='line-ew-open', color='#ff7f0e', size=15, line=dict(width=3))
+                ))
+
+                f2.update_layout(barmode='group', height=300,
+                                    xaxis=dict(title="Prioritas Pengadaan", categoryorder='array', categoryarray=prio_order, **GRID),
                                     yaxis=dict(title="Hari", **GRID),
                                     legend=dict(orientation="h", yanchor="bottom", y=1.01), **LAYOUT)
                 st.plotly_chart(f2, use_container_width=True)
@@ -1033,9 +1063,9 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
 
     # 3. SLA Berdasarkan Jenis Standard SLA
     if 'sla_g' in locals() and not sla_g.empty:
-        konteks_lines.append("## 3. PEMENUHAN SLA BERDASARKAN STANDARD SLA")
-        # Pilih kolom penting
-        df_sla_simple = sla_g[['standar_sla', 'total', 'ontime', 'avg_r', 'pct']]
+        konteks_lines.append("## 3. PEMENUHAN SLA BERDASARKAN JENIS PENGADAAN")
+        # Pilih kolom penting (sesuaikan dengan hasil groupby terbaru)
+        df_sla_simple = sla_g[['tipe_kontrak', 'prioritas', 'total', 'ontime', 'avg_r', 'avg_std', 'pct']]
         konteks_lines.append(df_sla_simple.to_csv(index=False))
         konteks_lines.append("\n")
 
