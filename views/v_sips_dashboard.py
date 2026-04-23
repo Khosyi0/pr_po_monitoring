@@ -56,6 +56,7 @@ div[data-testid="stPlotlyChart"] {
 .dash-label {
     font-size: 12.5px;
     margin: 0 0 6px 0 !important;
+    padding-right: 25px;
     line-height: 1.3;
     font-weight: 500;
     color: var(--text-color) !important;
@@ -616,9 +617,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Kalkulasi:**
 `% Kontribusi = (Total PO On Time Prioritas X) / (Total PO Keseluruhan) × 100%`""")
 
-        # Data untuk kartu-kartu
+        # Data untuk kartu-kartu dipisah agar lebih mudah diatur layout-nya
+        card_overall = {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"}
+        
         sla_prio_cards = [
-            {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"},
             {"label": "% Kontribusi Normal", "value": prio_normal_pct, "icon": "check-circle", "prio": "Normal"},
             {"label": "% Kontribusi TA", "value": prio_ta_pct, "icon": "check-circle", "prio": "TA"},
             {"label": "% Kontribusi Investasi", "value": prio_investasi_pct, "icon": "check-circle", "prio": "Investasi"},
@@ -626,48 +628,89 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             {"label": "% Kontribusi Emergency", "value": prio_emergency_pct, "icon": "check-circle", "prio": "Emergency"},
         ]
 
-        # Render baris kartu
-        for i in range(0, len(sla_prio_cards), 3):
-            cols = st.columns(3)
-            for j, card_data in enumerate(sla_prio_cards[i:i+3]):
-                with cols[j]:
-                    if card_data["label"] == "% On Time SLA":
-                        delta_text = f"{format_number(sla_miss)} Item Tidak Memenuhi"
-                    else:
-                        prio_details = sla_details_by_prio.get(card_data["prio"], {"pct_memenuhi": 0.0, "item_memenuhi": 0, "total_item": 0})
-                        pct_memenuhi = prio_details["pct_memenuhi"]
-                        item_memenuhi = prio_details["item_memenuhi"]
-                        total_item_prio = prio_details["total_item"]
-                        delta_text = f"{format_number(pct_memenuhi, decimals=1)}% | {format_number(int(item_memenuhi))} dari {format_number(int(total_item_prio))} Item"
-                    delta_type = "positive" if card_data["value"] >= 80 else "negative"
-                    
-                    st.markdown(_card(
-                        ICONS[card_data["icon"]], 
-                        card_data["label"], 
-                        f"{format_number(card_data['value'], decimals=2)}%",
-                        delta_text, 
-                        delta_type
-                    ), unsafe_allow_html=True)
-                    
-                    with st.popover(":material/visibility:", help="Lihat Formula"):
-                        if card_data["label"] == "% On Time SLA":
-                            st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
+        # Buat layout kolom utama: Kiri (Besar), Kanan (List Prioritas)
+        col_main_left, col_main_right = st.columns([1, 3], gap="small")
+
+        # ==========================================
+        # 1. KARTU UTAMA DI KIRI (Besar & Memanjang)
+        # ==========================================
+        with col_main_left:
+            # Ubah delta_text di bawah ini
+            delta_text = f"{format_number(sla_miss)} Item dari {format_number(total_po)} Tidak Memenuhi"
+            
+            delta_type = "positive" if card_overall["value"] >= 80 else "negative"
+            delta_class = "dash-delta-green" if delta_type == "positive" else "dash-delta-red"
+            
+            # Memanipulasi CSS agar memanjang (min-height ~256px), flex-col (atas bawah), dan divider di kanan
+            st.markdown(f"""
+            <div style="border-right: 2px solid rgba(128,128,128,0.2); padding-right: 20px; height: 100%;">
+                <div class="dash-card" style="min-height: 256px !important; flex-direction: column; justify-content: center; text-align: center; align-items: center;">
+                    <div class="dash-icon" style="margin-bottom: 16px; width: 64px; height: 64px;">
+                        {_svg(ICONS[card_overall["icon"]], 40)}
+                    </div>
+                    <div class="dash-body">
+                        <p class="dash-label" style="font-size: 14px; margin-bottom: 8px !important;">{card_overall["label"]}</p>
+                        <p class="dash-value" style="font-size: 3rem !important;">{format_number(card_overall['value'], decimals=2)}%</p>
+                        <p class="{delta_class}">{delta_text}</p>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
 
 **Kalkulasi:**
 ```
 % On Time = SLA On Time / Total PO × 100%
-          = {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
-          = {format_number(pct_ontime, decimals=2)}%
+= {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
+= {format_number(pct_ontime, decimals=2)}%
 ```""")
-                        else:
-                            st.info(f"""**Kontribusi SLA (Prioritas {card_data['prio']})**: Kontribusi persentase dari PO prioritas '{card_data['prio']}' yang on-time terhadap total PO keseluruhan.
+                
+        # ==========================================
+        # 2. KARTU PRIORITAS DI KANAN (2 Baris)
+        # ==========================================
+        with col_main_right:
+            # Fungsi bantuan untuk render kartu kecil agar kode tidak berulang
+            def render_small_card(card_data):
+                prio_details = sla_details_by_prio.get(card_data["prio"], {"pct_memenuhi": 0.0, "item_memenuhi": 0, "total_item": 0})
+                pct_memenuhi = prio_details["pct_memenuhi"]
+                item_memenuhi = prio_details["item_memenuhi"]
+                total_item_prio = prio_details["total_item"]
+                
+                c_delta_text = f"{format_number(pct_memenuhi, decimals=1)}% | {format_number(int(item_memenuhi))} dari {format_number(int(total_item_prio))} Item"
+                c_delta_type = "positive" if card_data["value"] >= 80 else "negative"
+                
+                st.markdown(_card(
+                    ICONS[card_data["icon"]], 
+                    card_data["label"], 
+                    f"{format_number(card_data['value'], decimals=2)}%",
+                    c_delta_text, 
+                    c_delta_type
+                ), unsafe_allow_html=True)
+                
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info(f"""**Kontribusi SLA (Prioritas {card_data['prio']})**: Kontribusi persentase dari PO prioritas '{card_data['prio']}' yang on-time terhadap total PO keseluruhan.
 
 **Kalkulasi:**
-```
 % On Time = (Total PO On Time Prioritas '{card_data['prio']}') / (Total PO Prioritas '{card_data['prio']}') × 100%
-```""")
-            if i == 0:
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                    """)
+
+        # --- Baris 1: 3 Kartu (Normal, TA, Investasi) ---
+            r1_cols = st.columns(3)
+            for j in range(3):
+                with r1_cols[j]:
+                    render_small_card(sla_prio_cards[j])
+            
+            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True) # Spacing antar baris
+            
+            # --- Baris 2: 2 Kartu (Urgent, Emergency) ---
+            r2_cols = st.columns(3) # Tetap pakai 3 kolom agar ukurannya konsisten dengan atasnya
+            for j in range(3, 5):
+                with r2_cols[j-3]: # Index 0 dan 1 (kolom kiri dan tengah)
+                    render_small_card(sla_prio_cards[j])
+            
+            # Kolom ke-3 di baris 2 dibiarkan kosong secara otomatis oleh Streamlit
 
 
     # =========================================================================
