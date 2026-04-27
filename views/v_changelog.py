@@ -20,6 +20,20 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "24 Apr 2026", "Versi": "v1.8.7", "Perubahan": """
+    - Update UI pada kotak KPI dan chart di seluruh halaman
+    - Menambahkan halaman Analisis Waktu Proses Inklaring
+        - Bebas Hari per Kapal (Terlama)
+        - Waiting Time per Kapal (Terlama)
+        - Waktu Proses Bongkar per Kapal (Terlama)
+        - Timeline Operasional (Waiting Time & Bongkar)
+    - Mendetilkan informashi KPI Pemenuhan SLA berdasarkan Prioritas
+        - % On Time SLA
+        - % Kontribusi Normal
+        - % Kontribusi TA
+        - % Kontribusi Investasi
+        - % Kontribusi Urgent
+        - % Kontribusi Emergency"""},
         {"Tanggal": "16 Apr 2026", "Versi": "v1.8.6", "Perubahan": """
     - Menambah halaman Manajemen Data untuk admin dengan fitur:
         - Mengganti Status Pembaruan Data
@@ -310,5 +324,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.6"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.7"])):
             st.markdown(item["Perubahan"])

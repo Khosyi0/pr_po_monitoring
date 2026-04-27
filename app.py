@@ -29,7 +29,7 @@ _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data, get_setting
 from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
-from context_builder import build_global_context
+from context_builder import build_global_context, SEARCH_INDEX
 from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
 # Views - Highlight
@@ -92,6 +92,7 @@ def init_state(key, value):
     if key not in st.session_state:
         st.session_state[key] = value
 
+init_state('show_search_dialog',   False)
 init_state('show_changelog',      False)
 init_state('filter_mode',          'sidebar')
 # SAP filters
@@ -144,6 +145,87 @@ div[data-testid="stDialog"] > div > div {
         if st.button("Batal", icon=":material/close:",
                      use_container_width=True, key="dlg_logout_tidak"):
             st.rerun()
+
+# =============================================================================
+# DIALOG PENCARIAN
+# =============================================================================
+@st.dialog("Pencarian Menu & Fitur Dashboard", width="large")
+def dialog_search():
+    query = st.text_input("Cari informasi, metrik, atau fitur...", placeholder="Contoh: Anggaran, Pengelolaan, Vendor...")
+    
+    col_cari, col_tutup = st.columns(2)
+    with col_cari:
+        # Tombol ini sekarang hanya untuk kosmetik/memicu efek enter tambahan
+        st.button("Cari Fitur", use_container_width=True, type="primary")
+    with col_tutup:
+        if st.button("Tutup", use_container_width=True):
+            st.rerun()
+            
+    # PERUBAHAN UTAMA: Hapus 'btn_cari and'
+    # Sekarang, selama kotak pencarian ada isinya, hasil akan selalu ditahan dan ditampilkan
+    if query.strip():
+        query_lower = query.lower()
+        results = []
+        
+        # Algoritma Pencarian
+        for item in SEARCH_INDEX:
+            matched_items = []
+            
+            if "items" in item:
+                for sub_item in item["items"]:
+                    if query_lower in sub_item.lower():
+                        matched_items.append(sub_item)
+            
+            is_match = (
+                len(matched_items) > 0 or
+                any(query_lower in kw for kw in item.get("keywords", [])) or
+                query_lower in item["section"].lower() or
+                query_lower in item["page_title"].lower()
+            )
+            
+            if is_match:
+                res_copy = item.copy()
+                res_copy["matched_items"] = matched_items
+                results.append(res_copy)
+                
+        # Render Hasil Pencarian
+        if results:
+            st.markdown(f"<p style='margin-top: 15px; font-weight: bold; color: #ff4b4b;'>Ditemukan {len(results)} hasil untuk '{query}':</p>", unsafe_allow_html=True)
+            
+            for i, res in enumerate(results):
+                with st.container(border=True):
+                    col_text, col_btn = st.columns([4, 1], vertical_alignment="center")
+                    
+                    with col_text:
+                        st.markdown(f"📄 **Halaman:** `{res['page_title']}`")
+                        st.markdown(f"📌 **Bagian:** {res['section']}")
+                        
+                        if res.get("matched_items"):
+                            matched_str = ", ".join([f"*{m}*" for m in res["matched_items"]])
+                            st.markdown(f"🔎 **Terkait:** {matched_str}")
+                            
+                        st.caption(f"💡 {res['description']}")
+                        
+                    with col_btn:
+                        # Karena tidak lagi di dalam logika btn_cari, klik tombol ini akan tereksekusi dengan sempurna!
+                        if st.button("Buka", key=f"btn_jump_{i}", use_container_width=True):
+                            st.session_state.scroll_target = res['section']
+                            
+                            target_page_obj = None
+                            for section_name, pages in nav_dict.items():
+                                for p in pages:
+                                    if p.title == res['page_title']:
+                                        target_page_obj = p
+                                        break
+                                if target_page_obj: break
+                            
+                            if target_page_obj:
+                                # Pindah halaman secara langsung
+                                st.switch_page(target_page_obj)
+                            else:
+                                st.error("Halaman tidak ditemukan di navigasi.")
+        else:
+            st.info(f"Tidak menemukan menu atau fitur yang berkaitan dengan '{query}'. Coba gunakan kata kunci lain.")
 
 # =============================================================================
 # HALAMAN: render functions
@@ -224,7 +306,22 @@ nav_dict.update({
     ]
 })
 
-pg = st.navigation(nav_dict, position="sidebar")
+# == SIDEBAR HEADER: MAIN MENU + SEARCH =======================================
+with st.sidebar:
+    st.markdown('<div id="custom-sidebar-header"></div>', unsafe_allow_html=True)
+    
+    col_title, col_search = st.columns([3, 1], vertical_alignment="center")
+    with col_title:
+        st.markdown("<h2 style='font-size: 22px; font-weight: bold; margin: 0 0 16px 0; padding: 0;'>☰  Main Menu</h2>", unsafe_allow_html=True)
+    with col_search:
+        if st.button("", icon=":material/search:", use_container_width=True, help="Cari di seluruh dashboard"):
+            dialog_search()
+            
+    st.sidebar.markdown("<hr style='margin:0 0 4px 0; border-color:rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+    st.markdown('<div id="custom-sidebar-header-end"></div>', unsafe_allow_html=True)
+    
+    pg = st.navigation(nav_dict)
+
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES   = {"Executive Summary", "Isu"} 
@@ -268,17 +365,6 @@ else:
 
 st.markdown(f"""
 <style>
-/* == Judul "Main Menu" ================================================= */
-[data-testid="stSidebarNav"]::before {{
-    content: "☰  Main Menu";
-    display: block;
-    font-size: 18px;
-    font-weight: bold;
-    color: var(--text-color);
-    padding: 12px 16px 8px 16px;
-    border-bottom: 1px solid rgba(128,128,128,0.2);
-    margin-bottom: 4px;
-}}
 /* == Section headers → satu baris pill toggle ========================== */
 [data-testid="stSidebarNavSeparator"] {{ display: none; }}
 
@@ -393,8 +479,36 @@ st.components.v1.html("""
             s.p.addEventListener('click', function() { s.a.click(); });
         });
     }
+
+    function reorderSidebar() {
+        var doc = window.parent.document;
+        var nav = doc.querySelector('[data-testid="stSidebarNav"]');
+        var headerEnd = doc.getElementById('custom-sidebar-header-end');
+        
+        if (nav && headerEnd) {
+            // Dapatkan div.element-container yang membungkus marker kita
+            var headerContainer = headerEnd.closest('.element-container');
+            
+            // Jika elemen ditemukan dan navigasi belum dipindahkan ke bawahnya
+            if (headerContainer && nav.previousElementSibling !== headerContainer) {
+                // Pindahkan blok navigasi persis di Bawah headerContainer
+                headerContainer.parentNode.insertBefore(nav, headerContainer.nextSibling);
+            }
+        } else {
+            // Coba lagi jika DOM belum selesai dimuat sepenuhnya
+            setTimeout(reorderSidebar, 200);
+        }
+    }
+
+    // Jalankan kedua fungsi
     setTimeout(makeHeadersClickable, 300);
-    window.addEventListener('load', function() { setTimeout(makeHeadersClickable, 300); });
+    setTimeout(reorderSidebar, 300);
+    
+    // Pastikan tetap berjalan saat halama selesai loading (SPA behavior)
+    window.addEventListener('load', function() { 
+        setTimeout(makeHeadersClickable, 300); 
+        setTimeout(reorderSidebar, 300);
+    });
 })();
 </script>
 """, height=0)
@@ -1110,6 +1224,47 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
 pg.run()
 
 # =============================================================================
+# AUTO-SCROLL KE SECTION HASIL PENCARIAN
+# =============================================================================
+if st.session_state.get('scroll_target'):
+    target_section = st.session_state.scroll_target
+    
+    js_scroll = f"""
+    <script>
+    (function() {{
+        function scrollToTarget() {{
+            var doc = window.parent.document;
+            var headers = Array.from(doc.querySelectorAll('h1, h2, h3'));
+            
+            // Pencarian case-insensitive agar lebih akurat
+            var targetText = "{target_section}".toLowerCase().trim();
+            var targetElement = headers.find(el => el.textContent.toLowerCase().includes(targetText));
+            
+            if (targetElement) {{
+                // Scroll ke elemen
+                targetElement.scrollIntoView({{behavior: 'smooth', block: 'center'}});
+                
+                // Animasi berkedip merah
+                var originalColor = targetElement.style.color;
+                targetElement.style.transition = "color 0.4s ease-in-out";
+                targetElement.style.color = "#ff4b4b"; 
+                
+                setTimeout(function() {{
+                    targetElement.style.color = originalColor; 
+                }}, 2000);
+            }} else {{
+                // Coba lagi jika elemen belum selesai dimuat oleh Streamlit
+                setTimeout(scrollToTarget, 500);
+            }}
+        }}
+        setTimeout(scrollToTarget, 300);
+    }})();
+    </script>
+    """
+    st.components.v1.html(js_scroll, height=0)
+    st.session_state.scroll_target = None
+
+# =============================================================================
 # FOOTER
 # =============================================================================
 
@@ -1123,7 +1278,7 @@ with col_foot1:
     system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP"))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8.6 | "
+        f"Monitoring Dashboard - {system_label} | v1.8.7 | "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         f"</div>",
         unsafe_allow_html=True
