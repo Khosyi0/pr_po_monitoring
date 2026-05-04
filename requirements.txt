@@ -8,4 +8,4 @@ google-genai
 tabulate
 openpyxl
 joblib
-sklearn
+scikit-learn
