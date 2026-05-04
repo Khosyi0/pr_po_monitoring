@@ -369,9 +369,23 @@ def sync_purchase_requisitions(df_pr, engine):
     )
     pr_nos_in_file = set(clean_string(row['No PR']) for _, row in pr_headers.iterrows())
 
+    # -- TAMBAHKAN PEMBATASAN RENTANG TANGGAL DARI FILE EXCEL --
+    min_date = df_pr['Tgl Create PR'].min().strftime('%Y-%m-%d')
+    max_date = df_pr['Tgl Create PR'].max().strftime('%Y-%m-%d')
+
     with engine.connect() as conn:
-        db_pr_items   = pd.read_sql("SELECT pr_item_id, no_pr, line_item_pr FROM pr_items", conn)
-        db_pr_headers = pd.read_sql("SELECT pr_id, no_pr FROM purchase_requisitions", conn)
+        # HANYA tarik data DB yang beririsan dengan tanggal di Excel
+        db_pr_items = pd.read_sql(f"""
+            SELECT pr_item_id, no_pr, line_item_pr 
+            FROM pr_items 
+            WHERE tgl_create_pr >= '{min_date}' AND tgl_create_pr <= '{max_date}'
+        """, conn)
+        
+        db_pr_headers = pd.read_sql(f"""
+            SELECT pr_id, no_pr 
+            FROM purchase_requisitions 
+            WHERE tgl_create_pr >= '{min_date}' AND tgl_create_pr <= '{max_date}'
+        """, conn)
 
     # Items yang ada di DB tapi tidak ada di file → hapus
     obsolete_item_ids = [
@@ -540,9 +554,24 @@ def sync_purchase_orders(df_po, engine):
     )
     po_nos_in_file = set(clean_string(row["Nomor PO"]) for _, row in po_headers.iterrows())
 
+    # -- TAMBAHKAN PEMBATASAN RENTANG TANGGAL DARI FILE EXCEL --
+    min_date = po_headers['Date Ordered'].min().strftime('%Y-%m-%d')
+    max_date = po_headers['Date Ordered'].max().strftime('%Y-%m-%d')
+
     with engine.connect() as conn:
-        db_po_items   = pd.read_sql("SELECT po_item_id, nomor_po, item_po FROM po_items", conn)
-        db_po_headers = pd.read_sql("SELECT po_id, nomor_po FROM purchase_orders", conn)
+        # HANYA tarik data DB yang beririsan dengan tanggal di Excel
+        db_po_items = pd.read_sql(f"""
+            SELECT poi.po_item_id, poi.nomor_po, poi.item_po 
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{min_date}' AND poh.date_ordered <= '{max_date}'
+        """, conn)
+        
+        db_po_headers = pd.read_sql(f"""
+            SELECT po_id, nomor_po 
+            FROM purchase_orders 
+            WHERE date_ordered >= '{min_date}' AND date_ordered <= '{max_date}'
+        """, conn)
 
     # PO Items yang ada di DB tapi tidak ada di file → hapus
     obsolete_po_item_ids = [

@@ -4,6 +4,9 @@ v_alert.py - Halaman Alert SAP
 import streamlit as st
 import pandas as pd
 import io
+import os
+import joblib
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
@@ -85,6 +88,18 @@ ICONS = {
     "kpi_outstanding_pantau": "M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
     "kpi_outstanding_nilai": "M4 10.781c.148 1.667 1.513 2.85 3.591 3.003V15h1.043v-1.216c2.27-.179 3.678-1.438 3.678-3.3 0-1.59-.947-2.51-2.956-3.028l-.722-.187V3.467c1.122.11 1.879.714 2.07 1.616h1.47c-.166-1.6-1.54-2.748-3.54-2.875V1H7.591v1.233c-1.939.23-3.27 1.472-3.27 3.156 0 1.454.966 2.483 2.661 2.917l.61.162v4.031c-1.149-.17-1.94-.8-2.131-1.718zm3.391-3.836c-1.043-.263-1.6-.825-1.6-1.616 0-.944.704-1.641 1.8-1.828v3.495l-.2-.05zm1.591 1.872c1.287.323 1.852.859 1.852 1.769 0 1.097-.826 1.828-2.2 1.939V8.73z",
 }
+
+@st.cache_resource
+def load_ml_keterlambatan():
+    base_dir = os.getcwd() 
+    model_path = os.path.join(base_dir, 'Machine_Learning', 'model_keterlambatan.pkl')
+    encoder_path = os.path.join(base_dir, 'Machine_Learning', 'encoder_keterlambatan.pkl')
+    cols_path = os.path.join(base_dir, 'Machine_Learning', 'fitur_keterlambatan.pkl')
+
+    if not os.path.exists(model_path):
+        return None, None, None
+
+    return joblib.load(model_path), joblib.load(encoder_path), joblib.load(cols_path)
 
 def _svg(path_d: str, size: int = 40) -> str:
     return (
@@ -1136,6 +1151,136 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
 
         st.markdown("---")
 
+        # ══════════════════════════════════════════════════════════════════════
+        # ALERT AI: PREDIKSI MASSAL POTENSI KETERLAMBATAN (BATCH PREDICTION)
+        # ══════════════════════════════════════════════════════════════════════
+        title_col, btn_col = st.columns([10, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:30px; margin-bottom: 0px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor" class="bi bi-robot" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px; color:#f0a500;">
+                        <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H6.5a.5.5 0 0 1-.5-.5M3.1 2.813a1 1 0 0 1 1.4-.41l1.64 1a2 2 0 0 1 3.72 0l1.64-1a1 1 0 0 1 1.4.41L12.1 4H13a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h.9l-1.64-1a1 1 0 0 1-.16-1.4m.48 1.492-1.35.825A.5.5 0 0 0 2 5.5v6a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-6a.5.5 0 0 0-.23-.437l-1.35-.825a.5.5 0 0 0-.52.88l1.1.67V11H3V5.79l1.1-.67a.5.5 0 0 0-.52-.88ZM4.5 7.5a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1m7 0a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1m-4 1.5a.5.5 0 0 0-.5.5v1a.5.5 0 0 0 .5.5h1a.5.5 0 0 0 .5-.5v-1a.5.5 0 0 0-.5-.5h-1Z"/>
+                    </svg>
+                    AI Early Warning: Deteksi Potensi Keterlambatan PO Aktif
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            with st.popover(":material/info:", help="Info AI Model"):
+                st.info("""\
+**AI Early Warning Predictor**
+Sistem Machine Learning (Random Forest) memindai semua PO yang saat ini sedang *IN PROGRESS* dan memprediksi persentase probabilitas PO tersebut akan gagal memenuhi *Delivery Date*.
+
+**Fitur Analisis Utama:**
+- Rekam jejak historis Vendor
+- Kategori Material & Purchasing Group
+- Total nilai dan kuantitas pesanan
+                """)
+
+        st.caption("Model AI menganalisis data PO Outstanding (Belum GR) dan memprioritaskan dokumen dengan risiko keterlambatan tertinggi (>60% probabilitas).")
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+        if not outstanding_data.empty:
+            model_rf, encoder_rf, fitur_rf = load_ml_keterlambatan()
+            
+            if model_rf is not None:
+                with st.spinner("AI sedang memindai seluruh PO aktif..."):
+                    # 1. Siapkan DataFrame untuk prediksi (Harus identik dengan fitur saat training)
+                    # Karena kita butuh incoterm, qty, dll yang mungkin tidak ada di outstanding_data
+                    # Kita query ulang khusus untuk data mentah AI
+                    
+                    po_aktif_list = tuple(outstanding_data['nomor_po'].unique())
+                    if po_aktif_list:
+                        # Jika po_aktif_list cuma 1 item, butuh penanganan khusus string tuple
+                        if len(po_aktif_list) == 1:
+                            po_aktif_cond = f"poh.nomor_po = '{po_aktif_list[0]}'"
+                        else:
+                            po_aktif_cond = f"poh.nomor_po IN {po_aktif_list}"
+
+                        raw_ai_query = f"""
+                        SELECT 
+                            poi.po_item_id, poh.nomor_po, poi.item_po,
+                            v.vendor_name, m.material_group, poh.purchasing_group,
+                            poi.total_amount_local_curr, poi.qty_po, poh.incoterm,
+                            EXTRACT(MONTH FROM poh.date_ordered) AS bulan_po,
+                            poi.del_date_po
+                        FROM po_items poi
+                        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+                        LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+                        LEFT JOIN materials m ON poi.material_no = m.material_no
+                        WHERE {po_aktif_cond}
+                        """
+                        df_raw_ai = load_data(raw_ai_query)
+
+                        if not df_raw_ai.empty:
+                            # 2. Proses Preprocessing
+                            df_pred = df_raw_ai.copy()
+                            kolom_teks = ['vendor_name', 'material_group', 'purchasing_group', 'incoterm']
+                            df_pred[kolom_teks] = df_pred[kolom_teks].fillna('UNKNOWN')
+                            
+                            # Encode text to integer
+                            df_pred[kolom_teks] = encoder_rf.transform(df_pred[kolom_teks])
+                            
+                            # Pastikan urutan kolom fitur sama persis
+                            X_batch = df_pred[fitur_rf]
+
+                            # 3. Jalankan Prediksi!
+                            probabilitas = model_rf.predict_proba(X_batch)[:, 1] # Ambil probabilitas kelas 1 (Telat)
+                            
+                            # 4. Gabungkan hasil kembali ke data awal
+                            df_raw_ai['prob_telat_persen'] = (probabilitas * 100).round(1)
+                            
+                            # Filter hanya yang berisiko tinggi (misal > 55%)
+                            df_high_risk = df_raw_ai[df_raw_ai['prob_telat_persen'] > 55].copy()
+                            
+                            if not df_high_risk.empty:
+                                st.error(f"⚠️ **AI ALERT:** Ditemukan **{len(df_high_risk)} item PO** dengan risiko keterlambatan tinggi. Harap segera lakukan follow-up ke vendor!")
+                                
+                                # Format untuk ditampilkan di tabel
+                                df_high_risk = df_high_risk.sort_values('prob_telat_persen', ascending=False)
+                                df_high_risk['del_date_po'] = pd.to_datetime(df_high_risk['del_date_po'], errors='coerce').dt.strftime('%Y-%m-%d')
+                                df_high_risk['total_amount_local_curr'] = df_high_risk['total_amount_local_curr'].apply(lambda x: f"Rp {x:,.0f}" if pd.notna(x) else "")
+                                
+                                # Bikin Bar Visual untuk Probabilitas (HTML) tanpa \n
+                                def make_prob_bar(val):
+                                    color = "#e03c3c" if val >= 75 else "#f0a500"
+                                    # Menggunakan single-line string agar tidak ada \n yang bocor
+                                    return f'<div style="display:flex; align-items:center; width:100%; min-width:120px;"><span style="width:45px; font-weight:bold; color:{color}; font-size:13px;">{val}%</span><div style="flex-grow:1; background-color:rgba(128,128,128,0.2); border-radius:4px; height:8px; margin-left:8px;"><div style="background-color:{color}; width:{val}%; height:100%; border-radius:4px;"></div></div></div>'
+                                
+                                df_high_risk['Probabilitas Gagal'] = df_high_risk['prob_telat_persen'].apply(make_prob_bar)
+                                
+                                # Menggunakan fitur bawaan Streamlit untuk Progress Bar
+                                df_tampil_ai = df_high_risk[['nomor_po', 'item_po', 'vendor_name', 'del_date_po', 'total_amount_local_curr', 'prob_telat_persen']]
+                                df_tampil_ai.columns = ['Nomor PO', 'Item', 'Vendor', 'Target Delivery', 'Total Nilai (Rp)', 'Risiko (AI)']
+                                
+                                st.dataframe(
+                                    df_tampil_ai,
+                                    column_config={
+                                        "Nomor PO": st.column_config.TextColumn("Nomor PO"),
+                                        "Item": st.column_config.TextColumn("Item"),
+                                        "Risiko (AI)": st.column_config.ProgressColumn(
+                                            "Risiko Keterlambatan",
+                                            help="Probabilitas dari model AI bahwa PO ini akan melewati batas Target Delivery",
+                                            format="%.1f%%",
+                                            min_value=0,
+                                            max_value=100,
+                                        ),
+                                    },
+                                    hide_index=True,
+                                    use_container_width=True
+                                )
+                                
+                            else:
+                                st.success("✅ **AI ALERT:** Pemindaian selesai. Semua PO aktif saat ini diprediksi aman dan akan tiba tepat waktu (Probabilitas telat < 55%).")
+                        else:
+                            st.info("Tidak dapat memproses data PO mentah.")
+            else:
+                 st.warning("Model AI Keterlambatan Vendor belum diload. Pastikan file .pkl ada di folder Machine_Learning.")
+        else:
+             st.info("Tidak ada PO aktif untuk dianalisis oleh AI.")
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
         # =====================================================================
         # INTEGRASI AI: KUMPULKAN KONTEKS & PANGGIL CHAT
         # =====================================================================
@@ -1215,6 +1360,13 @@ Ini adalah daftar PO yang **masih aman** tapi perlu dimonitor agar tidak berubah
             konteks_lines.append("")
         else:
             konteks_lines.append("## 7. PO OUTSTANDING\nTidak ada PO outstanding dalam filter ini.\n")
+
+        # 8. AI Batch Prediction Result
+        if 'df_high_risk' in locals() and not df_high_risk.empty:
+            konteks_lines.append(f"## 8. AI EARLY WARNING (PO Berisiko Telat) (Total: {len(df_high_risk)} item)")
+            df_risk_simple = df_high_risk[['nomor_po', 'vendor_name', 'prob_telat_persen']].head(10)
+            konteks_lines.append(df_risk_simple.to_csv(index=False))
+            konteks_lines.append("Catatan: Ini adalah PO yang belum telat, tapi diprediksi oleh Machine Learning akan telat berdasarkan rekam jejak vendor.\n")
 
         # Gabungkan konteks lokal halaman ini dengan konteks global lintas sistem
         suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert)\n" + "\n".join(konteks_lines)

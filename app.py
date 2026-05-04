@@ -38,6 +38,9 @@ from views import v_summary, v_isu
 # Views - Admin Menu
 from views import v_manajemen_user, v_manajemen_data, v_changelog
 
+# Views - AI (Uji Coba)
+from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediksi_sips
+
 # Views - PR-PO SAP
 from views import v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
 
@@ -236,6 +239,9 @@ def _render_isu():                      v_isu.render(**st.session_state.get('_su
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_data():           v_manajemen_data.render(**st.session_state.get('_summary_view_args', {}))
 def _render_changelog():                v_changelog.render()
+def _render_ai_prediksi_jalur():        v_ai_prediksi_jalur.render(**st.session_state.get('_summary_view_args', {}))
+def _render_ai_prediksi_keterlambatan(): v_ai_prediksi_keterlambatan.render(**st.session_state.get('_summary_view_args', {}))
+def _render_ai_prediksi_sips():         v_ai_prediksi_sips.render(**st.session_state.get('_summary_view_args', {}))
 def _render_dashboard():                v_dashboard.render(**st.session_state.get('_view_args', {}))
 def _render_detail():                   v_detail.render(**st.session_state.get('_view_args', {}))
 def _render_evaluasi():                 v_evaluasi.render(**st.session_state.get('_view_args', {}))
@@ -271,12 +277,22 @@ if is_admin():
         st.Page(_render_changelog, title="Log Perubahan", icon=":material/history:")
     ]
 
+ai_pages = []
+if is_admin():
+    ai_pages = [
+        st.Page(_render_ai_prediksi_jalur, title="Prediksi Jalur Impor Inklaring", icon=":material/robot:"),
+        st.Page(_render_ai_prediksi_keterlambatan, title="Prediksi Keterlambatan Vendor", icon=":material/robot:"),
+        st.Page(_render_ai_prediksi_sips, title="Prediksi Lead Time SIPS", icon=":material/robot:")
+    ]
+
 nav_dict = {
     "Highlight": summary_pages
 }
 
 if admin_pages:
     nav_dict["Admin Menu"] = admin_pages
+if ai_pages:
+    nav_dict["AI"] = ai_pages
 
 nav_dict.update({
     "PR-PO SAP": [
@@ -326,6 +342,7 @@ with st.sidebar:
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES   = {"Executive Summary", "Isu"} 
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
+AI_TITLES        = {"Prediksi Jalur Impor Inklaring"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
 LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
@@ -333,6 +350,7 @@ LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searchi
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
 is_admin_pg  = current_page in ADMIN_TITLES
+is_ai        = current_page in AI_TITLES
 is_sips      = current_page in SIPS_TITLES
 is_inklaring = current_page in INKLARING_TITLES
 is_lainnya   = current_page in LAINNYA_TITLES
@@ -352,10 +370,11 @@ if current_page != st.session_state.last_page:
 if is_admin():
     if is_summary:        active_div = "1"
     elif is_admin_pg:     active_div = "2"
-    elif is_sips:         active_div = "4"
-    elif is_inklaring:    active_div = "5"
-    elif is_lainnya:      active_div = "6"
-    else:                 active_div = "3" # SAP
+    elif is_ai:           active_div = "3"
+    elif is_sips:         active_div = "5"
+    elif is_inklaring:    active_div = "6"
+    elif is_lainnya:      active_div = "7"
+    else:                 active_div = "4" # SAP
 else:
     if is_summary:        active_div = "1"
     elif is_sips:         active_div = "3"

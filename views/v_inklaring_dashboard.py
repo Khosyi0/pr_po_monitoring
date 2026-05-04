@@ -391,23 +391,64 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 """)
     st.caption("Distribusi geografis asal barang impor. Ukuran lingkaran menunjukkan frekuensi impor.")
 
-    country_counts = df['asal_negara'].str.upper().value_counts().reset_index()
-    country_counts.columns = ['country', 'count']
+    # 1. Standardisasi Data (Semuanya dipaksa ke UPPERCASE untuk pencarian)
+    # Ini memastikan 'Singapore', 'SINGAPORE', dan 'singapura' diperlakukan sama.
+    df_map = df.copy()
+    df_map['asal_negara_clean'] = df_map['asal_negara'].fillna('UNKNOWN').str.strip().str.upper()
 
-    country_mapping = {
-        'VIETNAM': 'Vietnam', 'CHINA': 'China', 'RRC': 'China',
-        'TAIWAN, PROVINCE OF CHINA': 'Taiwan', 'UNITED ARAB EMIRATES': 'United Arab Emirates',
-        'RUSSIAN FEDERATION': 'Russia', 'KOREA, REPUBLIC OF': 'South Korea',
-        'UNITED STATES': 'United States of America', 'USA': 'United States of America',
+    # 2. Definisikan Mapping Nama Tampilan dan Koordinat
+    # Key harus UPPERCASE agar cocok dengan asal_negara_clean
+    geo_master = {
+        'VIETNAM': {'name': 'Vietnam', 'lat': 14.0583, 'lon': 108.2772},
+        'CHINA': {'name': 'China', 'lat': 35.8617, 'lon': 104.1954},
+        'RRC': {'name': 'China', 'lat': 35.8617, 'lon': 104.1954},
+        'SINGAPORE': {'name': 'Singapore', 'lat': 1.3521, 'lon': 103.8198},
+        'SINGAPURA': {'name': 'Singapore', 'lat': 1.3521, 'lon': 103.8198},
+        'TAIWAN': {'name': 'Taiwan', 'lat': 23.6978, 'lon': 120.9605},
+        'TAIWAN, PROVINCE OF CHINA': {'name': 'Taiwan', 'lat': 23.6978, 'lon': 120.9605},
+        'UNITED ARAB EMIRATES': {'name': 'UAE', 'lat': 23.4241, 'lon': 53.8478},
+        'UAE': {'name': 'UAE', 'lat': 23.4241, 'lon': 53.8478},
+        'RUSIA': {'name': 'Russia', 'lat': 61.5240, 'lon': 105.3188},
+        'RUSSIAN FEDERATION': {'name': 'Russia', 'lat': 61.5240, 'lon': 105.3188},
+        'KOREA': {'name': 'South Korea', 'lat': 35.9078, 'lon': 127.7669},
+        'SOUTH KOREA': {'name': 'South Korea', 'lat': 35.9078, 'lon': 127.7669},
+        'MESIR': {'name': 'Egypt', 'lat': 26.8206, 'lon': 30.8025},
+        'EGYPT': {'name': 'Egypt', 'lat': 26.8206, 'lon': 30.8025},
+        'UNITED STATES': {'name': 'USA', 'lat': 37.0902, 'lon': -95.7129},
+        'USA': {'name': 'USA', 'lat': 37.0902, 'lon': -95.7129},
+        'UNITED STATES OF AMERICA': {'name': 'USA', 'lat': 37.0902, 'lon': -95.7129},
+        'JORDAN': {'name': 'Jordan', 'lat': 31.2407, 'lon': 36.5115},
+        'QATAR': {'name': 'Qatar', 'lat': 25.3548, 'lon': 51.1839},
+        'CANADA': {'name': 'Canada', 'lat': 56.1304, 'lon': -106.3468},
+        'KANADA': {'name': 'Canada', 'lat': 56.1304, 'lon': -106.3468},
+        'MOROCCO': {'name': 'Morocco', 'lat': 31.7917, 'lon': -7.0926},
+        'MAROKO': {'name': 'Morocco', 'lat': 31.7917, 'lon': -7.0926},
+        'KUWAIT': {'name': 'Kuwait', 'lat': 29.3117, 'lon': 47.4818},
     }
-    country_counts['country'] = country_counts['country'].replace(country_mapping)
 
-    country_counts = country_counts.groupby('country')['count'].sum().reset_index()
+    # 3. Terapkan Master Data ke Dataframe
+    df_map['display_name'] = df_map['asal_negara_clean'].map(lambda x: geo_master.get(x, {}).get('name', x))
+    df_map['lat'] = df_map['asal_negara_clean'].map(lambda x: geo_master.get(x, {}).get('lat'))
+    df_map['lon'] = df_map['asal_negara_clean'].map(lambda x: geo_master.get(x, {}).get('lon'))
 
+    # Agregasi data berdasarkan display_name dan koordinat
+    country_counts = df_map.groupby(['display_name', 'lat', 'lon']).size().reset_index(name='count')
+
+    # DEBUG: Cek jika ada negara yang tidak punya koordinat
+    unknown_countries = df_map[df_map['lat'].isna()]['asal_negara_clean'].unique()
+    if len(unknown_countries) > 0:
+        st.warning(f"Negara berikut tidak memiliki koordinat di geo_master: {', '.join(unknown_countries)}")
+
+    # 4. Buat Peta
     fig_map = px.scatter_geo(
-        country_counts, locations="country", locationmode="country names",
-        size="count", hover_name="country", hover_data={"count": True},
-        projection="natural earth", color="country",
+        country_counts, 
+        lat="lat", 
+        lon="lon",
+        size="count", 
+        hover_name="display_name", 
+        hover_data={"count": True, "lat": False, "lon": False},
+        projection="natural earth", 
+        color="display_name",
         size_max=40
     )
 
@@ -422,7 +463,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         ), paper_bgcolor='rgba(0,0,0,0)',
         showlegend=False
     )
-    fig_map.update_traces(marker=dict(sizemin=4, line=dict(width=0)))
+
+    fig_map.update_traces(marker=dict(sizemin=12, line=dict(width=0)))
     st.plotly_chart(fig_map, use_container_width=True)
 
     # == CHARTS (ROW 3) ========================================================
