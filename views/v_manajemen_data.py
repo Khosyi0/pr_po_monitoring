@@ -508,6 +508,9 @@ def render(**kwargs):
                                 df_clean[col] = df_clean[col].astype(str).str.replace(r'\.0$', '', regex=True)
                                 df_clean[col] = df_clean[col].replace({'nan': None, 'NaN': None, 'None': None})
                             
+                            # Abaikan data yang belum memiliki No AJU
+                            df_clean = df_clean[df_clean['no_aju'].notna() & (df_clean['no_aju'].astype(str).str.strip() != '')]
+
                             df_clean['aju_pib'] = df_clean['aju_pib'].fillna(
                                 'TEMP-' + df_clean['sap'].astype(str) + '-' + df_clean['no_aju'].astype(str)
                             )

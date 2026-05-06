@@ -584,7 +584,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     konteks_lines.append(f"- Distribusi Jalur Kepabeanan: {merah} Jalur Merah, {hijau} Jalur Hijau.")
 
     if 'country_counts' in locals() and not country_counts.empty:
-        konteks_lines.append(f"- Top 5 Negara Asal Impor: {', '.join(country_counts.head(5)['country'].tolist())}")
+        top_countries = country_counts.sort_values('count', ascending=False).head(5)['display_name'].tolist()
+        konteks_lines.append(f"- Top 5 Negara Asal Impor: {', '.join(top_countries)}")
         konteks_lines.append("")
 
     suplemen = "\n".join(konteks_lines)

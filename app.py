@@ -33,7 +33,7 @@ from context_builder import build_global_context, SEARCH_INDEX
 from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
 # Views - Highlight
-from views import v_summary, v_isu
+from views import v_summary, v_profile_departemen, v_isu
 
 # Views - Admin Menu
 from views import v_manajemen_user, v_manajemen_data, v_changelog
@@ -235,6 +235,7 @@ def dialog_search():
 # =============================================================================
 
 def _render_summary():                  v_summary.render(**st.session_state.get('_summary_view_args', {}))
+def _render_profile_departemen():       v_profile_departemen.render(**st.session_state.get('_summary_view_args', {}))
 def _render_isu():                      v_isu.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_data():           v_manajemen_data.render(**st.session_state.get('_summary_view_args', {}))
@@ -266,6 +267,7 @@ def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_st
 
 summary_pages = [
     st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
+    st.Page(_render_profile_departemen, title="Profile Departemen", icon=":material/domain:"),
     st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
 ]
 
@@ -340,7 +342,7 @@ with st.sidebar:
 
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
-SUMMARY_TITLES   = {"Executive Summary", "Isu"} 
+SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"} 
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
