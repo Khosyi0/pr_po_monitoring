@@ -131,27 +131,42 @@ def load_excel_files():
     return df_pr, df_po
 
 # =====================================================
-# SUPER BULK UPSERT (Tanpa Deadlock)
+# SUPER BULK UPSERT (Tanpa Deadlock & Auto-Type Cast)
 # =====================================================
 def bulk_upsert(engine, table, df, conflict_cols, update_cols):
     if df.empty: return
     
-    # Generate unique temp table name untuk menghindari bentrok
+    # 1. Pastikan NaN/NaT menjadi standar None agar masuk ke DB sebagai NULL murni
+    df = df.astype(object).where(pd.notnull(df), None)
+    
+    # Generate unique temp table name
     temp_table = f"temp_{table}_upsert_{int(time.time()*1000)}"
 
-    # 1. PUSH PANDAS KE TEMP TABLE (DILAKUKAN DI LUAR TRANSAKSI AGAR TIDAK DEADLOCK)
-    df.to_sql(temp_table, engine, if_exists='replace', index=False)
-    
     all_cols = list(df.columns)
     col_names = ', '.join(all_cols)
     set_clause = ', '.join(f"{c} = EXCLUDED.{c}" for c in update_cols)
     conflict   = ', '.join(conflict_cols)
     
-    # 2. EKSEKUSI INTERNAL POSTGRESQL (Sangat Cepat & Aman)
     with engine.begin() as conn:
+        # 2. Tuang ke temp table menggunakan Pandas
+        df.to_sql(temp_table, conn, if_exists='replace', index=False)
+        
+        # 3. Intip struktur tipe data dari tabel target secara dinamis!
+        type_query = text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = :t")
+        target_types = {row[0]: row[1] for row in conn.execute(type_query, {'t': table}).fetchall()}
+        
+        # 4. Bangun perintah SELECT dengan AUTO CASTING agar tipe data cocok 100%
+        select_items = []
+        for col in all_cols:
+            t_type = target_types.get(col, 'text') # default text jika gagal
+            select_items.append(f"CAST(\"{col}\" AS {t_type})")
+            
+        select_clause = ', '.join(select_items)
+        
+        # 5. Eksekusi Upsert
         upsert_sql = f"""
             INSERT INTO {table} ({col_names})
-            SELECT {col_names} FROM {temp_table}
+            SELECT {select_clause} FROM {temp_table}
             ON CONFLICT ({conflict}) DO UPDATE SET {set_clause};
         """
         conn.execute(text(upsert_sql))
