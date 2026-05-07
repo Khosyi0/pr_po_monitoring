@@ -14,29 +14,39 @@ def _get_engine():
     return get_db_engine()
 
 class StreamlitCapture:
-    """Menangkap output terminal (seperti fungsi print & tqdm) dan menampilkannya di Streamlit."""
+    """Menangkap output terminal dengan efisien, mengabaikan spam dari tqdm."""
     def __init__(self, placeholder):
         self.placeholder = placeholder
         self.lines = []
-        self.current_line = ""
+        self.buffer = ""
         self.last_update = time.time()
         
     def write(self, text):
-        for char in text:
-            if char == '\r':
-                self.current_line = ""  # tqdm menimpa baris yang sama menggunakan carriage return
-            elif char == '\n':
-                self.lines.append(self.current_line)
-                self.current_line = ""
-            else:
-                self.current_line += char
-                
-        # Refresh UI max 2 kali per detik agar browser tidak freeze
-        if time.time() - self.last_update > 0.5:
+        # Abaikan output dari tqdm yang menggunakan \r (carriage return)
+        if '\r' in text:
+            return  # Langsung skip, tidak usah ditangkap ke UI
+            
+        self.buffer += text
+        
+        # Jika ada baris baru, pisahkan dan masukkan ke daftar baris
+        if '\n' in self.buffer:
+            parts = self.buffer.split('\n')
+            self.lines.extend(parts[:-1])  # Masukkan semua baris yang sudah lengkap
+            self.buffer = parts[-1]        # Sisakan teks yang belum pindah baris
+            
+        # Refresh UI max 1 detik sekali (jangan terlalu cepat di cloud)
+        if time.time() - self.last_update > 1.0:
             self.flush()
             
     def flush(self):
-        display_lines = self.lines[-22:] + [self.current_line]
+        if not self.lines and not self.buffer:
+            return
+            
+        # Tampilkan maksimal 25 baris terakhir agar UI tidak berat
+        display_lines = self.lines[-25:] 
+        if self.buffer:
+            display_lines.append(self.buffer)
+            
         self.placeholder.code('\n'.join(display_lines), language='bash')
         self.last_update = time.time()
 
