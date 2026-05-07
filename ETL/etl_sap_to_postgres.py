@@ -282,11 +282,19 @@ def sync_purchase_requisitions(df_pr, engine):
     update_cols_pr = ['pr_id','tgl_create_pr','bagian_pr','department_code','plant_code','material_no','description','quantity_pr','satuan_pr','estimasi_pr','currency_pr','pr_release_status','tracking_no','cost_center','gl_account','account_assignment','contract_no','contract_item','e_proc','metode_pelelangan','inv_normal','turn_around','pr_u','kontrak','pupuk_organik','batal','source_determination_via','status_source_determination','first_full_release']
     bulk_upsert(engine, 'pr_items', df_items, ['no_pr','line_item_pr'], update_cols_pr)
 
-    # Release History
+    # --- Release History ---
     with engine.connect() as conn:
         pr_item_map = pd.read_sql("SELECT pr_item_id, no_pr, line_item_pr FROM pr_items", conn)
         
+    # SAMAKAN TIPE DATA SEBELUM MERGE
+    df_pr['No PR'] = df_pr['No PR'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+    df_pr['Line/Item PR'] = pd.to_numeric(df_pr['Line/Item PR'], errors='coerce').fillna(0).astype(int)
+    
+    pr_item_map['no_pr'] = pr_item_map['no_pr'].astype(str)
+    pr_item_map['line_item_pr'] = pr_item_map['line_item_pr'].astype(int)
+
     df_merged = df_pr.merge(pr_item_map, left_on=['No PR', 'Line/Item PR'], right_on=['no_pr', 'line_item_pr'], how='inner')
+    
     release_rows = []
     for r in df_merged.to_dict('records'):
         for i in range(1, 5):
