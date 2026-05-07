@@ -401,9 +401,16 @@ def sync_purchase_orders(df_po, engine):
     update_cols_po = ['po_id','bagian_po','pr_item_id','no_pr','line_item_pr','department_code','material_no','description','qty_po','satuan_po','estimasi_pr','quantity_pr','total_item_po_net_price','total_amount','total_amount_local_curr','currency_po','cost_center','gl_account','account_assignment','item_category','contract_no','contract_item','no_rfq','rfq_item','del_date_po','nomor_dur','metode_pelelangan','auction_date','tgl_penutupan_penawaran','tgl_pembukaan_penawaran','oe','efisiensi','efisiensi_persen','pr_po_days','status_pengiriman','on_time_delivery','turn_around','invest','pupuk_organik','batal','kontrak','first_full_release']
     bulk_upsert(engine, 'po_items', df_items, ['nomor_po','item_po'], update_cols_po)
 
-    # Release History & Goods Receipt
+    # --- Release History & Goods Receipt ---
     with engine.connect() as conn:
         po_item_map = pd.read_sql("SELECT po_item_id, nomor_po, item_po FROM po_items", conn)
+    
+    # SAMAKAN TIPE DATA SEBELUM MERGE
+    df_po['Nomor PO'] = df_po['Nomor PO'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+    df_po['Item PO'] = pd.to_numeric(df_po['Item PO'], errors='coerce').fillna(0).astype(int)
+    
+    po_item_map['nomor_po'] = po_item_map['nomor_po'].astype(str)
+    po_item_map['item_po'] = po_item_map['item_po'].astype(int)
     
     df_merged = df_po.merge(po_item_map, left_on=['Nomor PO', 'Item PO'], right_on=['nomor_po', 'item_po'], how='inner')
     
