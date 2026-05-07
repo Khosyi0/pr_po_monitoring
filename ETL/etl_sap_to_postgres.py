@@ -232,14 +232,13 @@ def load_excel_files():
 
 
 # =====================================================
-# UPSERT HELPERS
+# UPSERT HELPERS (VERSI BULK CLOUD-OPTIMIZED)
 # =====================================================
 
 def upsert(engine, table, rows, conflict_cols, update_cols, chunksize=1000):
     if not rows:
         return 0, 0
 
-    inserted = updated = 0
     all_cols = list(rows[0].keys())
 
     set_clause = ', '.join(f"{c} = EXCLUDED.{c}" for c in update_cols)
@@ -247,23 +246,24 @@ def upsert(engine, table, rows, conflict_cols, update_cols, chunksize=1000):
     cols_str   = ', '.join(f':{c}' for c in all_cols)
     col_names  = ', '.join(all_cols)
 
+    # Kita hapus klausa RETURNING karena SQLAlchemy Bulk Execution 
+    # tidak mendukung return per-baris secara dinamis.
     sql = text(f"""
         INSERT INTO {table} ({col_names})
         VALUES ({cols_str})
         ON CONFLICT ({conflict}) DO UPDATE SET {set_clause}
-        RETURNING (xmax = 0) AS is_insert
     """)
 
-    for i in range(0, len(rows), chunksize):
-        chunk = rows[i:i+chunksize]
-        with engine.begin() as conn:
-            for row in chunk:
-                r = conn.execute(sql, row)
-                if r.fetchone()[0]: inserted += 1
-                else: updated += 1
+    with engine.begin() as conn:
+        for i in range(0, len(rows), chunksize):
+            chunk = rows[i:i+chunksize]
+            # Dengan melempar list of dictionaries 'chunk' secara langsung, 
+            # SQLAlchemy otomatis mengirimkannya secara Bulk/Batch!
+            conn.execute(sql, chunk)
 
-    return inserted, updated
-
+    # Karena dijalankan secara bulk, kita tidak bisa lagi menghitung persis
+    # mana yang insert dan update. Kita asumsikan total rows diproses.
+    return len(rows), 0
 
 # =====================================================
 # MASTER DATA UPSERT
