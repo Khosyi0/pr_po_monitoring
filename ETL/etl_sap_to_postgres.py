@@ -62,9 +62,20 @@ def clean_string(value):
     return str(value).strip()
 
 def clean_date(value):
-    if pd.isna(value) or value == 'NaT': return None
-    try: return pd.to_datetime(value, dayfirst=True)
-    except: return None
+    if pd.isna(value) or str(value).strip() in ['NaT', 'nan', 'None', '']: 
+        return None
+        
+    if isinstance(value, (int, float)) or str(value).replace('.0', '').isdigit():
+        try:
+            # Excel menghitung hari sejak 30 Desember 1899
+            return pd.to_datetime(int(float(value)), unit='D', origin='1899-12-30')
+        except:
+            pass
+            
+    try: 
+        return pd.to_datetime(value, dayfirst=True)
+    except: 
+        return None
 
 def clean_boolean(value):
     if pd.isna(value): return False
