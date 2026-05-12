@@ -32,7 +32,7 @@ PROFILE_CSS = """
     min-height: 110px;
 }
 
-/* Class khusus untuk kartu berwarna emas (SVP) */
+/* Class khusus untuk kartu berwarna emas (VP) */
 .prof-card-gold {
     border-left-color: #FFD700 !important;
     background-color: rgba(255, 215, 0, 0.05) !important;
@@ -158,21 +158,21 @@ def render(**kwargs):
                 tab_tambah, tab_hapus = st.tabs(["➕ Tambah / Edit", "🗑️ Hapus"])
                 with tab_tambah:
                     with st.form("form_tambah_karyawan"):
-                        st.caption("Catatan: Menunjuk seseorang menjadi SVP akan mengeluarkannya dari bagian (independen). Menunjuk AVP akan otomatis menggantikan AVP lama di bagian tersebut.")
+                        st.caption("Catatan: Menunjuk seseorang menjadi VP akan mengeluarkannya dari bagian (independen). Menunjuk AVP akan otomatis menggantikan AVP lama di bagian tersebut.")
                         col_nama, col_bag, col_jab = st.columns([2, 1, 1])
                         inp_nama = col_nama.text_input("Nama Karyawan")
                         inp_bagian = col_bag.selectbox("Bagian", ["ALPATA", "BARUM", "BB/BD/BP", "EPP"])
-                        inp_jabatan = col_jab.selectbox("Jabatan", ["Karyawan", "AVP", "SVP"])
+                        inp_jabatan = col_jab.selectbox("Jabatan", ["Karyawan", "AVP", "VP"])
                         
                         if st.form_submit_button("Simpan Data", type="primary"):
                             if inp_nama.strip():
-                                if inp_jabatan == "SVP":
+                                if inp_jabatan == "VP":
                                     inp_bagian = "PIMPINAN"
 
                                 with engine.begin() as conn:
-                                    if inp_jabatan == "SVP":
-                                        conn.execute(text("UPDATE profile_karyawan SET jabatan = 'Karyawan' WHERE jabatan = 'SVP'"))
-                                    elif inp_jabatan == "AVP":
+                                    if inp_jabatan == "VP":
+                                        conn.execute(text("UPDATE profile_karyawan SET jabatan = 'Karyawan' WHERE jabatan = 'VP'"))
+                                    elif inp_jabatan == "VP":
                                         conn.execute(text("UPDATE profile_karyawan SET jabatan = 'Karyawan' WHERE bagian = :b AND jabatan = 'AVP'"), {"b": inp_bagian})
 
                                     cek = conn.execute(text("SELECT 1 FROM profile_karyawan WHERE LOWER(nama) = LOWER(:n)"), {"n": inp_nama.strip()}).fetchone()
@@ -209,15 +209,15 @@ def render(**kwargs):
         df_all = load_data("SELECT nama, bagian, jabatan FROM profile_karyawan")
         
         total_count = len(df_all)
-        svp_row = df_all[df_all['jabatan'] == 'SVP']
-        svp_name = svp_row['nama'].iloc[0] if not svp_row.empty else "(posisi kosong)"
+        vp_row = df_all[df_all['jabatan'] == 'VP']
+        vp_name = vp_row['nama'].iloc[0] if not vp_row.empty else "(posisi kosong)"
 
         st.markdown("### Pimpinan & Kapasitas")
-        col_total, col_svp = st.columns(2)
+        col_total, col_vp = st.columns(2)
         with col_total:
             st.markdown(_card(ICONS['people'], "Total Karyawan", f"{total_count} Orang"), unsafe_allow_html=True)
-        with col_svp:
-            st.markdown(_card(ICONS['crown'], "Senior Vice President (SVP)", svp_name, is_gold=True), unsafe_allow_html=True)
+        with col_vp:
+            st.markdown(_card(ICONS['crown'], "Vice President (VP)", vp_name, is_gold=True), unsafe_allow_html=True)
 
         st.markdown("#### Jumlah Karyawan per Bagian")
         
