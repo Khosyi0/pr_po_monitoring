@@ -211,7 +211,7 @@ def render(**kwargs):
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric(label="Akurasi Keseluruhan", value="71.4%", delta="Solid untuk PoC")
         col_m2.metric(label="Recall (Deteksi Merah)", value="60.0%", delta="Target Optimasi", delta_color="off")
-        col_m3.metric(label="Volume Data Training", value="66", delta="Dokumen Sampel 2025-2026")
+        col_m3.metric(label="Volume Data Training", value="66", delta="Dokumen Sampel Januari 2025 - April 2026")
 
         st.markdown("""
         **Evaluasi Rapor Model:**

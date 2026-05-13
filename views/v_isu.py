@@ -21,21 +21,26 @@ PRIORITAS_LIST = ["Kritis", "Tinggi", "Normal", "Rendah"]
 BAGIAN_LIST    = ["Semua Bagian", "BB/BD/BP", "ALPATA", "BARUM"]
 STATUS_LIST    = ["Open", "In Progress", "Resolved", "Closed"]
 
+# Menggunakan tag icon Bootstrap
 PRIORITAS_COLOR = {
-    "Kritis": ("#e03c3c", "🔴"),
-    "Tinggi": ("#f0a500", "🟠"),
-    "Normal": ("#1f77b4", "🔵"),
-    "Rendah": ("#09ab3b", "🟢"),
+    "Kritis": ("#e03c3c", '<i class="bi bi-exclamation-octagon-fill"></i>'),
+    "Tinggi": ("#f0a500", '<i class="bi bi-exclamation-triangle-fill"></i>'),
+    "Normal": ("#1f77b4", '<i class="bi bi-info-circle-fill"></i>'),
+    "Rendah": ("#09ab3b", '<i class="bi bi-check-circle-fill"></i>'),
 }
 KATEGORI_ICON = {
-    "Operasional": "⚙️", "Harga": "💰", "Kebijakan": "📋",
-    "Vendor": "🏭", "Logistik": "🚚", "Lainnya": "📌",
+    "Operasional": '<i class="bi bi-gear-fill"></i>', 
+    "Harga": '<i class="bi bi-cash-coin"></i>', 
+    "Kebijakan": '<i class="bi bi-journal-text"></i>',
+    "Vendor": '<i class="bi bi-buildings-fill"></i>', 
+    "Logistik": '<i class="bi bi-truck"></i>', 
+    "Lainnya": '<i class="bi bi-pin-angle-fill"></i>',
 }
 STATUS_COLOR = {
-    "Open":        ("#6c8ebf", "🔓"),
-    "In Progress": ("#f0a500", "⏳"),
-    "Resolved":    ("#09ab3b", "✅"),
-    "Closed":      ("#888888", "🔒"),
+    "Open":        ("#6c8ebf", '<i class="bi bi-unlock-fill"></i>'),
+    "In Progress": ("#f0a500", '<i class="bi bi-hourglass-split"></i>'),
+    "Resolved":    ("#09ab3b", '<i class="bi bi-check-circle-fill"></i>'),
+    "Closed":      ("#888888", '<i class="bi bi-lock-fill"></i>'),
 }
 
 # =============================================================================
@@ -43,6 +48,7 @@ STATUS_COLOR = {
 # =============================================================================
 
 ISU_CSS = """
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
 .isu-card {
     background-color: var(--secondary-background-color) !important;
@@ -256,15 +262,15 @@ def _go(view, isu_id=None):
 
 
 def _render_card(row: pd.Series, idx: int, is_admin: bool):
-    prio_color, prio_icon = PRIORITAS_COLOR.get(row['prioritas'], ("#888", "⚪"))
-    st_color,   st_icon   = STATUS_COLOR.get(row['status'],    ("#888", "❓"))
-    kat_icon   = KATEGORI_ICON.get(row['kategori'], "📌")
+    prio_color, prio_icon = PRIORITAS_COLOR.get(row['prioritas'], ("#888", '<i class="bi bi-circle"></i>'))
+    st_color,   st_icon   = STATUS_COLOR.get(row['status'],    ("#888", '<i class="bi bi-question-circle"></i>'))
+    kat_icon   = KATEGORI_ICON.get(row['kategori'], '<i class="bi bi-pin-angle-fill"></i>')
     bagian_str = row['bagian'] if pd.notna(row.get('bagian')) and row['bagian'] else "Semua Bagian"
     dt_str     = _fmt_dt(row['created_at'])
 
     st.markdown(f"""
     <div class="isu-card">
-        <p class="isu-judul">{kat_icon} {row['judul']}</p>
+        <p class="isu-judul">{kat_icon}&nbsp; {row['judul']}</p>
         <p class="isu-deskripsi">{row['deskripsi']}</p>
         <div class="isu-meta">
             <span class="isu-chip"
@@ -275,33 +281,33 @@ def _render_card(row: pd.Series, idx: int, is_admin: bool):
                   style="background:{st_color}22;color:{st_color};font-weight:700;">
                 {st_icon} {row['status']}
             </span>
-            <span class="isu-chip">📂 {row['kategori']}</span>
-            <span class="isu-chip">🏢 {bagian_str}</span>
+            <span class="isu-chip"><i class="bi bi-folder-fill"></i> {row['kategori']}</span>
+            <span class="isu-chip"><i class="bi bi-building"></i> {bagian_str}</span>
             <span style="margin-left:auto;opacity:0.45;font-size:11px;">
-                ✍️ {row['dibuat_oleh']} · 🕐 {dt_str}
+                <i class="bi bi-pencil-square"></i> {row['dibuat_oleh']} &nbsp;·&nbsp; <i class="bi bi-clock-fill"></i> {dt_str}
             </span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Tombol aksi di bawah card
+    # Tombol aksi di bawah card (emoji diganti teks untuk natif streamlit)
     if is_admin:
         c_open, c_edit, c_del, _ = st.columns([2, 1, 1, 4])
     else:
         c_open, _ = st.columns([2, 6])
 
     with c_open:
-        if st.button("Buka detail →", key=f"open_{row['id']}_{idx}",
+        if st.button("Buka Detail →", key=f"open_{row['id']}_{idx}",
                      use_container_width=True):
             _go('detail', int(row['id']))
 
     if is_admin:
         with c_edit:
-            if st.button("✏️ Edit", key=f"edit_{row['id']}_{idx}",
+            if st.button("Edit", key=f"edit_{row['id']}_{idx}",
                          use_container_width=True):
                 _go('edit', int(row['id']))
         with c_del:
-            if st.button("🗑️", key=f"del_{row['id']}_{idx}",
+            if st.button("Hapus", key=f"del_{row['id']}_{idx}",
                          help="Hapus isu ini", use_container_width=True):
                 st.session_state['isu_confirm_delete'] = int(row['id'])
                 _go('detail', int(row['id']))
@@ -378,7 +384,7 @@ def _render_form(mode="create", data: dict = None):
     )
 
     if konten:
-        with st.expander("👁 Preview konten", expanded=False):
+        with st.expander("Preview Konten", expanded=False):
             st.markdown(konten)
 
     return judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, status
@@ -404,15 +410,7 @@ def _render_feed(is_admin: bool):
     with col_title:
         st.markdown("""
             <h1 style='display:flex;align-items:center;font-size:52px;margin-bottom:0;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42"
-                     fill="currentColor" viewBox="0 0 16 16"
-                     style="margin-right:12px;margin-bottom:8px;">
-                    <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233
-                             c-.457.778.091 1.767.98 1.767h13.713c.889 0
-                             1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35
-                             3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0
-                             1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
-                </svg>
+                <i class="bi bi-inboxes-fill" style="margin-right:12px;margin-bottom:8px;font-size:42px;"></i>
                 Isu
             </h1>
         """, unsafe_allow_html=True)
@@ -424,13 +422,13 @@ def _render_feed(is_admin: bool):
     with col_btn:
         st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
         if is_admin:
-            if st.button("➕ Buat Isu", type="primary",
+            if st.button("Buat Isu", type="primary",
                          use_container_width=True, key="btn_buat_top"):
                 _go('create')
         else:
             st.markdown(
                 "<div style='text-align:right;font-size:12px;opacity:0.4;"
-                "padding-top:14px;'>👁 View Only</div>",
+                "padding-top:14px;'><i class='bi bi-eye-fill'></i> View Only</div>",
                 unsafe_allow_html=True
             )
 
@@ -439,7 +437,7 @@ def _render_feed(is_admin: bool):
     if not is_admin:
         st.markdown("""
             <div class="viewer-banner">
-                👁 &nbsp;Anda login sebagai <b>Viewer</b>, hanya dapat membaca isu.
+                <i class="bi bi-eye-fill"></i> &nbsp;Anda login sebagai <b>Viewer</b>, hanya dapat membaca isu.
                 Hubungi administrator untuk membuat atau mengedit isu.
             </div>
         """, unsafe_allow_html=True)
@@ -448,7 +446,7 @@ def _render_feed(is_admin: bool):
     fc1, fc2, fc3, fc4, fc5 = st.columns([2.5, 1.5, 1.5, 1.5, 1.5])
     with fc1:
         search = st.text_input(
-            "🔍", placeholder="Cari judul, deskripsi, konten, pembuat...",
+            "Cari", placeholder="Cari judul, deskripsi, konten, pembuat...",
             label_visibility="collapsed", key="isu_search"
         )
     with fc2:
@@ -489,7 +487,7 @@ def _render_feed(is_admin: bool):
     if df.empty:
         st.markdown("""
             <div class="isu-empty">
-                <div class="isu-empty-icon">📭</div>
+                <div class="isu-empty-icon"><i class="bi bi-mailbox"></i></div>
                 <div class="isu-empty-text">Belum ada isu yang sesuai filter.</div>
             </div>
         """, unsafe_allow_html=True)
@@ -517,9 +515,9 @@ def _render_detail(isu_id: int, is_admin: bool):
         st.error("Isu tidak ditemukan.")
         return
 
-    prio_color, prio_icon = PRIORITAS_COLOR.get(data['prioritas'], ("#888", "⚪"))
-    st_color,   st_icon   = STATUS_COLOR.get(data['status'],    ("#888", "❓"))
-    kat_icon   = KATEGORI_ICON.get(data['kategori'], "📌")
+    prio_color, prio_icon = PRIORITAS_COLOR.get(data['prioritas'], ("#888", '<i class="bi bi-circle"></i>'))
+    st_color,   st_icon   = STATUS_COLOR.get(data['status'],    ("#888", '<i class="bi bi-question-circle"></i>'))
+    kat_icon   = KATEGORI_ICON.get(data['kategori'], '<i class="bi bi-pin-angle-fill"></i>')
     bagian_str = data['bagian'] if data.get('bagian') else "Semua Bagian"
 
     # Header detail
@@ -541,14 +539,14 @@ def _render_detail(isu_id: int, is_admin: bool):
             </span>
             <span style='background:rgba(128,128,128,0.12);
                   padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;'>
-                🏢 {bagian_str}
+                <i class="bi bi-building"></i> {bagian_str}
             </span>
         </div>
         <h1 class='isu-detail-judul'>{data['judul']}</h1>
         <p style='font-size:13px;opacity:0.45;margin:0;'>
-            ✍️ {data['dibuat_oleh']} &nbsp;·&nbsp;
-            🕐 Dibuat: {_fmt_dt(data['created_at'])} &nbsp;·&nbsp;
-            🔄 Diperbarui: {_fmt_dt(data['updated_at'])}
+            <i class="bi bi-pencil-square"></i> {data['dibuat_oleh']} &nbsp;·&nbsp;
+            <i class="bi bi-clock"></i> Dibuat: {_fmt_dt(data['created_at'])} &nbsp;·&nbsp;
+            <i class="bi bi-arrow-repeat"></i> Diperbarui: {_fmt_dt(data['updated_at'])}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -562,20 +560,20 @@ def _render_detail(isu_id: int, is_admin: bool):
     if is_admin:
         col_edit, col_del, _ = st.columns([1, 1, 5])
         with col_edit:
-            if st.button("✏️ Edit Isu", use_container_width=True, key="btn_edit"):
+            if st.button("Edit Isu", use_container_width=True, key="btn_edit"):
                 _go('edit', isu_id)
         with col_del:
-            if st.button("🗑️ Hapus", use_container_width=True,
+            if st.button("Hapus", use_container_width=True,
                          type="secondary", key="btn_del"):
                 st.session_state['isu_confirm_delete'] = isu_id
                 st.rerun()
 
         # Konfirmasi hapus
         if st.session_state.get('isu_confirm_delete') == isu_id:
-            st.warning("⚠️ Yakin ingin menghapus isu ini? Tidak bisa dibatalkan.")
+            st.warning("Yakin ingin menghapus isu ini? Tidak bisa dibatalkan.")
             cc1, cc2, _ = st.columns([1, 1, 5])
             with cc1:
-                if st.button("✅ Ya, Hapus", type="primary", key="btn_confirm_del"):
+                if st.button("Ya, Hapus", type="primary", key="btn_confirm_del"):
                     try:
                         _delete(isu_id)
                         st.session_state.pop('isu_confirm_delete', None)
@@ -583,13 +581,13 @@ def _render_detail(isu_id: int, is_admin: bool):
                     except Exception as e:
                         st.error(f"Gagal menghapus: {e}")
             with cc2:
-                if st.button("❌ Batal", key="btn_cancel_del"):
+                if st.button("Batal", key="btn_cancel_del"):
                     st.session_state.pop('isu_confirm_delete', None)
                     st.rerun()
     else:
         st.markdown("""
             <div class="viewer-banner">
-                👁 &nbsp;Anda login sebagai <b>Viewer</b>.
+                <i class="bi bi-eye-fill"></i> &nbsp;Anda login sebagai <b>Viewer</b>.
                 Hanya admin yang dapat mengedit atau menghapus isu.
             </div>
         """, unsafe_allow_html=True)
@@ -605,7 +603,7 @@ def _render_create():
     if st.button("← Kembali ke Feed", key="btn_back_create"):
         _go('feed')
 
-    st.markdown("### ➕ Buat Isu Baru")
+    st.markdown("### Buat Isu Baru")
     st.markdown("---")
 
     judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, _ = \
@@ -614,7 +612,7 @@ def _render_create():
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     cs, cc, _ = st.columns([1.3, 1, 4])
     with cs:
-        if st.button("💾 Simpan Isu", type="primary", use_container_width=True,
+        if st.button("Simpan Isu", type="primary", use_container_width=True,
                      key="btn_save_create"):
             errs = _validate(judul, deskripsi, konten, dibuat_oleh)
             if errs:
@@ -627,7 +625,7 @@ def _render_create():
                         judul.strip(), deskripsi.strip(), konten.strip(),
                         kategori, prioritas, bagian, dibuat_oleh.strip()
                     )
-                    st.success("✅ Isu berhasil dibuat!")
+                    st.success("Isu berhasil dibuat!")
                     _go('detail', new_id)
                 except Exception as e:
                     st.error(f"Gagal menyimpan: {e}")
@@ -646,7 +644,7 @@ def _render_edit(isu_id: int):
     if st.button("← Kembali ke Detail", key="btn_back_edit"):
         _go('detail', isu_id)
 
-    st.markdown("### ✏️ Edit Isu")
+    st.markdown("### Edit Isu")
     st.markdown("---")
 
     try:
@@ -664,7 +662,7 @@ def _render_edit(isu_id: int):
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
     cs, cc, _ = st.columns([1.6, 1, 4])
     with cs:
-        if st.button("💾 Simpan Perubahan", type="primary", use_container_width=True,
+        if st.button("Simpan Perubahan", type="primary", use_container_width=True,
                      key="btn_save_edit"):
             errs = _validate(judul, deskripsi, konten, dibuat_oleh)
             if errs:
@@ -674,7 +672,7 @@ def _render_edit(isu_id: int):
                 try:
                     _update(isu_id, judul.strip(), deskripsi.strip(), konten.strip(),
                             kategori, prioritas, bagian, dibuat_oleh.strip(), status)
-                    st.success("✅ Perubahan berhasil disimpan!")
+                    st.success("Perubahan berhasil disimpan!")
                     _go('detail', isu_id)
                 except Exception as e:
                     st.error(f"Gagal menyimpan: {e}")

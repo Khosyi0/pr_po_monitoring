@@ -42,7 +42,7 @@ from views import v_manajemen_user, v_manajemen_data, v_changelog
 from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediksi_sips
 
 # Views - PR-PO SAP
-from views import v_dashboard, v_detail, v_evaluasi, v_kinerja_pg, v_alert
+from views import v_sap_dashboard, v_sap_detail, v_sap_evaluasi, v_sap_kinerja_pg, v_sap_alert
 
 # Views - SIPS
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
@@ -96,7 +96,7 @@ def init_state(key, value):
         st.session_state[key] = value
 
 init_state('show_search_dialog',   False)
-init_state('show_changelog',      False)
+init_state('show_changelog',       False)
 init_state('filter_mode',          'sidebar')
 # SAP filters
 init_state('filter_bagian',       ['All'])
@@ -243,11 +243,11 @@ def _render_changelog():                v_changelog.render()
 def _render_ai_prediksi_jalur():        v_ai_prediksi_jalur.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_keterlambatan(): v_ai_prediksi_keterlambatan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_sips():         v_ai_prediksi_sips.render(**st.session_state.get('_summary_view_args', {}))
-def _render_dashboard():                v_dashboard.render(**st.session_state.get('_view_args', {}))
-def _render_detail():                   v_detail.render(**st.session_state.get('_view_args', {}))
-def _render_evaluasi():                 v_evaluasi.render(**st.session_state.get('_view_args', {}))
-def _render_kinerja():                  v_kinerja_pg.render(**st.session_state.get('_view_args', {}))
-def _render_alert():                    v_alert.render(**st.session_state.get('_view_args', {}))
+def _render_dashboard():                v_sap_dashboard.render(**st.session_state.get('_view_args', {}))
+def _render_detail():                   v_sap_detail.render(**st.session_state.get('_view_args', {}))
+def _render_evaluasi():                 v_sap_evaluasi.render(**st.session_state.get('_view_args', {}))
+def _render_kinerja():                  v_sap_kinerja_pg.render(**st.session_state.get('_view_args', {}))
+def _render_alert():                    v_sap_alert.render(**st.session_state.get('_view_args', {}))
 def _render_sips_dashboard():           v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_detail():              v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_waktu():               v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
@@ -314,15 +314,19 @@ nav_dict.update({
         st.Page(_render_inklaring_dashboard, title="Dashboard Inklaring", icon=":material/directions_boat:"),
         st.Page(_render_inklaring_detail,    title="Detailed Inklaring Data", icon=":material/unknown_document:"),
         st.Page(_render_inklaring_waktu,     title="Analisis Waktu Proses Inklaring", icon=":material/schedule:"),
-    ],
-    "Lainnya": [
+    ]
+})
+
+# Tambahkan navigasi khusus admin untuk modul yang masih under maintenance
+if is_admin():
+    nav_dict["Lainnya"] = [
         st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
         st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
         st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
         st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
         st.Page(_render_monitoring_kontrak,      title="Monitoring Kontrak",             icon=":material/contract:"),
     ]
-})
+
 
 # == SIDEBAR HEADER: MAIN MENU + SEARCH =======================================
 with st.sidebar:
@@ -344,7 +348,7 @@ with st.sidebar:
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"} 
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
-AI_TITLES        = {"Prediksi Jalur Impor Inklaring"}
+AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
 LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
@@ -600,6 +604,9 @@ st.sidebar.markdown(f"""
         </p>
         <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
             SIPS &nbsp;→&nbsp; {DATA_UPDATE_SIPS.strftime('%d %B %Y')}
+        </p>
+        <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
+            Inkl. &nbsp;→&nbsp; {DATA_UPDATE_INKLARING.strftime('%d %B %Y')}
         </p>
     </div>
 """, unsafe_allow_html=True)

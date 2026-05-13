@@ -437,7 +437,7 @@ def render(**kwargs):
                     with open(po_path, "wb") as f: f.write(file_po.getbuffer())
                     
                     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-                    import etl_sap_to_postgres as etl_sap  # type: ignore
+                    import etl_sap as etl_sap  # type: ignore
                     
                     etl_sap.Config.PR_FILE = pr_path
                     etl_sap.Config.PO_FILE = po_path
@@ -488,91 +488,37 @@ def render(**kwargs):
             update_tgl_inklaring = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_inklaring")
             if file_inklaring:
                 if st.button("Jalankan ETL Inklaring", type="primary", icon=":material/cloud_upload:"):
-                    with st.spinner("Sedang memproses dan menyimpan data ke database..."):
+                    # Simpan file sementara agar bisa dibaca oleh modul ETL
+                    ext = ".csv" if file_inklaring.name.endswith(".csv") else ".xlsx"
+                    inklaring_path = f"temp_inklaring_upload{ext}"
+                    with open(inklaring_path, "wb") as f:
+                        f.write(file_inklaring.getbuffer())
+                        
+                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                    import etl_inklaring # type: ignore
+                    
+                    etl_inklaring.Config.INKLARING_FILE = inklaring_path
+                    etl_inklaring.db_get_engine = _get_engine
+                    
+                    terminal = st.empty()
+                    capture_inklaring = StreamlitCapture(terminal)
+                    with redirect_stdout(capture_inklaring), redirect_stderr(capture_inklaring):
                         try:
-                            file_inklaring.seek(0)
-                            if file_inklaring.name.endswith('.csv'):
-                                df = pd.read_csv(file_inklaring)
+                            sukses = etl_inklaring.run_etl()
+                            capture_inklaring.flush()
+                            
+                            if sukses:
+                                if update_tgl_inklaring:
+                                    set_setting("DATA_UPDATE_INKLARING", datetime.today().strftime("%Y-%m-%d"))
+                                st.success("Proses sinkronisasi Inklaring selesai! Tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+                                st.cache_data.clear()
                             else:
-                                df = pd.read_excel(file_inklaring)
-                            
-                            column_mapping = {
-                                "Tgl PIB": "tgl_pib", "AJU PIB": "aju_pib", "NO AJU": "no_aju",
-                                "SAP": "sap", "LN": "ln", "NAMA KAPAL": "nama_kapal",
-                                "Tgl ETA": "tgl_eta", "QUANTITY (MT)": "quantity_mt", "PEMASOK": "pemasok",
-                                "PENGIRIM": "pengirim", "AGENT": "agent", "KOMODITI": "komoditi",
-                                "ASAL NEGARA": "asal_negara", "Port of Load": "port_of_load", "HS": "hs_code",
-                                "Bea Masuk (Rp)": "bea_masuk_rp", "PPN": "ppn_rp", "PPH": "pph_rp",
-                                "BM % ": "bm_persen", "GUDANG TIMBUN": "gudang_timbun", "INVOICE": "invoice",
-                                "Kurs": "kurs", "SKEP BC": "skep_bc", "START BONGKAR": "start_bongkar",
-                                "SELESAI BONGKAR": "selesai_bongkar", "PPJK": "ppjk", "SPJM": "spjm",
-                                "AMBIL SAMPEL": "ambil_sampel", "No Pen PIB": "no_pen_pib", 
-                                "Tgl No Pen PIB": "tgl_no_pen_pib", "No S P P B": "no_sppb", 
-                                "Tgl SPPB": "tgl_sppb", "STATUS": "status", "NO SPTNP": "no_sptnp",
-                                "Tgl SPTNP": "tgl_sptnp", "NILAI SPTNP": "nilai_sptnp"
-                            }
-                            
-                            df_clean = df[list(column_mapping.keys())].rename(columns=column_mapping)
-                            kolom_teks = ['sap', 'no_aju', 'ln']
-                            for col in kolom_teks:
-                                df_clean[col] = df_clean[col].astype(str).str.replace(r'\.0$', '', regex=True)
-                                df_clean[col] = df_clean[col].replace({'nan': None, 'NaN': None, 'None': None})
-                            
-                            # Abaikan data yang belum memiliki No AJU
-                            df_clean = df_clean[df_clean['no_aju'].notna() & (df_clean['no_aju'].astype(str).str.strip() != '')]
-
-                            df_clean['aju_pib'] = df_clean['aju_pib'].fillna(
-                                'TEMP-' + df_clean['sap'].astype(str) + '-' + df_clean['no_aju'].astype(str)
-                            )
-
-                            date_columns = ['tgl_pib', 'tgl_eta', 'tgl_no_pen_pib', 'tgl_sppb', 'tgl_sptnp', 'start_bongkar', 'selesai_bongkar']
-                            numeric_columns = ['quantity_mt', 'bea_masuk_rp', 'ppn_rp', 'pph_rp', 'bm_persen', 'kurs', 'nilai_sptnp']
-
-                            for col in date_columns:
-                                df_clean[col] = pd.to_datetime(df_clean[col], errors='coerce')
-
-                            for col in numeric_columns:
-                                if df_clean[col].dtype == 'object':
-                                    df_clean[col] = df_clean[col].astype(str).str.replace(r'[\.,]00$', '', regex=True)
-                                    df_clean[col] = df_clean[col].str.replace(r'[,\.]', '', regex=True)
-                                df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
-
-                            df_clean = df_clean.replace({np.nan: None, 'NaT': None})
-                            df_clean = df_clean.drop_duplicates(subset=['aju_pib'], keep='last')
-                            
-                            engine = _get_engine()
-                            with engine.begin() as conn:
-                                df_clean.to_sql('temp_inklaring', conn, if_exists='replace', index=False)
-                                
-                                columns = list(df_clean.columns)
-                                set_clause = ", ".join([f"{col} = EXCLUDED.{col}" for col in columns if col != 'aju_pib'])
-                                
-                                select_clause_items = []
-                                for col in columns:
-                                    if col in numeric_columns:
-                                        select_clause_items.append(f"CAST({col} AS NUMERIC)")
-                                    elif col in date_columns:
-                                        select_clause_items.append(f"CAST({col} AS TIMESTAMP)")
-                                    else:
-                                        select_clause_items.append(col)
-                                        
-                                select_clause = ", ".join(select_clause_items)
-                                
-                                upsert_query = f"""
-                                    INSERT INTO inklaring_impor ({', '.join(columns)})
-                                    SELECT {select_clause} FROM temp_inklaring
-                                    ON CONFLICT (aju_pib) DO UPDATE SET {set_clause};
-                                """
-                                conn.execute(text(upsert_query))
-                                conn.execute(text("DROP TABLE temp_inklaring;"))
-                                
-                            if update_tgl_inklaring:
-                                set_setting("DATA_UPDATE_INKLARING", datetime.today().strftime("%Y-%m-%d"))
-                            st.success(f"🎉 Berhasil menyimpan {len(df_clean)} data Inklaring ke database!")
-                            st.cache_data.clear()
-                            
+                                st.error("Proses ETL Inklaring gagal, periksa terminal di atas.")
                         except Exception as e:
                             st.error(f"Gagal memproses data Inklaring: {e}")
+                        finally:
+                            if os.path.exists(inklaring_path):
+                                os.remove(inklaring_path)
 
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)

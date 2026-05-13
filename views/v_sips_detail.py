@@ -28,160 +28,158 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # == Search bar ============================================================
-    st.markdown("""
-        <h3 style='display:flex; align-items:center; font-size:18px; font-weight:600;
-                   margin-bottom:8px; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
-                 viewBox="0 0 16 16">
-                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85
-                         3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5
-                         5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
-            </svg>
-            Search (No PR, No PO, Short Text, Nama)
-        </h3>
-    """, unsafe_allow_html=True)
+    with st.expander("Pencarian & Tabel Data SIPS"):
 
-    search_term = st.text_input("Search", value="", label_visibility="collapsed",
-                                placeholder="Ketik No PR, No PO, nama barang, atau nama karyawan...")
+        # == Search bar ============================================================
+        st.markdown("""
+            <h3 style='display:flex; align-items:center; font-size:18px; font-weight:600;
+                       margin-bottom:8px; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                     viewBox="0 0 16 16">
+                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85
+                             3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5
+                             5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+                </svg>
+                Search (No PR, No PO, Short Text, Nama)
+            </h3>
+        """, unsafe_allow_html=True)
 
-    # == WHERE clause ==========================================================
-    where = build_sips_where(
-        date_from=date_from, date_to=date_to,
-        selected_nama=selected_nama, selected_bagian=selected_bagian,
-        selected_pgroup=selected_pgroup
-    )
+        search_term = st.text_input("Search", value="", label_visibility="collapsed",
+                                    placeholder="Ketik No PR, No PO, nama barang, atau nama karyawan...")
 
-    # == Query tabel ===========================================================
-    table_query = f"""
-        SELECT
-            nama,
-            no_pr,
-            item_of                                             AS "Item",
-            status                                             AS "Status",
-            purchasing_group                                   AS "P. Group",
-            short_text                                         AS "Deskripsi",
-            requisition_date                                   AS "Tgl Requisisi",
-            tgl_po                                             AS "Tgl PO",
-            no_po                                              AS "No PO",
-            pr_po_days                                         AS "PR-PO (hari)",
-            standar_sla                                        AS "SLA Standar",
-            realisasi_sla                                      AS "SLA Realisasi",
-            nilai_sla                                          AS "SLA Nilai",
-            kontrak_status                                     AS "Kontrak",
-            prioritas                                          AS "Prioritas",
-            oe_pr                                              AS "OE PR (Rp)",
-            nilai_item_po                                      AS "Nilai PO (Rp)",
-            ROUND((persen_po_sr_mr * 100)::numeric, 2)         AS "PO/MR (%)",
-            nomor_mr_sr                                        AS "No MR/SR"
-        FROM vw_sips
-        WHERE {where}
-        ORDER BY requisition_date DESC
-    """
+        # == WHERE clause ==========================================================
+        where = build_sips_where(
+            date_from=date_from, date_to=date_to,
+            selected_nama=selected_nama, selected_bagian=selected_bagian,
+            selected_pgroup=selected_pgroup
+        )
 
-    with st.spinner("Memuat data..."):
-        try:
-            df_raw = load_data(table_query)
-        except Exception as e:
-            st.error(f"Gagal memuat data: {e}")
-            return
+        # == Query tabel ===========================================================
+        table_query = f"""
+            SELECT
+                nama,
+                no_pr,
+                item_of                                            AS "Item",
+                status                                             AS "Status",
+                purchasing_group                                   AS "P. Group",
+                short_text                                         AS "Deskripsi",
+                requisition_date                                   AS "Tgl Requisisi",
+                tgl_po                                             AS "Tgl PO",
+                no_po                                              AS "No PO",
+                pr_po_days                                         AS "PR-PO (hari)",
+                standar_sla                                        AS "SLA Standar",
+                realisasi_sla                                      AS "SLA Realisasi",
+                nilai_sla                                          AS "SLA Nilai",
+                kontrak_status                                     AS "Kontrak",
+                prioritas                                          AS "Prioritas",
+                oe_pr                                              AS "OE PR (Rp)",
+                nilai_item_po                                      AS "Nilai PO (Rp)",
+                ROUND((persen_po_sr_mr * 100)::numeric, 2)         AS "PO/MR (%)",
+                nomor_mr_sr                                        AS "No MR/SR"
+            FROM vw_sips
+            WHERE {where}
+            ORDER BY requisition_date DESC
+        """
 
-    if not df_raw.empty:
-        if search_term:
-            term = search_term.lower()
-            mask = (
-                df_raw['no_pr'].astype(str).str.lower().str.contains(term, na=False) |
-                df_raw['No PO'].astype(str).str.lower().str.contains(term, na=False) |
-                df_raw['Deskripsi'].astype(str).str.lower().str.contains(term, na=False) |
-                df_raw['nama'].astype(str).str.lower().str.contains(term, na=False) |
-                df_raw['No MR/SR'].astype(str).str.lower().str.contains(term, na=False)
-            )
-            df = df_raw[mask].copy()
-        else:
-            df = df_raw.copy()
-            
-        if not df.empty:
-            
-            df.index = df.index + 1
+        with st.spinner("Memuat data..."):
+            try:
+                df_raw = load_data(table_query)
+            except Exception as e:
+                st.error(f"Gagal memuat data: {e}")
+                return
 
-            # == Format kolom ==========================================================
-            for col in ["OE PR (Rp)", "Nilai PO (Rp)"]:
-                if col in df.columns:
-                    df[col] = df[col].apply(
-                        lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
-                    )
-
-            for col in ["Tgl Requisisi", "Tgl PO"]:
-                if col in df.columns:
-                    df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
-
-            for col in ["PR-PO (hari)", "SLA Standar", "SLA Realisasi"]:
-                if col in df.columns:
-                    df[col] = df[col].apply(
-                        lambda x: f"{x:.0f}" if pd.notna(x) else ""
-                    )
-
-            if "PO/MR (%)" in df.columns:
-                df["PO/MR (%)"] = df["PO/MR (%)"].apply(
-                    lambda x: f"{x:.2f}%" if pd.notna(x) else ""
+        if not df_raw.empty:
+            if search_term:
+                term = search_term.lower()
+                mask = (
+                    df_raw['no_pr'].astype(str).str.lower().str.contains(term, na=False) |
+                    df_raw['No PO'].astype(str).str.lower().str.contains(term, na=False) |
+                    df_raw['Deskripsi'].astype(str).str.lower().str.contains(term, na=False) |
+                    df_raw['nama'].astype(str).str.lower().str.contains(term, na=False) |
+                    df_raw['No MR/SR'].astype(str).str.lower().str.contains(term, na=False)
                 )
-
-            # Warnai kolom Status
-            def color_status(val):
-                colors = {
-                    "Closed":    "color: #09ab3b; font-weight:600",
-                    "Proses PO": "color: #f0a500; font-weight:600",
-                    "Open":      "color: #6c8ebf; font-weight:600",
-                }
-                return colors.get(val, "")
-
-            def color_sla(val):
-                try:
-                    v = float(str(val).replace(",", "."))
-                    if v == 1:   return "color: #09ab3b; font-weight:600"
-                    if v == 0:   return "color: #e03c3c; font-weight:600"
-                except:
-                    pass
-                return ""
-
-            styled = (df.style
-                      .map(color_status, subset=["Status"])
-                      .map(color_sla,    subset=["SLA Nilai"]))
-
-            # == Info jumlah baris =====================================================
-            count_label = f"Menampilkan **{len(df):,}** baris"
-            if len(df) > 500:
-                count_label += " *(ditampilkan 500 teratas untuk performa, gunakan fitur Download untuk data lengkap)*"
-                df_display = df.head(500)
+                df = df_raw[mask].copy()
             else:
-                df_display = df
+                df = df_raw.copy()
                 
-            st.caption(count_label)
+            if not df.empty:
+                
+                df.index = df.index + 1
 
-            styled_display = (df_display.style
-                      .map(color_status, subset=["Status"])
-                      .map(color_sla,    subset=["SLA Nilai"]))
+                # == Format kolom ==========================================================
+                for col in ["OE PR (Rp)", "Nilai PO (Rp)"]:
+                    if col in df.columns:
+                        df[col] = df[col].apply(
+                            lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                        )
 
-            st.dataframe(styled_display, use_container_width=True, height=480)
+                for col in ["Tgl Requisisi", "Tgl PO"]:
+                    if col in df.columns:
+                        df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d')
 
-            # == Download XLSX ==========================================================
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='SIPS_Data')
-            excel_buffer.seek(0) # Kembali ke awal buffer
+                for col in ["PR-PO (hari)", "SLA Standar", "SLA Realisasi"]:
+                    if col in df.columns:
+                        df[col] = df[col].apply(
+                            lambda x: f"{x:.0f}" if pd.notna(x) else ""
+                        )
 
-            st.download_button(
-                label="Download sebagai XLSX",
-                icon=":material/download:",
-                data=excel_buffer,
-                file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-            )
+                if "PO/MR (%)" in df.columns:
+                    df["PO/MR (%)"] = df["PO/MR (%)"].apply(
+                        lambda x: f"{x:.2f}%" if pd.notna(x) else ""
+                    )
+
+                # Warnai kolom Status
+                def color_status(val):
+                    colors = {
+                        "Closed":    "color: #09ab3b; font-weight:600",
+                        "Proses PO": "color: #f0a500; font-weight:600",
+                        "Open":      "color: #6c8ebf; font-weight:600",
+                    }
+                    return colors.get(val, "")
+
+                def color_sla(val):
+                    try:
+                        v = float(str(val).replace(",", "."))
+                        if v == 1:   return "color: #09ab3b; font-weight:600"
+                        if v == 0:   return "color: #e03c3c; font-weight:600"
+                    except:
+                        pass
+                    return ""
+
+                # == Info jumlah baris =====================================================
+                count_label = f"Menampilkan **{len(df):,}** baris"
+                if len(df) > 500:
+                    count_label += " *(ditampilkan 500 teratas untuk performa, gunakan fitur Download untuk data lengkap)*"
+                    df_display = df.head(500)
+                else:
+                    df_display = df
+                    
+                st.caption(count_label)
+
+                styled_display = (df_display.style
+                          .map(color_status, subset=["Status"])
+                          .map(color_sla,    subset=["SLA Nilai"]))
+
+                st.dataframe(styled_display, use_container_width=True, height=480)
+
+                # == Download XLSX ==========================================================
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='SIPS_Data')
+                excel_buffer.seek(0) # Kembali ke awal buffer
+
+                st.download_button(
+                    label="Download sebagai XLSX",
+                    icon=":material/download:",
+                    data=excel_buffer,
+                    file_name=f"sips_data_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                )
+            else:
+                st.info("Tidak ada data yang cocok dengan pencarian.")
         else:
-            st.info("Tidak ada data yang cocok dengan pencarian.")
-    else:
-        st.info("Tidak ada data yang cocok dengan filter yang dipilih.")
+            st.info("Tidak ada data yang cocok dengan filter yang dipilih.")
 
     st.markdown("---")
 

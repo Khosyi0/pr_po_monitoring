@@ -169,7 +169,7 @@ def render(**kwargs):
         
         col_m1, col_m2 = st.columns(2)
         col_m1.metric(label="Rata-rata Kesalahan (MAE)", value="3.9 Hari", delta="Tingkat Presisi Tinggi", delta_color="normal")
-        col_m2.metric(label="Volume Data Training", value="18,938", delta="Dokumen PR ke PO")
+        col_m2.metric(label="Volume Data Training", value="18,938", delta="Dokumen Sampel Januari 2025 - April 2026")
 
         st.markdown("""
         **Evaluasi Rapor Model:**

@@ -71,6 +71,13 @@ PROFILE_CSS = """
     color: var(--text-color) !important;
 }
 
+.prof-subtext {
+    font-size: 12px;
+    margin: 4px 0 0 0 !important;
+    color: var(--text-color) !important;
+    opacity: 0.6;
+}
+
 .emp-list-container {
     background-color: rgba(128, 128, 128, 0.05);
     border: 1px solid rgba(128, 128, 128, 0.2);
@@ -113,13 +120,14 @@ PROFILE_CSS = """
 def _svg(path_d: str, size: int = 40) -> str:
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" fill="currentColor" viewBox="0 0 16 16"><path d="{path_d}"/></svg>'
 
-def _card(icon_d: str, label: str, value: str, is_gold: bool = False) -> str:
+def _card(icon_d: str, label: str, value: str, is_gold: bool = False, subtext: str = "") -> str:
     cls = "prof-card prof-card-gold" if is_gold else "prof-card"
+    subtext_html = f'\n        <p class="prof-subtext">{subtext}</p>' if subtext else ""
     return f"""<div class="{cls}">
     <div class="prof-icon">{_svg(icon_d, 36)}</div>
     <div class="prof-body">
         <p class="prof-label">{label}</p>
-        <p class="prof-value">{value}</p>
+        <p class="prof-value">{value}</p>{subtext_html}
     </div>
 </div>"""
 
@@ -211,25 +219,36 @@ def render(**kwargs):
         total_count = len(df_all)
         vp_row = df_all[df_all['jabatan'] == 'VP']
         vp_name = vp_row['nama'].iloc[0] if not vp_row.empty else "(posisi kosong)"
+        
+        total_capacity = 32
+        empty_total = total_capacity - total_count
 
         st.markdown("### Pimpinan & Kapasitas")
         col_total, col_vp = st.columns(2)
         with col_total:
-            st.markdown(_card(ICONS['people'], "Total Karyawan", f"{total_count} Orang"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS['people'], "Total Karyawan", f"{total_count} Orang", subtext=f"Kapasitas: {total_capacity} Kursi | Kosong: {empty_total}"), unsafe_allow_html=True)
         with col_vp:
             st.markdown(_card(ICONS['crown'], "Vice President (VP)", vp_name, is_gold=True), unsafe_allow_html=True)
 
         st.markdown("#### Jumlah Karyawan per Bagian")
         
         sections = ["ALPATA", "BARUM", "BB/BD/BP", "EPP"]
+        section_capacities = {
+            "ALPATA": 10,
+            "BARUM": 7,
+            "BB/BD/BP": 8,
+            "EPP": 6
+        }
         cols = st.columns(4)
 
         for i, section in enumerate(sections):
             with cols[i]:
                 df_sec = df_all[df_all['bagian'] == section]
                 sec_count = len(df_sec)
+                capacity = section_capacities.get(section, 0)
+                empty_sec = capacity - sec_count
                 
-                st.markdown(_card(ICONS['building'], section, f"{sec_count} Orang"), unsafe_allow_html=True)
+                st.markdown(_card(ICONS['building'], section, f"{sec_count} Orang", subtext=f"Kapasitas: {capacity} Kursi | Kosong: {empty_sec}"), unsafe_allow_html=True)
                 
                 df_sec_sorted = df_sec.copy()
                 if not df_sec_sorted.empty:

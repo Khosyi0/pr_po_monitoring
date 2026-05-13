@@ -210,7 +210,7 @@ def render(**kwargs):
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric(label="Akurasi Keseluruhan", value="90.0%", delta="Sangat Baik")
         col_m2.metric(label="Recall (Deteksi Telat)", value="42.0%", delta="Target Optimasi", delta_color="off")
-        col_m3.metric(label="Volume Data Training", value="17,425", delta="PO Historis")
+        col_m3.metric(label="Volume Data Training", value="17,425", delta="Dokumen Sampel Januari 2025 - April 2026")
 
         st.markdown("""
         **Cara Membaca Rapor (Mengapa Recall 42% itu pencapaian besar?):**
