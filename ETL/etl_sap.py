@@ -1,5 +1,5 @@
 """
-etl_sap_to_postgres.py - ETL: Sync PR & PO dari Excel ke PostgreSQL (Lokal)
+etl_sap.py - ETL: Sync PR & PO dari Excel ke PostgreSQL (Lokal)
 (Versi Super Bulk Upsert - Cloud Optimized Tanpa Deadlock)
 """
 
