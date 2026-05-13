@@ -1307,99 +1307,92 @@ AVG((total_amount_local_curr − estimasi_pr × quantity_pr) / (estimasi_pr × q
         st.markdown("---")
 
         # == ROW 4: Tabel Detail Evaluasi Harga ====================================
-        st.markdown("""
-            <h1 style='display: flex; align-items: center; font-size:22px;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-table" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                    <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2zm15 2h-4v3h4zm0 4h-4v3h4zm0 4h-4v3h3a1 1 0 0 0 1-1zm-5 3v-3H6v3zm-5 0v-3H1v2a1 1 0 0 0 1 1zm-4-4h4V8H1zm0-4h4V4H1zm5-3v3h4V4zm4 4H6v3h4z"/>
-                </svg>
-                Detail Evaluasi Harga per Material
-            </h1>
-        """, unsafe_allow_html=True)
-        st.caption("Ringkasan perbandingan OE vs realisasi per material. Kolom 'Status' menandai item yang perlu perhatian.")
+        with st.expander("Tabel Detail Evaluasi Harga per Material", expanded=False):
+            st.caption("Ringkasan perbandingan OE vs realisasi per material. Kolom 'Status' menandai item yang perlu perhatian.")
 
-        detail_harga_query = f"""
-        SELECT
-            v.material_no,
-            COALESCE(m.description, v.pr_description, 'Unknown')                AS nama_material,
-            m.material_group                                                    AS grup_material,
-            COUNT(DISTINCT v.nomor_po)                                            AS jumlah_po,
-            COUNT(DISTINCT v.vendor_name)                                         AS jumlah_vendor,
-            ROUND(AVG(v.oe)::numeric, 0)                                          AS rata_oe,
-            ROUND(AVG(v.total_amount_local_curr)::numeric, 0)                     AS rata_realisasi,
-            ROUND(AVG(CASE WHEN v.oe > 0
-                THEN (v.total_amount_local_curr - v.oe) / v.oe * 100
-                END)::numeric, 1)                                                AS persen_selisih_avg,
-            ROUND((SUM(v.oe) - SUM(v.total_amount_local_curr))::numeric, 0)       AS total_selisih,
-            ROUND(MIN(v.total_amount_local_curr / NULLIF(v.qty_po, 0))::numeric, 0)   AS harga_satuan_min,
-            ROUND(MAX(v.total_amount_local_curr / NULLIF(v.qty_po, 0))::numeric, 0)   AS harga_satuan_max
-        FROM vw_pr_po_complete v
-        LEFT JOIN materials m USING (material_no)
-        LEFT JOIN purchase_orders poh ON v.nomor_po = poh.nomor_po
-        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-        AND v.nomor_po IS NOT NULL
-        AND v.oe IS NOT NULL AND v.oe > 0
-        AND v.qty_po > 0
-        AND ({bagian_po_cond.replace('bagian_po', 'v.bagian_po')})
-        AND ({dept_cond.replace('poi.department_code', 'v.department_code')})
-        AND ({pg_cond.replace('poh.purchasing_group', 'v.purchasing_group')})
-        GROUP BY v.material_no, m.description, v.pr_description, m.material_group
-        ORDER BY persen_selisih_avg DESC NULLS LAST
-        LIMIT 100
-        """
-        with st.spinner("Memuat tabel detail harga..."):
-            detail_harga_data = load_data(detail_harga_query)
+            detail_harga_query = f"""
+            SELECT
+                v.material_no,
+                COALESCE(m.description, v.pr_description, 'Unknown')                AS nama_material,
+                m.material_group                                                    AS grup_material,
+                COUNT(DISTINCT v.nomor_po)                                            AS jumlah_po,
+                COUNT(DISTINCT v.vendor_name)                                         AS jumlah_vendor,
+                ROUND(AVG(v.oe)::numeric, 0)                                          AS rata_oe,
+                ROUND(AVG(v.total_amount_local_curr)::numeric, 0)                     AS rata_realisasi,
+                ROUND(AVG(CASE WHEN v.oe > 0
+                    THEN (v.total_amount_local_curr - v.oe) / v.oe * 100
+                    END)::numeric, 1)                                                AS persen_selisih_avg,
+                ROUND((SUM(v.oe) - SUM(v.total_amount_local_curr))::numeric, 0)       AS total_selisih,
+                ROUND(MIN(v.total_amount_local_curr / NULLIF(v.qty_po, 0))::numeric, 0)   AS harga_satuan_min,
+                ROUND(MAX(v.total_amount_local_curr / NULLIF(v.qty_po, 0))::numeric, 0)   AS harga_satuan_max
+            FROM vw_pr_po_complete v
+            LEFT JOIN materials m USING (material_no)
+            LEFT JOIN purchase_orders poh ON v.nomor_po = poh.nomor_po
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+            AND v.nomor_po IS NOT NULL
+            AND v.oe IS NOT NULL AND v.oe > 0
+            AND v.qty_po > 0
+            AND ({bagian_po_cond.replace('bagian_po', 'v.bagian_po')})
+            AND ({dept_cond.replace('poi.department_code', 'v.department_code')})
+            AND ({pg_cond.replace('poh.purchasing_group', 'v.purchasing_group')})
+            GROUP BY v.material_no, m.description, v.pr_description, m.material_group
+            ORDER BY persen_selisih_avg DESC NULLS LAST
+            LIMIT 100
+            """
+            with st.spinner("Memuat tabel detail harga..."):
+                detail_harga_data = load_data(detail_harga_query)
 
-        if not detail_harga_data.empty:
-            def status_harga(persen):
-                if pd.isna(persen):       return "-"
-                elif persen > 10:         return "🔴 Jauh Melebihi OE"
-                elif persen > 0:          return "🟡 Melebihi OE"
-                elif persen >= -5:        return "🟢 Sesuai OE"
-                else:                     return "✅ Efisien"
+            if not detail_harga_data.empty:
+                def status_harga(persen):
+                    if pd.isna(persen):       return "-"
+                    elif persen > 10:         return "🔴 Jauh Melebihi OE"
+                    elif persen > 0:          return "🟡 Melebihi OE"
+                    elif persen >= -5:        return "🟢 Sesuai OE"
+                    else:                     return "✅ Efisien"
 
-            detail_harga_data['status'] = detail_harga_data['persen_selisih_avg'].apply(status_harga)
+                detail_harga_data['status'] = detail_harga_data['persen_selisih_avg'].apply(status_harga)
 
-            for col in ['rata_oe', 'rata_realisasi', 'total_selisih', 'harga_satuan_min', 'harga_satuan_max']:
-                detail_harga_data[col] = detail_harga_data[col].apply(
-                    lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                for col in ['rata_oe', 'rata_realisasi', 'total_selisih', 'harga_satuan_min', 'harga_satuan_max']:
+                    detail_harga_data[col] = detail_harga_data[col].apply(
+                        lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
+                    )
+                detail_harga_data['persen_selisih_avg'] = detail_harga_data['persen_selisih_avg'].apply(
+                    lambda x: f"{x:+.1f}".replace('.', ',') + "%" if pd.notna(x) else ""
                 )
-            detail_harga_data['persen_selisih_avg'] = detail_harga_data['persen_selisih_avg'].apply(
-                lambda x: f"{x:+.1f}".replace('.', ',') + "%" if pd.notna(x) else ""
-            )
 
-            st.dataframe(
-                detail_harga_data.rename(columns={
-                    'material_no':        'Material No',
-                    'nama_material':      'Nama Material',
-                    'grup_material':      'Grup',
-                    'jumlah_po':          'Jml PO',
-                    'jumlah_vendor':      'Jml Vendor',
-                    'rata_oe':            'Rata-rata OE',
-                    'rata_realisasi':     'Rata-rata Realisasi',
-                    'persen_selisih_avg': '% Selisih',
-                    'total_selisih':      'Total Selisih',
-                    'harga_satuan_min':   'Harga Satuan Min',
-                    'harga_satuan_max':   'Harga Satuan Maks',
-                    'status':             'Status'
-                }),
-                use_container_width=True, height=400
-            )
-            # Ubah ke XLSX
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                detail_harga_data.to_excel(writer, index=False, sheet_name='Detail_Harga')
-            excel_buffer.seek(0) # Kembali ke awal buffer
+                st.dataframe(
+                    detail_harga_data.rename(columns={
+                        'material_no':        'Material No',
+                        'nama_material':      'Nama Material',
+                        'grup_material':      'Grup',
+                        'jumlah_po':          'Jml PO',
+                        'jumlah_vendor':      'Jml Vendor',
+                        'rata_oe':            'Rata-rata OE',
+                        'rata_realisasi':     'Rata-rata Realisasi',
+                        'persen_selisih_avg': '% Selisih',
+                        'total_selisih':      'Total Selisih',
+                        'harga_satuan_min':   'Harga Satuan Min',
+                        'harga_satuan_max':   'Harga Satuan Maks',
+                        'status':             'Status'
+                    }),
+                    use_container_width=True, height=400
+                )
+                # Ubah ke XLSX
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+                    detail_harga_data.to_excel(writer, index=False, sheet_name='Detail_Harga')
+                excel_buffer.seek(0) # Kembali ke awal buffer
 
-            st.download_button(
-                label="Download sebagai XLSX",
-                icon=":material/download:",
-                data=excel_buffer,
-                file_name=f"evaluasi_harga_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-            )
-        else:
-            st.info("Tidak ada data evaluasi harga untuk filter yang dipilih.")
+                st.download_button(
+                    label="Download sebagai XLSX",
+                    icon=":material/download:",
+                    data=excel_buffer,
+                    file_name=f"evaluasi_harga_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                )
+            else:
+                st.info("Tidak ada data evaluasi harga untuk filter yang dipilih.")
 
         st.markdown("---")
 
