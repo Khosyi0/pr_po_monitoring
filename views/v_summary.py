@@ -193,13 +193,20 @@ def render(load_data, **kwargs):
 
     current_year = datetime.now().year
 
+    # Pengambilan tanggal update SAP
     sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
     try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
 
+    # Pengambilan tanggal update Inklaring
     ink_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
     try: DATA_UPDATE_INKLARING = datetime.strptime(ink_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
+
+    # Pengambilan tanggal update SIPS (Baru ditambahkan)
+    sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
+    try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
 
     # == Header Utama =========================================================
     st.markdown("""
@@ -219,35 +226,79 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # == Filter Bulan Dinamis =================================================
-    months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-    options = ["ALL"] + [f"{m} {current_year}" for m in months_id]
+    # == Filter Periode (Bulan & Triwulan) ====================================
+    st.markdown(
+        f"<p style='font-size:13px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:6px;'>"
+        f"{_svg(ICONS['calendar'], 14)} Filter Periode</p>", 
+        unsafe_allow_html=True
+    )
     
-    # --- UI DROPDOWN DISEMBUNYIKAN SEMENTARA ---
-    col_filter, _ = st.columns([1, 4])
-    with col_filter:
-        st.markdown(
-            f"<p style='font-size:13px; font-weight:600; margin-bottom:2px; display:flex; align-items:center; gap:6px;'>"
-            f"{_svg(ICONS['calendar'], 14)} Filter Bulan</p>", 
-            unsafe_allow_html=True
-        )
-        selected_month = st.selectbox("Filter Bulan", options=options, label_visibility="collapsed")
+    # Pilihan Tipe Filter
+    tipe_filter = st.radio("Tipe Filter", ["Rentang Bulan", "Triwulanan"], horizontal=True, label_visibility="collapsed")
 
-    # Paksa nilai filter selalu "ALL"
-    # selected_month = "ALL"
+    months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
-    # Menentukan rentang tanggal (date_from dan date_to)
-    if selected_month != "ALL":
-        month_str = selected_month.split(" ")[0]
-        month_idx = months_id.index(month_str) + 1
-        last_day = calendar.monthrange(current_year, month_idx)[1]
-        date_from = datetime(current_year, month_idx, 1).date()
-        date_to = datetime(current_year, month_idx, last_day).date()
-        date_to_ink = date_to
+    if tipe_filter == "Rentang Bulan":
+        # Generate pilihan dropdown bulan
+        options = [f"{m} {y}" for y in range(current_year - 2, current_year + 2) for m in months_id]
+
+        default_start_month = f"Januari {current_year}"
+        default_end_month = f"{months_id[DATA_UPDATE_SIPS.month - 1]} {DATA_UPDATE_SIPS.year}"
+
+        if default_start_month not in options: options.append(default_start_month)
+        if default_end_month not in options: options.append(default_end_month)
+        
+        col_start, col_end, _ = st.columns([1, 1, 3])
+        with col_start:
+            start_month = st.selectbox("Bulan Start", options=options, index=options.index(default_start_month), label_visibility="collapsed")
+        with col_end:
+            end_month = st.selectbox("Bulan Sampai", options=options, index=options.index(default_end_month), label_visibility="collapsed")
+
+        # Parsing Tanggal Mulai
+        start_m_str, start_y_str = start_month.split(" ")
+        start_m_idx = months_id.index(start_m_str) + 1
+        date_from = datetime(int(start_y_str), start_m_idx, 1).date()
+
+        # Parsing Tanggal Akhir
+        end_m_str, end_y_str = end_month.split(" ")
+        end_m_idx = months_id.index(end_m_str) + 1
+        last_day = calendar.monthrange(int(end_y_str), end_m_idx)[1]
+        date_to = datetime(int(end_y_str), end_m_idx, last_day).date()
+
     else:
-        date_from = kwargs.get('date_from', datetime(current_year, 1, 1).date())
-        date_to   = kwargs.get('date_to', DATA_UPDATE_SAP)
-        date_to_ink = DATA_UPDATE_INKLARING
+        # Logika Filter Triwulanan
+        opsi_triwulan = ["Q1 (Jan - Mar)", "Q2 (Apr - Jun)", "Q3 (Jul - Sep)", "Q4 (Okt - Des)"]
+        opsi_tahun = list(range(current_year - 2, current_year + 2))
+        
+        # Menentukan Default Q berdasarkan Update Data SIPS
+        m = DATA_UPDATE_SIPS.month
+        if m <= 3: def_q = 0
+        elif m <= 6: def_q = 1
+        elif m <= 9: def_q = 2
+        else: def_q = 3
+
+        col_tri, col_tahun, _ = st.columns([1.2, 0.8, 3])
+        with col_tri:
+            pilihan_q = st.selectbox("Pilih Triwulan", options=opsi_triwulan, index=def_q, label_visibility="collapsed")
+        with col_tahun:
+            pilihan_t = st.selectbox("Pilih Tahun", options=opsi_tahun, index=opsi_tahun.index(DATA_UPDATE_SIPS.year), label_visibility="collapsed")
+
+        # Penetapan Tanggal Berdasarkan Triwulan
+        if pilihan_q == "Q1 (Jan - Mar)":
+            date_from = datetime(pilihan_t, 1, 1).date()
+            date_to = datetime(pilihan_t, 3, 31).date()
+        elif pilihan_q == "Q2 (Apr - Jun)":
+            date_from = datetime(pilihan_t, 4, 1).date()
+            date_to = datetime(pilihan_t, 6, 30).date()
+        elif pilihan_q == "Q3 (Jul - Sep)":
+            date_from = datetime(pilihan_t, 7, 1).date()
+            date_to = datetime(pilihan_t, 9, 30).date()
+        else:
+            date_from = datetime(pilihan_t, 10, 1).date()
+            date_to = datetime(pilihan_t, 12, 31).date()
+
+    # Samakan batas akhir tanggal Inklaring
+    date_to_ink = date_to
 
     # Info Teks Periode
     st.markdown(
