@@ -357,66 +357,27 @@ def render(load_data, **kwargs):
       AND poh.date_ordered <= '{date_to}'
     """
 
+    # Kueri Tren SIPS (Menggantikan SAP)
     trend_query = f"""
-    WITH pr_monthly AS (
-        SELECT
-            DATE_TRUNC('month', first_full_release) AS month_date,
-            COUNT(DISTINCT CASE WHEN no_pr != 'No PR'
-                THEN no_pr || '-' || line_item_pr::text END) AS total_pr
-        FROM vw_pr_po_complete
-        WHERE first_full_release >= '{date_from}' AND first_full_release <= '{date_to}'
-        GROUP BY 1
-    ),
-    po_monthly AS (
-        SELECT
-            DATE_TRUNC('month', poh.date_ordered) AS month_date,
-            COUNT(poi.nomor_po) AS total_po
-        FROM po_items poi
-        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-        GROUP BY 1
-    )
     SELECT
-        COALESCE(pr.month_date, po.month_date) AS month,
-        COALESCE(pr.total_pr, 0) AS total_pr,
-        COALESCE(po.total_po, 0) AS total_po
-    FROM pr_monthly pr
-    FULL OUTER JOIN po_monthly po ON pr.month_date = po.month_date
+        DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
+        COUNT(*) AS total_pr,
+        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
+    FROM vw_sips
+    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    GROUP BY 1
     ORDER BY month
     """
 
+    # Kueri Tren Nilai SIPS (Menggantikan SAP)
     value_trend_query = f"""
-    WITH pr_monthly_val AS (
-        SELECT
-            DATE_TRUNC('month', first_full_release) AS month_date,
-            SUM(oe_val) AS total_oe
-        FROM (
-            SELECT
-                no_pr, line_item_pr,
-                MAX(first_full_release) AS first_full_release,
-                MAX(estimasi_pr) AS oe_val
-            FROM vw_pr_po_complete
-            WHERE first_full_release >= '{date_from}' AND first_full_release <= '{date_to}'
-              AND no_pr != 'No PR' AND first_full_release IS NOT NULL
-            GROUP BY no_pr, line_item_pr
-        ) sub
-        GROUP BY 1
-    ),
-    po_monthly_val AS (
-        SELECT
-            DATE_TRUNC('month', poh.date_ordered) AS month_date,
-            SUM(poi.total_amount_local_curr) AS total_po_val
-        FROM po_items poi
-        JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-        WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-        GROUP BY 1
-    )
     SELECT
-        COALESCE(pr.month_date, po.month_date) AS month,
-        COALESCE(pr.total_oe, 0) AS total_oe,
-        COALESCE(po.total_po_val, 0) AS total_po_val
-    FROM pr_monthly_val pr
-    FULL OUTER JOIN po_monthly_val po ON pr.month_date = po.month_date
+        DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS total_oe,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS total_po_val
+    FROM vw_sips
+    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    GROUP BY 1
     ORDER BY month
     """
 
@@ -426,11 +387,17 @@ def render(load_data, **kwargs):
     WHERE tgl_eta >= '{date_from}' AND tgl_eta <= '{date_to_ink}'
     """
 
+    # Kueri SIPS Diperluas untuk mengambil total volume & nilai keseluruhan serta nilai Khusus Non Agreement
     sips_otobos_query = f"""
     SELECT
+        COUNT(*) AS total_pr,
         COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
         COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
-        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
+        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na
     FROM vw_sips
     WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
     """
@@ -478,8 +445,8 @@ def render(load_data, **kwargs):
         val_trend_data['po_fmt'] = val_trend_data['total_po_val'].apply(format_idr)
 
     # Kalkulasi nilai KPI
-    total_pr      = int(pr_kpi['total_pr'][0]       or 0)
-    pr_with_po    = int(pr_kpi['pr_with_po'][0]     or 0)
+    total_pr      = int(pr_kpi['total_pr'][0]        or 0)
+    pr_with_po    = int(pr_kpi['pr_with_po'][0]      or 0)
     pr_without    = int(pr_kpi['pr_without_po'][0]  or 0)
     estimasi_all  = float(pr_kpi['total_estimasi'][0] or 0)
 
@@ -531,17 +498,43 @@ def render(load_data, **kwargs):
 
     # Hardcoded values for row 4 KPIs
     otobos_val = 99.33
-    # Perhitungan OTOBOS (SIPS)
+    # Perhitungan OTOBOS & Laporan SIPS
     if not sips_otobos_data.empty:
+        # Metrik OTOBOS
         s_po = int(sips_otobos_data['total_po'][0] or 0)
         s_ontime = float(sips_otobos_data['sla_ontime'][0] or 0)
         s_onbudget = int(sips_otobos_data['on_budget_count'][0] or 0)
         
         sla_on_time_pct = (s_ontime / s_po * 100) if s_po > 0 else 0.0
         sla_on_budget_pct = (s_onbudget / s_po * 100) if s_po > 0 else 0.0
+        
+        # Metrik untuk Laporan Pengadaan SIPS (Bagian 2)
+        sips_total_pr = int(sips_otobos_data['total_pr'][0] or 0)
+        sips_total_po = s_po
+        sips_pr_without = sips_total_pr - sips_total_po
+        sips_pct_pr_po = (sips_total_po / sips_total_pr * 100) if sips_total_pr > 0 else 0.0
+        
+        sips_oe_total = float(sips_otobos_data['sips_oe_total'][0] or 0)
+        sips_po_total = float(sips_otobos_data['sips_po_total'][0] or 0)
+        
+        # Ekstraksi khusus Nilai Non Agreement
+        sips_oe_na = float(sips_otobos_data['sips_oe_na'][0] or 0)
+        sips_po_na = float(sips_otobos_data['sips_po_na'][0] or 0)
+        
+        # Efisiensi dihitung dengan data Non Agreement
+        sips_savings = sips_oe_na - sips_po_na
+        sips_savings_pct = (sips_savings / sips_oe_na * 100) if sips_oe_na > 0 else 0.0
     else:
         sla_on_time_pct = 0.0
         sla_on_budget_pct = 0.0
+        sips_total_pr = 0
+        sips_total_po = 0
+        sips_pr_without = 0
+        sips_pct_pr_po = 0.0
+        sips_oe_total = 0.0
+        sips_po_total = 0.0
+        sips_savings = 0.0
+        sips_savings_pct = 0.0
         
     sla_on_spec_pct = 99.30
     otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
@@ -641,7 +634,6 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # Membuat 2 kolom besar dengan jarak (gap) yang lebar sebagai "pembagi" tengah
     col_kiri, col_kanan = st.columns(2, gap="large")
 
     # == SISI KIRI: VOLUME PENGADAAN ==========================================
@@ -654,31 +646,28 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
-        # Kartu Baris 1 (Kiri)
         c11, c12 = st.columns(2)
         with c11:
             st.markdown(_card(
-                ICONS["file_text"], "Total PR", format_number(total_pr), 
-                f"{format_number(pr_with_po)} sudah memiliki PO"
+                ICONS["file_text"], "Total PR (SIPS)", format_number(sips_total_pr), 
+                f"{format_number(sips_total_po)} sudah memiliki PO"
             ), unsafe_allow_html=True)
         with c12:
             st.markdown(_card(
-                ICONS["bag"], "Total PO", format_number(total_po), 
-                "Termasuk PR tahun sebelumnya"
+                ICONS["bag"], "Total PO (SIPS)", format_number(sips_total_po), 
+                "Status Closed & Proses PO"
             ), unsafe_allow_html=True)
         
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-        # Kartu Baris 2 (Kiri)
         c13, c14 = st.columns(2)
         with c13:
             st.markdown(_card(
-                ICONS["clock"], "PR On Progress", format_number(pr_without), ""
+                ICONS["clock"], "PR On Progress", format_number(sips_pr_without), ""
             ), unsafe_allow_html=True)
         with c14:
-            pct_pr_po = (total_po / total_pr * 100) if total_pr > 0 else 0.0
             st.markdown(_card(
-                ICONS["percent"], "% PR-PO", f"{format_number(pct_pr_po, decimals=2)}%", ""
+                ICONS["percent"], "% PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", ""
             ), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -746,33 +735,29 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
-        # Kartu Baris 1 (Kanan)
         c15, c16 = st.columns(2)
         with c15:
             st.markdown(_card(
-                ICONS["currency"], "Total Estimasi PR (OE)", format_idr(oe_po), 
-                #ICONS["currency"], "Total Estimasi PR (OE)", "Rp 4,61 T",
-                "OE dari PR yang sudah terbit PO"
+                ICONS["currency"], "Total OE (SIPS)", format_idr(sips_oe_total), 
+                "OE dari PR (Closed/Proses PO)"
             ), unsafe_allow_html=True)
         with c16:
             st.markdown(_card(
-                ICONS["bag"], "Total Nilai PO", format_idr(po_amount), 
-                "Seluruh PO pada periode ini"
+                ICONS["bag"], "Total Nilai PO (SIPS)", format_idr(sips_po_total), 
+                "Seluruh realisasi PO SIPS"
             ), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-        # Kartu Baris 2 (Kanan)
+        # Kartu Efisiensi kini dilabeli khusus untuk Non Agreement
         c17, c18 = st.columns(2)
         with c17:
             st.markdown(_card(
-                ICONS["graph_up"], "Efisiensi", format_idr(savings)
-                #ICONS["graph_up"], "Efisiensi", "Rp 23,57 M",
+                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)
             ), unsafe_allow_html=True)
         with c18:
             st.markdown(_card(
-                ICONS["percent"], "% Efisiensi", f"{format_number(savings_pct, decimals=2)}%"
-                #ICONS["percent"], "% Efisiensi", "0,51%",
+                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"
             ), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -884,7 +869,7 @@ def render(load_data, **kwargs):
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Kueri khusus untuk mengambil metrik performa (On Time, On Budget, Efisiensi, Lead Time) per Bagian dari SIPS
+    # Kueri khusus untuk mengambil metrik performa dan Efisiensi NA per Bagian dari SIPS
     bagian_query = f"""
     SELECT
         COUNT(*) AS total_pr,
@@ -893,6 +878,8 @@ def render(load_data, **kwargs):
         COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
         COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
     FROM vw_sips
     WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
@@ -917,11 +904,11 @@ def render(load_data, **kwargs):
         pct_ontime   = (b_ontime / b_total_po * 100) if b_total_po > 0 else 0.0
         pct_onbudget = (b_onbudget / b_total_po * 100) if b_total_po > 0 else 0.0
         
-        b_sips_oe = float(b_data['sips_oe_total'][0] or 0)
-        b_sips_po = float(b_data['sips_po_total'][0] or 0)
+        b_sips_oe_na = float(b_data['sips_oe_na'][0] or 0)
+        b_sips_po_na = float(b_data['sips_po_na'][0] or 0)
             
-        b_efis_val   = b_sips_oe - b_sips_po
-        b_efis_pct   = (b_efis_val / b_sips_oe * 100) if b_sips_oe > 0 else 0.0
+        b_efis_val   = b_sips_oe_na - b_sips_po_na
+        b_efis_pct   = (b_efis_val / b_sips_oe_na * 100) if b_sips_oe_na > 0 else 0.0
 
         # Logika Warna (Hijau jika baik, Oranye/Merah jika kurang)
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
@@ -953,7 +940,7 @@ def render(load_data, **kwargs):
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
             
         with c3:
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
             
         with c4:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
@@ -978,6 +965,8 @@ def render(load_data, **kwargs):
             COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
             COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
             COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
+            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
             COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
         FROM vw_sips
         WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
@@ -996,17 +985,22 @@ def render(load_data, **kwargs):
             df_karyawan['PO/PR'] = (df_karyawan['total_po'] / df_karyawan['total_pr'].replace(0, float('nan')) * 100).fillna(0).apply(lambda x: f"{x:.1f}%")
             df_karyawan['PR-PO (Hari)'] = df_karyawan['avg_pr_po'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "0.0")
             df_karyawan['% On Time'] = (df_karyawan['sla_ontime'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
-            df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_total'] - df_karyawan['sips_po_total']
-            df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_total'].replace(0, float('nan')) * 100).fillna(0)
+            
+            # Efisiensi di tabel khusus menggunakan variabel Non Agreement
+            df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_na'] - df_karyawan['sips_po_na']
+            df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_na'].replace(0, float('nan')) * 100).fillna(0)
+            
             df_karyawan['% On Budget'] = (df_karyawan['on_budget_count'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
             df_karyawan['% On Spec'] = 99.30
             df_karyawan['OTOBOS'] = ((df_karyawan['% On Time'] + df_karyawan['% On Budget'] + df_karyawan['% On Spec']) / 3).fillna(0)
+            
             df_karyawan['% On Time'] = df_karyawan['% On Time'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi %'] = df_karyawan['Efisiensi %'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi Rp'] = df_karyawan['Efisiensi Rp_val'].apply(lambda x: format_idr_short(x) if pd.notna(x) else "0")
             df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
+            
             df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
             st.dataframe(df_table, use_container_width=True)

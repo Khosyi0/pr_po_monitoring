@@ -169,7 +169,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     # == Query KPI =============================================================
     kpi_query = f"""
         SELECT
-            COUNT(*)                                                              AS total_pr,
+            COUNT(*)                                                          AS total_pr,
             COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END)          AS total_po,
             ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
             COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
@@ -180,7 +180,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             COALESCE(SUM(CASE WHEN status='Closed'    THEN nilai_item_po END),0)  AS po_closed,
             COUNT(CASE WHEN persen_po_sr_mr<=1.0
                         AND status IN ('Closed','Proses PO') THEN 1 END)          AS on_budget_count,
-            COUNT(CASE WHEN nilai_sla = 0 AND status IN ('Closed','Proses PO') THEN 1 END) AS sla_miss
+            COUNT(CASE WHEN nilai_sla = 0 AND status IN ('Closed','Proses PO') THEN 1 END) AS sla_miss,
+            -- Tambahan Filter untuk KPI Efisiensi Khusus Non Agreement
+            COALESCE(SUM(CASE WHEN status='Proses PO' AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END),0) AS oe_proses_na,
+            COALESCE(SUM(CASE WHEN status='Closed'    AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END),0) AS oe_closed_na,
+            COALESCE(SUM(CASE WHEN status='Proses PO' AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END),0) AS po_proses_na,
+            COALESCE(SUM(CASE WHEN status='Closed'    AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END),0) AS po_closed_na
         FROM vw_sips WHERE {where}
     """
 
@@ -233,18 +238,33 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         total_po      = int(r['total_po']       or 0)
         avg_pr_po     = float(r['avg_pr_po']    or 0)
         sla_ontime    = float(r['sla_ontime']   or 0)
+        
+        # Variabel General
         oe_proses     = float(r['oe_proses']    or 0)
         oe_closed     = float(r['oe_closed']    or 0)
         po_proses     = float(r['po_proses']    or 0)
         po_closed     = float(r['po_closed']    or 0)
-        on_budget_cnt = int(r['on_budget_count']or 0)
-        sla_miss      = int(r['sla_miss']       or 0)
-        po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
-        pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
         oe_total      = oe_proses + oe_closed
         po_total      = po_proses + po_closed
-        efisiensi_pct = (1 - po_total / oe_total) * 100 if oe_total > 0 else 0.0
-        efisiensi_rp  = oe_total - po_total
+
+        # Variabel khusus Efisiensi (Non Agreement)
+        oe_proses_na  = float(r['oe_proses_na'] or 0)
+        oe_closed_na  = float(r['oe_closed_na'] or 0)
+        po_proses_na  = float(r['po_proses_na'] or 0)
+        po_closed_na  = float(r['po_closed_na'] or 0)
+        oe_total_na   = oe_proses_na + oe_closed_na
+        po_total_na   = po_proses_na + po_closed_na
+
+        on_budget_cnt = int(r['on_budget_count']or 0)
+        sla_miss      = int(r['sla_miss']       or 0)
+        
+        po_pr_pct     = (total_po / total_pr * 100)   if total_pr > 0 else 0.0
+        pct_ontime    = (sla_ontime / total_po * 100) if total_po > 0 else 0.0
+        
+        # Perhitungan Efisiensi menggunakan data Non Agreement
+        efisiensi_pct = (1 - po_total_na / oe_total_na) * 100 if oe_total_na > 0 else 0.0
+        efisiensi_rp  = oe_total_na - po_total_na
+        
         pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
 
         # Proses data SLA per prioritas
@@ -268,6 +288,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         prio_investasi_pct = sla_by_prio.get('Investasi', 0.0)
         prio_urgent_pct = sla_by_prio.get('Urgent', 0.0)
         prio_emergency_pct = sla_by_prio.get('Emergency', 0.0)
+        
         # == KPI_DASH: definisi 15 KPI dengan formula masing-masing ==============
         KPI_DASH = [
             # == Baris 1: PR / PO / PO-PR =========================================
@@ -322,8 +343,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     **Kalkulasi:**
     ```
-    PO/PR = Total PO / Total PR × 100%
-          = {total_po:,} / {total_pr:,} × 100%
+    PO/PR = Total PO / Total PR x 100%
+          = {total_po:,} / {total_pr:,} x 100%
           = {po_pr_pct:.1f}%
     ```
 
@@ -427,8 +448,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
              = {format_currency(oe_total)}
     ```
 
-    Dipakai sebagai pembagi dalam rumus Efisiensi.
-
     **Target:** -""",
             },
             # == Baris 4: Nilai PO =================================================
@@ -489,8 +508,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
              = {format_currency(po_total)}
     ```
 
-    Dipakai sebagai pembilang dalam rumus Efisiensi.
-
     **Target:** -""",
             },
             # == Baris 5: Efisiensi & On Budget ===================================
@@ -499,20 +516,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "icon":     "graph-up",
                 "label":    "Efisiensi %",
                 "value":    f"{format_number(efisiensi_pct, decimals=2)}%",
-                "delta":    "1 − (PO Total / OE Total)",
+                "delta":    "PO Non Agreement",
                 "dtype":    "positive" if efisiensi_pct > 0 else "negative",
                 "formula":  f"""\
-    **Efisiensi %**: Persentase penghematan dari selisih OE dengan realisasi nilai PO.
+    **Efisiensi %**: Persentase penghematan dari selisih OE dengan realisasi nilai PO (Hanya untuk jenis kontrak Non Agreement).
 
     **Formula Excel:**
     ```
     = 1 - (PO Proses PO + PO Closed) / (OE Proses PO + OE Closed)
     ```
+    *(Difilter hanya untuk baris dengan status Non Agreement)*
 
     **Kalkulasi:**
     ```
-    Efisiensi % = 1 - (Total PO / Total OE) × 100%
-                = 1 - ({format_currency(po_total)} / {format_currency(oe_total)}) × 100%
+    Efisiensi % = 1 - (Total PO NA / Total OE NA) x 100%
+                = 1 - ({format_currency(po_total_na)} / {format_currency(oe_total_na)}) x 100%
                 = {efisiensi_pct:.2f}%
     ```
 
@@ -529,10 +547,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "icon":     "piggy-bank",
                 "label":    "Efisiensi Rp",
                 "value":    format_idr(efisiensi_rp),
-                "delta":    "OE Total − PO Total",
+                "delta":    "PO Non Agreement",
                 "dtype":    "positive" if efisiensi_rp > 0 else "negative",
                 "formula":  f"""\
-    **Efisiensi Rp**: Nominal penghematan dalam Rupiah.
+    **Efisiensi Rp**: Nominal penghematan dalam Rupiah (Hanya untuk jenis kontrak Non Agreement).
 
     **Nilai saat ini: {format_currency(efisiensi_rp)}**
 
@@ -540,125 +558,126 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ```
     = (OE Proses PO + OE Closed) - (PO Proses PO + PO Closed)
     ```
+    *(Difilter hanya untuk baris dengan status Non Agreement)*
 
     **Kalkulasi:**
     ```
-    Efisiensi Rp = Total OE - Total PO
-                 = {format_currency(oe_total)} - {format_currency(po_total)}
+    Efisiensi Rp = Total OE NA - Total PO NA
+                 = {format_currency(oe_total_na)} - {format_currency(po_total_na)}
                  = {format_currency(efisiensi_rp)}
     ```
 
     Nilai positif berarti realisasi PO lebih rendah dari anggaran OE.
 
-    **Target:** -""",
-            },
-            {
-                "key":      "sips_kpi_on_budget",
-                "icon":     "check-circle",
-                "label":    "% On Budget",
-                "value":    f"{format_number(pct_on_budget)}%",
-                "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
-                "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
-                "formula":  f"""\
-    **% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
+**Target:** -""",
+        },
+        {
+            "key":      "sips_kpi_on_budget",
+            "icon":     "check-circle",
+            "label":    "% On Budget",
+            "value":    f"{format_number(pct_on_budget)}%",
+            "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
+            "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
+            "formula":  f"""\
+**% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
 
-    **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
-    - Filter **Status** menjadi `Proses PO` dan `Closed`
-    - Filter **Persentase PO/SR atau PO/MR** kurang dari sama dengan 100% lalu dibagi **Total PO**
+**Formula Excel:**
+- Filter nama karyawan yang ingin dicari
+- Filter **Status** menjadi `Proses PO` dan `Closed`
+- Filter **Persentase PO/SR atau PO/MR** kurang dari sama dengan 100% lalu dibagi **Total PO**
 
-    | % | Interpretasi |
-    |---|---|
-    | ≥ 80% | 🟢 Baik |
-    | 60–79% | 🟡 Perlu perhatian |
-    | < 60% | 🔴 Banyak over budget |
+| % | Interpretasi |
+|---|---|
+| ≥ 80% | 🟢 Baik |
+| 60–79% | 🟡 Perlu perhatian |
+| < 60% | 🔴 Banyak over budget |
 
-    **Target:** -""",
-            },
-        ]
+**Target:** -""",
+        },
+    ]
 
-        # == Helper: render satu baris (max 3 KPI) dengan tombol formula ==========
-        def render_kpi_row(items):
-            cols = st.columns(3)
-            for i, col in enumerate(cols):
-                with col:
-                    if i >= len(items):
-                        continue
-                    kpi     = items[i]
+    # == Helper: render satu baris (max 3 KPI) dengan tombol formula ==========
+    def render_kpi_row(items):
+        cols = st.columns(3)
+        for i, col in enumerate(cols):
+            with col:
+                if i >= len(items):
+                    continue
+                kpi     = items[i]
 
-                    delta_type_map = {"positive": "green", "negative": "red"}
-                    delta_type = delta_type_map.get(kpi["dtype"], "neutral")
-                    st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], kpi["delta"], delta_type), unsafe_allow_html=True)
-                    with st.popover(":material/visibility:", help="Lihat Formula"):
-                        st.info(kpi["formula"])
+                delta_type_map = {"positive": "green", "negative": "red"}
+                delta_type = delta_type_map.get(kpi["dtype"], "neutral")
+                st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], kpi["delta"], delta_type), unsafe_allow_html=True)
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info(kpi["formula"])
 
-        # == Render 5 baris × 3 KPI ===============================================
-        for row_start in range(0, len(KPI_DASH), 3):
-            row_items = KPI_DASH[row_start:row_start + 3]
-            render_kpi_row(row_items)
-            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    # == Render 5 baris x 3 KPI ===============================================
+    for row_start in range(0, len(KPI_DASH), 3):
+        row_items = KPI_DASH[row_start:row_start + 3]
+        render_kpi_row(row_items)
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-        # == Bagian Baru: Pemenuhan SLA berdasarkan Prioritas =====================
-        title_col, btn_col = st.columns([9, 1])
-        with title_col:
-            st.markdown("""
-                <h1 style='display: flex; align-items: center; font-size:24px;'>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                        <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>
-                    </svg>
-                    Pemenuhan SLA berdasarkan Prioritas
-                </h1>
-            """, unsafe_allow_html=True)
-        with btn_col:
-            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info("""**Pemenuhan SLA berdasarkan Prioritas**: Kontribusi persentase dari PO dengan prioritas tertentu yang on-time terhadap total PO keseluruhan.
+    # == Bagian Baru: Pemenuhan SLA berdasarkan Prioritas =====================
+    title_col, btn_col = st.columns([9, 1])
+    with title_col:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>
+                </svg>
+                Pemenuhan SLA berdasarkan Prioritas
+            </h1>
+        """, unsafe_allow_html=True)
+    with btn_col:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""**Pemenuhan SLA berdasarkan Prioritas**: Kontribusi persentase dari PO dengan prioritas tertentu yang on-time terhadap total PO keseluruhan.
 
 **Kalkulasi:**
-`% Kontribusi = (Total PO On Time Prioritas X) / (Total PO Keseluruhan) × 100%`""")
+% Kontribusi = (Total PO On Time Prioritas X) / (Total PO Keseluruhan) x 100%""")
 
-        # Data untuk kartu-kartu dipisah agar lebih mudah diatur layout-nya
-        card_overall = {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"}
+    # Data untuk kartu-kartu dipisah agar lebih mudah diatur layout-nya
+    card_overall = {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"}
+    
+    sla_prio_cards = [
+        {"label": "% Kontribusi Normal", "value": prio_normal_pct, "icon": "check-circle", "prio": "Normal"},
+        {"label": "% Kontribusi TA", "value": prio_ta_pct, "icon": "check-circle", "prio": "TA"},
+        {"label": "% Kontribusi Investasi", "value": prio_investasi_pct, "icon": "check-circle", "prio": "Investasi"},
+        {"label": "% Kontribusi Urgent", "value": prio_urgent_pct, "icon": "check-circle", "prio": "Urgent"},
+        {"label": "% Kontribusi Emergency", "value": prio_emergency_pct, "icon": "check-circle", "prio": "Emergency"},
+    ]
+
+    # Buat layout kolom utama: Kiri (Besar), Kanan (List Prioritas)
+    col_main_left, col_main_right = st.columns([1, 3], gap="small")
+
+    # ==========================================
+    # 1. KARTU UTAMA DI KIRI (Besar & Memanjang)
+    # ==========================================
+    with col_main_left:
+        # Ubah delta_text di bawah ini
+        delta_text = f"{format_number(sla_miss)} Item dari {format_number(total_po)} Tidak Memenuhi"
         
-        sla_prio_cards = [
-            {"label": "% Kontribusi Normal", "value": prio_normal_pct, "icon": "check-circle", "prio": "Normal"},
-            {"label": "% Kontribusi TA", "value": prio_ta_pct, "icon": "check-circle", "prio": "TA"},
-            {"label": "% Kontribusi Investasi", "value": prio_investasi_pct, "icon": "check-circle", "prio": "Investasi"},
-            {"label": "% Kontribusi Urgent", "value": prio_urgent_pct, "icon": "check-circle", "prio": "Urgent"},
-            {"label": "% Kontribusi Emergency", "value": prio_emergency_pct, "icon": "check-circle", "prio": "Emergency"},
-        ]
-
-        # Buat layout kolom utama: Kiri (Besar), Kanan (List Prioritas)
-        col_main_left, col_main_right = st.columns([1, 3], gap="small")
-
-        # ==========================================
-        # 1. KARTU UTAMA DI KIRI (Besar & Memanjang)
-        # ==========================================
-        with col_main_left:
-            # Ubah delta_text di bawah ini
-            delta_text = f"{format_number(sla_miss)} Item dari {format_number(total_po)} Tidak Memenuhi"
-            
-            delta_type = "positive" if card_overall["value"] >= 80 else "negative"
-            delta_class = "dash-delta-green" if delta_type == "positive" else "dash-delta-red"
-            
-            # Memanipulasi CSS agar memanjang (min-height ~256px), flex-col (atas bawah), dan divider di kanan
-            st.markdown(f"""
-            <div style="border-right: 2px solid rgba(128,128,128,0.2); padding-right: 20px; height: 100%;">
-                <div class="dash-card" style="min-height: 256px !important; flex-direction: column; justify-content: center; text-align: center; align-items: center;">
-                    <div class="dash-icon" style="margin-bottom: 16px; width: 64px; height: 64px;">
-                        {_svg(ICONS[card_overall["icon"]], 40)}
-                    </div>
-                    <div class="dash-body">
-                        <p class="dash-label" style="font-size: 14px; margin-bottom: 8px !important;">{card_overall["label"]}</p>
-                        <p class="dash-value" style="font-size: 3rem !important;">{format_number(card_overall['value'], decimals=2)}%</p>
-                        <p class="{delta_class}">{delta_text}</p>
-                    </div>
+        delta_type = "positive" if card_overall["value"] >= 80 else "negative"
+        delta_class = "dash-delta-green" if delta_type == "positive" else "dash-delta-red"
+        
+        # Memanipulasi CSS agar memanjang (min-height ~256px), flex-col (atas bawah), dan divider di kanan
+        st.markdown(f"""
+        <div style="border-right: 2px solid rgba(128,128,128,0.2); padding-right: 20px; height: 100%;">
+            <div class="dash-card" style="min-height: 256px !important; flex-direction: column; justify-content: center; text-align: center; align-items: center;">
+                <div class="dash-icon" style="margin-bottom: 16px; width: 64px; height: 64px;">
+                    {_svg(ICONS[card_overall["icon"]], 40)}
+                </div>
+                <div class="dash-body">
+                    <p class="dash-label" style="font-size: 14px; margin-bottom: 8px !important;">{card_overall["label"]}</p>
+                    <p class="dash-value" style="font-size: 3rem !important;">{format_number(card_overall['value'], decimals=2)}%</p>
+                    <p class="{delta_class}">{delta_text}</p>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
 
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
 
 **Kalkulasi:**
 ```
@@ -879,8 +898,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     ```
 
     Dihitung khusus untuk PR yang berstatus Closed atau Proses PO.
-            """)
-            
+        """)
+        
         st.caption("Persentase pencapaian SLA tepat waktu untuk setiap karyawan.")
 
         if 'nama' in df_chart.columns:
@@ -969,7 +988,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
-# == ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ====================
+    # == ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ====================
     st.markdown("---")
 
     title_col, btn_col = st.columns([19, 1])
@@ -993,8 +1012,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     if 'nama' in df_chart.columns:
         vol = (df_chart.groupby('nama')
-               .agg(Total_PR=('nama', 'count'), Total_PO=('is_po', 'sum'))
-               .reset_index())
+            .agg(Total_PR=('nama', 'count'), Total_PO=('is_po', 'sum'))
+            .reset_index())
         
         if not vol.empty:
             vol = vol.sort_values('Total_PR', ascending=True)
@@ -1058,9 +1077,9 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         df_po['is_kontrak'] = (df_po['outline_agreement'].notna() & (df_po['outline_agreement'].astype(str).str.strip() != '')).astype(int)
         
         kontrak_df = (df_po.groupby('nama')
-                      .agg(Total_PO=('is_po', 'sum'),
-                           PO_Kontrak=('is_kontrak', 'sum'))
-                      .reset_index())
+                    .agg(Total_PO=('is_po', 'sum'),
+                        PO_Kontrak=('is_kontrak', 'sum'))
+                    .reset_index())
         
         if not kontrak_df.empty:
             kontrak_df['PO_Non_Kontrak'] = kontrak_df['Total_PO'] - kontrak_df['PO_Kontrak']
@@ -1103,14 +1122,14 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
                     <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v2h6a.5.5 0 0 1 .5.5c0 .253.08.644.306.958.207.288.557.542 1.194.542s.987-.254 1.194-.542C9.42 6.644 9.5 6.253 9.5 6a.5.5 0 0 1 .5-.5h6v-2A1.5 1.5 0 0 0 14.5 2z"/>
                     <path d="M16 6.5h-5.551a2.7 2.7 0 0 1-.443 1.042C9.613 8.088 8.963 8.5 8 8.5s-1.613-.412-2.006-.958A2.7 2.7 0 0 1 5.551 6.5H0v6A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5z"/>
                 </svg>
-                Perbandingan Nilai OE vs PO per Karyawan
+                Perbandingan Nilai OE vs PO (Non Agreement) per Karyawan
             </h1>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-    **Perbandingan Nilai OE vs PO per Karyawan**: Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.
+    **Perbandingan Nilai OE vs PO (Non Agreement)**: Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan. Chart ini dikhususkan untuk melihat efisiensi item Non Agreement.
 
     Bar **Biru** (OE PR) = Total nilai estimasi sebelum PO diproses.
 
@@ -1119,7 +1138,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
     Jika bar Hijau lebih pendek dari Biru, artinya karyawan tersebut berhasil melakukan penghematan pengadaan.
     """)
         
-    st.caption("Perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan.")
+    st.caption("Perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk dokumen pengadaan Non Agreement.")
 
     if 'nama' in df_chart.columns:
 
@@ -1127,8 +1146,11 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         df_chart['nilai_item_po'] = pd.to_numeric(df_chart['nilai_item_po'], errors='coerce').fillna(0).astype(float)
         df_chart['is_po'] = pd.to_numeric(df_chart['is_po'], errors='coerce').fillna(0).astype(int)
         
-        eff = (df_chart[df_chart['is_po'] == 1]
-            .groupby('nama')
+        # Filter Khusus Non Agreement untuk efisiensi
+        df_na = df_chart[(df_chart['is_po'] == 1) & 
+                        (df_chart['outline_agreement'].isna() | (df_chart['outline_agreement'].astype(str).str.strip() == ''))]
+        
+        eff = (df_na.groupby('nama')
             .agg(oe=('oe_pr', 'sum'), po=('nilai_item_po', 'sum'))
             .reset_index())
         
@@ -1170,7 +1192,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
             st.info("Tidak ada data untuk filter yang dipilih.")
     else:
         st.info("Tidak ada data untuk filter yang dipilih.")
-    
+
     st.markdown("---")
 
     # =====================================================================
@@ -1203,7 +1225,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         suplemen_lines.append("")
 
     if 'eff' in locals() and not eff.empty:
-        suplemen_lines.append("## EFISIENSI (OE VS PO) PER KARYAWAN")
+        suplemen_lines.append("## EFISIENSI (OE VS PO KHUSUS NON AGREEMENT) PER KARYAWAN")
         eff_ai = eff.copy()
         eff_ai['efisiensi_rp']  = eff_ai['oe'] - eff_ai['po']
         eff_ai['efisiensi_pct'] = ((eff_ai['efisiensi_rp'] / eff_ai['oe']) * 100).round(1).fillna(0)
