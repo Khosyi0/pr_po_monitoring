@@ -848,7 +848,7 @@ def render(load_data, **kwargs):
         tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
         
         str_efis_pct_tampil = str_efis_pct
-        str_efis_val_tampil = format_idr(b_efis_val) + " (NA)"
+        str_efis_val_tampil = format_idr(b_efis_val)
         tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
 
         # == 4 KARTU KPI LAPORAN BAGIAN ==
@@ -862,7 +862,7 @@ def render(load_data, **kwargs):
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
             
         with c3:
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
             
         with c4:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
