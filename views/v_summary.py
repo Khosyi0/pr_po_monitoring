@@ -203,7 +203,7 @@ def render(load_data, **kwargs):
     try: DATA_UPDATE_INKLARING = datetime.strptime(ink_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
 
-    # Pengambilan tanggal update SIPS (Baru ditambahkan)
+    # Pengambilan tanggal update SIPS
     sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
     try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
@@ -297,66 +297,17 @@ def render(load_data, **kwargs):
             date_from = datetime(pilihan_t, 10, 1).date()
             date_to = datetime(pilihan_t, 12, 31).date()
 
-    # Samakan batas akhir tanggal Inklaring
-    date_to_ink = date_to
-
     # Info Teks Periode
     st.markdown(
         f"<p style='font-size:16px; margin-top:6px;'>"
         f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b> "
-        f"&nbsp;|&nbsp; Data per {DATA_UPDATE_SAP.strftime('%d %B %Y')} "
+        f"&nbsp;|&nbsp; Data SIPS per {DATA_UPDATE_SIPS.strftime('%d %B %Y')} "
         f"&nbsp;|&nbsp; Dicetak: {datetime.now().strftime('%d %B %Y %H:%M')}</p>",
         unsafe_allow_html=True
     )
     st.markdown("---")
 
     # == Eksekusi Kueri =======================================================
-    pr_kpi_query = f"""
-    WITH unique_pr AS (
-        SELECT
-            no_pr,
-            line_item_pr,
-            MAX(CASE WHEN nomor_po IS NOT NULL THEN 1 ELSE 0 END) AS has_po,
-            MAX(estimasi_pr * quantity_pr) AS oe_val 
-        FROM vw_pr_po_complete
-        WHERE first_full_release >= '{date_from}'
-          AND first_full_release <= '{date_to}'
-          AND no_pr != 'No PR'
-          AND first_full_release IS NOT NULL
-        GROUP BY no_pr, line_item_pr
-    )
-    SELECT
-        COUNT(*)                            AS total_pr,
-        SUM(has_po)                         AS pr_with_po,
-        COUNT(*) - SUM(has_po)              AS pr_without_po,
-        COALESCE(SUM(oe_val), 0)            AS total_estimasi
-    FROM unique_pr
-    """
-
-    po_kpi_query = f"""
-    SELECT
-        COUNT(poi.nomor_po)                                              AS total_po,
-        COALESCE(SUM(poi.total_amount_local_curr), 0)                    AS total_po_amount,
-        COALESCE(SUM(poi.quantity_pr * poi.estimasi_pr), 0)              AS total_oe_po,
-        ROUND(AVG(
-            CASE WHEN poi.first_full_release IS NOT NULL
-                    AND poh.date_ordered   IS NOT NULL
-            THEN (poh.date_ordered::date - poi.first_full_release::date)
-            END
-        )::numeric, 2)                                                   AS avg_lead_time,
-        COUNT(DISTINCT poh.nomor_po)                                     AS total_po_distinct,
-        COUNT(CASE WHEN poi.status_pengiriman = 'SELESAI' THEN 1 END)    AS po_delivered,
-        COUNT(CASE WHEN poi.on_time_delivery  = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
-        COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT')
-                    THEN 1 END)                                          AS po_delivered_total,
-        COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') 
-                    THEN poi.total_amount_local_curr ELSE 0 END), 0)     AS total_sinergi_pi
-    FROM po_items poi
-    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-    WHERE poh.date_ordered >= '{date_from}'
-      AND poh.date_ordered <= '{date_to}'
-    """
-
     # Kueri Tren SIPS (Menggantikan SAP)
     trend_query = f"""
     SELECT
@@ -381,17 +332,12 @@ def render(load_data, **kwargs):
     ORDER BY month
     """
 
-    inklaring_query = f"""
-    SELECT tgl_sppb, selesai_bongkar, spjm, komoditi
-    FROM inklaring_impor
-    WHERE tgl_eta >= '{date_from}' AND tgl_eta <= '{date_to_ink}'
-    """
-
     # Kueri SIPS Diperluas untuk mengambil total volume & nilai keseluruhan serta nilai Khusus Non Agreement
     sips_otobos_query = f"""
     SELECT
         COUNT(*) AS total_pr,
         COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
+        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
         COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count,
         COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
@@ -402,14 +348,26 @@ def render(load_data, **kwargs):
     WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
     """
 
+    # Kueri KPI dari SAP (untuk Sinergi, Pengiriman, Ketepatan)
+    sap_kpi_query = f"""
+    SELECT
+        COUNT(poi.nomor_po)                                           AS total_po,
+        COUNT(CASE WHEN poi.status_pengiriman = 'SELESAI' THEN 1 END) AS po_delivered,
+        COUNT(CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
+        COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT') THEN 1 END) AS po_delivered_total,
+        COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') 
+                     THEN poi.total_amount_local_curr ELSE 0 END), 0) AS total_sinergi_pi
+    FROM po_items poi
+    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+    WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+    """
+
     with st.spinner("Memuat data laporan..."):
         try:
-            pr_kpi = load_data(pr_kpi_query)
-            po_kpi = load_data(po_kpi_query)
             trend_data = load_data(trend_query)
             val_trend_data = load_data(value_trend_query)
-            ink_data = load_data(inklaring_query)
             sips_otobos_data = load_data(sips_otobos_query)
+            sap_kpi_data = load_data(sap_kpi_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -444,61 +402,8 @@ def render(load_data, **kwargs):
         val_trend_data['oe_fmt'] = val_trend_data['total_oe'].apply(format_idr)
         val_trend_data['po_fmt'] = val_trend_data['total_po_val'].apply(format_idr)
 
-    # Kalkulasi nilai KPI
-    total_pr      = int(pr_kpi['total_pr'][0]        or 0)
-    pr_with_po    = int(pr_kpi['pr_with_po'][0]      or 0)
-    pr_without    = int(pr_kpi['pr_without_po'][0]  or 0)
-    estimasi_all  = float(pr_kpi['total_estimasi'][0] or 0)
 
-    total_po      = int(po_kpi['total_po'][0]        or 0)
-    po_amount     = float(po_kpi['total_po_amount'][0] or 0)
-    oe_po         = float(po_kpi['total_oe_po'][0]   or 0)
-    avg_lt        = po_kpi['avg_lead_time'][0]
-    avg_lt_val    = float(avg_lt) if avg_lt is not None else 0.0
-    total_po_dist = int(po_kpi['total_po_distinct'][0]  or 0)
-    po_delivered  = int(po_kpi['po_delivered'][0]       or 0)
-    po_ontime     = int(po_kpi['po_ontime'][0]          or 0)
-    po_del_tot    = int(po_kpi['po_delivered_total'][0] or 0)
-    sinergi_pi_val= float(po_kpi['total_sinergi_pi'][0] or 0)
-
-    savings       = oe_po - po_amount
-    savings_pct   = (savings / oe_po * 100)        if oe_po > 0        else 0.0
-    produktivitas = (total_po / total_pr * 100)    if total_pr > 0     else 0.0
-    pct_kirim     = (po_delivered / total_po * 100) if total_po > 0    else 0.0
-    ketepatan     = (po_ontime / po_del_tot * 100)  if po_del_tot > 0  else 0.0
-
-    # Performance flags for row 1
-    color_produktivitas = "green" if produktivitas > 90 else "red"
-
-    # Performance flags for row 2 to determine colors for row 2 and 3
-    perf_kecepatan = avg_lt_val <= 55
-    perf_pengiriman = pct_kirim > 80
-    perf_ketepatan = ketepatan > 90
-
-    # Perhitungan Kinerja SLA Pembebasan Barang (Inklaring SLA EPP)
-    if not ink_data.empty:
-        ink_data['tgl_sppb'] = pd.to_datetime(ink_data['tgl_sppb'], errors='coerce')
-        ink_data['selesai_bongkar'] = pd.to_datetime(ink_data['selesai_bongkar'], errors='coerce')
-        ink_data['Bebas_Hari'] = (ink_data['tgl_sppb'] - ink_data['selesai_bongkar'].dt.normalize()).dt.days
-        
-        is_hijau_mask = ink_data['spjm'].fillna('').astype(str).str.strip().isin(['', '0', '0.0'])
-        ink_data['Keterangan_Jalur'] = np.where(is_hijau_mask, 'HIJAU', 'MERAH')
-        ink_data['SLA_Target'] = np.where(ink_data['komoditi'] == 'SA', 15, 
-                                    np.where(ink_data['Keterangan_Jalur'] == 'MERAH', 8, 0))
-        ink_data['Score_SLA'] = np.where(
-            ink_data['Bebas_Hari'].isna() | (ink_data['Bebas_Hari'] == 0), 
-            0, 
-            np.where(ink_data['SLA_Target'] >= ink_data['Bebas_Hari'], 1, 0)
-        )
-        total_ink_data = len(ink_data)
-        total_score_1 = (ink_data['Score_SLA'] == 1).sum()
-        sla_pembebasan_pct = (total_score_1 / total_ink_data) * 100 if total_ink_data > 0 else 0.0
-    else:
-        sla_pembebasan_pct = 0.0
-
-    # Hardcoded values for row 4 KPIs
-    otobos_val = 99.33
-    # Perhitungan OTOBOS & Laporan SIPS
+    # Perhitungan Metrik SIPS
     if not sips_otobos_data.empty:
         # Metrik OTOBOS
         s_po = int(sips_otobos_data['total_po'][0] or 0)
@@ -514,6 +419,9 @@ def render(load_data, **kwargs):
         sips_pr_without = sips_total_pr - sips_total_po
         sips_pct_pr_po = (sips_total_po / sips_total_pr * 100) if sips_total_pr > 0 else 0.0
         
+        # Rata-rata Lead Time
+        sips_avg_lt = float(sips_otobos_data['avg_pr_po'][0] or 0)
+
         sips_oe_total = float(sips_otobos_data['sips_oe_total'][0] or 0)
         sips_po_total = float(sips_otobos_data['sips_po_total'][0] or 0)
         
@@ -531,18 +439,37 @@ def render(load_data, **kwargs):
         sips_total_po = 0
         sips_pr_without = 0
         sips_pct_pr_po = 0.0
+        sips_avg_lt = 0.0
         sips_oe_total = 0.0
         sips_po_total = 0.0
         sips_savings = 0.0
         sips_savings_pct = 0.0
-        
+
+    # Perhitungan Metrik SAP
+    if not sap_kpi_data.empty:
+        sap_total_po = int(sap_kpi_data['total_po'][0] or 0)
+        sap_po_delivered = int(sap_kpi_data['po_delivered'][0] or 0)
+        sap_po_ontime = int(sap_kpi_data['po_ontime'][0] or 0)
+        sap_po_del_tot = int(sap_kpi_data['po_delivered_total'][0] or 0)
+        sap_sinergi_pi_val = float(sap_kpi_data['total_sinergi_pi'][0] or 0)
+
+        sap_pct_pengiriman = (sap_po_delivered / sap_total_po * 100) if sap_total_po > 0 else 0.0
+        sap_ketepatan_pct = (sap_po_ontime / sap_po_del_tot * 100) if sap_po_del_tot > 0 else 0.0
+    else:
+        sap_pct_pengiriman = 0.0
+        sap_ketepatan_pct = 0.0
+        sap_sinergi_pi_val = 0.0
+
+    # Penetapan nilai On Spec
     sla_on_spec_pct = 99.30
     otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
 
     # Dynamic color logic based on targets
-    color_pembebasan = "green" if sla_pembebasan_pct >= 80 else "red"
-    color_efisiensi_pengadaan = "green" if savings_pct > 2 else "red"
-    color_izin_impor = "green"  # Value is 100%, target is 2/2 (100%)
+    color_produktivitas = "green" if sips_pct_pr_po > 90 else "red"
+    color_kecepatan = "green" if sips_avg_lt <= 55 else "red"
+    color_efisiensi_pengadaan = "green" if sips_savings_pct > 2 else "red"
+    color_pengiriman = "green" if sap_pct_pengiriman > 80 else "red"
+    color_ketepatan = "green" if sap_ketepatan_pct > 90 else "red"
     color_otobos = "green" if otobos_val > 90 else "red"
 
     # Map performance color names to CSS class names for borders
@@ -553,7 +480,7 @@ def render(load_data, **kwargs):
 
 
     # ═════════════════════════════════════════════════════════════════════════
-    # BAGIAN 1: KPI PENGADAAN BARANG
+    # BAGIAN 1: KPI PENGADAAN BARANG (Sekarang menggunakan data SIPS)
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown(
         f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
@@ -568,32 +495,35 @@ def render(load_data, **kwargs):
     with c1:
         st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "neutral"), unsafe_allow_html=True)
     with c2:
-        st.markdown(_card(ICONS["people"], "Sinergi PI Group", format_idr(sinergi_pi_val), "Target: -", "neutral"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["people"], "Sinergi PI Group", format_idr(sap_sinergi_pi_val), "Target: -", "neutral"), unsafe_allow_html=True)
     with c3:
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(produktivitas, decimals=2)}%", "Target: > 90%", color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", "Target: > 90%", color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 2
     c4, c5, c6 = st.columns(3)
     with c4:
-        color_kecepatan = "green" if perf_kecepatan else "red"
-        st.markdown(_card(ICONS["clock"], "Kecepatan Proses PO", f"{format_number(avg_lt_val, decimals=2)} Hari", "Target: ≤ 55 Hari", color_kecepatan, border_class=border_class_map.get(color_kecepatan, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["clock"], "Kecepatan Proses PO", f"{format_number(sips_avg_lt, decimals=2)} Hari", "Target: ≤ 55 Hari", color_kecepatan, border_class=border_class_map.get(color_kecepatan, "")), unsafe_allow_html=True)
     with c5:
-        color_pengiriman = "green" if perf_pengiriman else "red"
-        st.markdown(_card(ICONS["truck"], "% Pengiriman Barang (GR/PO)", f"{format_number(pct_kirim, decimals=1)}%", "Target: > 80%", color_pengiriman, border_class=border_class_map.get(color_pengiriman, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["truck"], "% Pengiriman Barang (GR/PO)", f"{format_number(sap_pct_pengiriman, decimals=1)}%", "Target: > 80%", color_pengiriman, border_class=border_class_map.get(color_pengiriman, "")), unsafe_allow_html=True)
     with c6:
-        color_ketepatan = "green" if perf_ketepatan else "red"
-        st.markdown(_card(ICONS["check_circle"], "Ketepatan Pengiriman Barang", f"{format_number(ketepatan, decimals=1)}%", "Target: > 90%", color_ketepatan, border_class=border_class_map.get(color_ketepatan, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_circle"], "Ketepatan Pengiriman Barang", f"{format_number(sap_ketepatan_pct, decimals=1)}%", "Target: > 90%", color_ketepatan, border_class=border_class_map.get(color_ketepatan, "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 3
     c7, c8, c9 = st.columns(3)
     with c7:
-        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", f"{format_number(sla_pembebasan_pct, decimals=2)}%", "Target: 80%", color_pembebasan, border_class=border_class_map.get(color_pembebasan, "")), unsafe_allow_html=True)
+        # Pemenuhan SLA Pembebasan Barang now uses SIPS On Time SLA, but with a static delta text
+        pembebasan_val = f"{format_number(sla_on_time_pct, decimals=2)}%"
+        pembebasan_delta = "Target: > 80%"
+        pembebasan_color = "green" if sla_on_time_pct >= 80 else "red"
+        pembebasan_border = border_class_map.get(pembebasan_color, "")
+        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", pembebasan_val, pembebasan_delta, pembebasan_color, border_class=pembebasan_border), unsafe_allow_html=True)
+
     with c8:
-        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(savings_pct, decimals=2)}%", "Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(sips_savings_pct, decimals=2)}%", "Khusus Non Agreement | Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
     with c9:
-        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", color_izin_impor, border_class=border_class_map.get(color_izin_impor, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", "green", border_class=border_class_map.get("green", "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
     # Baris 4: Rincian Pemenuhan SLA OTOBOS
@@ -612,7 +542,7 @@ def render(load_data, **kwargs):
     with c12:
         st.markdown(_card(ICONS["currency"], "SLA - On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
     with c13:
-        st.markdown(_card(ICONS["check_all"], "SLA - On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "SLA - On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%", ""), unsafe_allow_html=True)
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     
@@ -712,10 +642,9 @@ def render(load_data, **kwargs):
                 y_axis_title = 'Count per Month'
         
             fig1.update_layout(
-                height=350, # Sedikit dinaikkan untuk menampung margin atas
+                height=350,
                 xaxis_title='', yaxis_title=y_axis_title,
                 xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_text, tickangle=-30),
-                # t=60 memberi ruang di atas untuk legend & toolbar, r=30 mencegah kanan terpotong
                 margin=dict(t=60, b=10, l=10, r=30), 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -749,21 +678,19 @@ def render(load_data, **kwargs):
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-        # Kartu Efisiensi kini dilabeli khusus untuk Non Agreement
         c17, c18 = st.columns(2)
         with c17:
             st.markdown(_card(
-                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)
+                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings), "Khusus Non Agreement"
             ), unsafe_allow_html=True)
         with c18:
             st.markdown(_card(
-                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"
+                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%", "Khusus Non Agreement"
             ), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
         if not val_trend_data.empty:
-            # Pilihan jenis chart untuk Value Trend
             chart_type_val = st.pills(
                 "Tampilan:", 
                 options=["Per Bulan (Bar)", "Kumulatif (Line)"], 
@@ -777,7 +704,6 @@ def render(load_data, **kwargs):
                 y_oe_cum = val_trend_data['total_oe'].cumsum()
                 y_po_cum = val_trend_data['total_po_val'].cumsum()
                 
-                # Format text untuk hover chart kumulatif
                 val_trend_data['cum_oe_fmt'] = y_oe_cum.apply(format_idr)
                 val_trend_data['cum_po_fmt'] = y_po_cum.apply(format_idr)
 
@@ -801,7 +727,6 @@ def render(load_data, **kwargs):
                 max_val = max(y_oe_cum.max(), y_po_cum.max())
                 
             else:
-                # Per Bulan (Bar Bersebelahan / Group)
                 fig2.add_trace(go.Bar(
                     x=val_trend_data['month_display'], y=val_trend_data['total_oe'],
                     name='Estimasi PR (OE)',
@@ -829,7 +754,7 @@ def render(load_data, **kwargs):
                     tickmode='array', tickvals=val_trend_data['month_display'].tolist(),
                     ticktext=val_trend_data['hover_label'].tolist(), tickangle=-30, showgrid=False
                 ),
-                margin=dict(t=60, b=10, l=10, r=30), # <-- Tambahkan padding internal di sini
+                margin=dict(t=60, b=10, l=10, r=30),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)'
@@ -910,24 +835,21 @@ def render(load_data, **kwargs):
         b_efis_val   = b_sips_oe_na - b_sips_po_na
         b_efis_pct   = (b_efis_val / b_sips_oe_na * 100) if b_sips_oe_na > 0 else 0.0
 
-        # Logika Warna (Hijau jika baik, Oranye/Merah jika kurang)
+        # Logika Warna
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
         col_ontime   = "#09ab3b" if pct_ontime >= 80 else "#f0a500"
         col_efis     = "#09ab3b" if b_efis_val >= 0 else "#e03c3c"
         
-        # Format string agar koma/titik rapi
         str_onbudget = f"{pct_onbudget:.2f}%".replace('.', ',')
         str_ontime   = f"{pct_ontime:.2f}%".replace('.', ',')
         str_efis_pct = f"{b_efis_pct:+.2f}%".replace('.', ',')
-
 
         str_onbudget_tampil = str_onbudget
         tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
         
         str_efis_pct_tampil = str_efis_pct
-        str_efis_val_tampil = format_idr(b_efis_val)
+        str_efis_val_tampil = format_idr(b_efis_val) + " (NA)"
         tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
-
 
         # == 4 KARTU KPI LAPORAN BAGIAN ==
         c1, c2, c3, c4 = st.columns(4)
@@ -940,7 +862,7 @@ def render(load_data, **kwargs):
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
             
         with c3:
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata kecepatan", "neutral"), unsafe_allow_html=True)
             
         with c4:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
@@ -1056,7 +978,7 @@ def render(load_data, **kwargs):
             fig_trend_bagian.update_layout(
                 barmode='group', height=360, xaxis_title='', yaxis_title='Jumlah Item',
                 xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30),
-                margin=dict(t=60, b=10, l=10, r=30), # <-- Tambahkan padding internal di sini
+                margin=dict(t=60, b=10, l=10, r=30), 
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)'
