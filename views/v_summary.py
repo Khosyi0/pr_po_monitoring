@@ -521,7 +521,7 @@ def render(load_data, **kwargs):
         st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", pembebasan_val, pembebasan_delta, pembebasan_color, border_class=pembebasan_border), unsafe_allow_html=True)
 
     with c8:
-        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(sips_savings_pct, decimals=2)}%", "Khusus Non Agreement | Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(sips_savings_pct, decimals=2)}%", "Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
     with c9:
         st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", "green", border_class=border_class_map.get("green", "")), unsafe_allow_html=True)
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -681,11 +681,11 @@ def render(load_data, **kwargs):
         c17, c18 = st.columns(2)
         with c17:
             st.markdown(_card(
-                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings), "Khusus Non Agreement"
+                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)
             ), unsafe_allow_html=True)
         with c18:
             st.markdown(_card(
-                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%", "Khusus Non Agreement"
+                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"
             ), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
