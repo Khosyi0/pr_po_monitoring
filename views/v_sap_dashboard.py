@@ -505,180 +505,6 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
                 st.markdown("""
                     <h1 style='display: flex; align-items: center; font-size:30px;'>
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                            <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
-                        </svg>
-                        PR Status by Department
-                    </h1>
-                """, unsafe_allow_html=True)
-            with btn_col:
-                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                with st.popover(":material/visibility:", help="Lihat Formula"):
-                    st.info("""
-**PR Status by Department**: Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
-
-**Formula Excel:** (PR SAP)
-- Filter **1St Full Release** selain `blanks`
-- Filter **Material No** selain `1000076`
-- Filter **PR Deletion Flag** selain `X`
-- Filter **Account Assignment** selain `U`
-- Filter **Departement(Requisitioner)** sesuai yang diinginkan
-
-**Kalkulasi:**
-| Metrik | Keterangan |
-|---|---|
-| Total PR | Semua PR unik di periode filter |
-| PR with PO | PR yang sudah ada PO-nya |
-| PR without PO | PR yang belum diproses |
-
-⚠️ **Catatan:** Jika suatu **Nomor PR** sudah memiliki **Nomor PO** di excel **PR SAP**, namun di **Nomor PO** tersebut belum terbit di excel **PO SAP**, maka **Nomor PR** tersebut akan masuk kategori `pr wihtout po`.
-
-                """)
-
-            st.caption("Jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.")
-
-            dept_query = f"""
-            SELECT
-                COALESCE(department_code, 'Unknown') AS department,
-                -- Ubah dari COUNT(DISTINCT no_pr) menjadi per-item:
-                COUNT(DISTINCT no_pr || '-' || line_item_pr::text) AS total_pr,
-                -- Ubah juga penghitungan With PO-nya:
-                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN no_pr || '-' || line_item_pr::text END) AS pr_with_po
-            FROM vw_pr_po_complete
-            WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
-              AND first_full_release IS NOT NULL
-            GROUP BY department_code
-            ORDER BY total_pr DESC
-            LIMIT 10
-            """
-            with st.spinner("Memuat chart department..."):
-                dept_data = load_data(dept_query)
-
-            if not dept_data.empty:
-                pr_without_po_series = dept_data['total_pr'] - dept_data['pr_with_po']
-                fig = go.Figure(data=[
-                    go.Bar(name='PR with PO', x=dept_data['department'], y=dept_data['pr_with_po'], marker_color='#1f77b4'),
-                    
-                    go.Bar(name='PR without PO', x=dept_data['department'], y=pr_without_po_series, marker_color='#ff7f0e')
-                ])
-                fig.update_layout(barmode='group', height=400, separators=",.",
-                                    margin=dict(t=20, b=20, l=20, r=20))
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Tidak ada data yang tersedia.")
-
-        with col2:
-            title_col, btn_col = st.columns([9, 1])
-            with title_col:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:30px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-cash-stack" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                            <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                            <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
-                        </svg>
-                        Top 10 Vendors by PO Value
-                    </h1>
-                """, unsafe_allow_html=True)
-            with btn_col:
-                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                with st.popover(":material/visibility:", help="Lihat Formula"):
-                    st.info("""\
-**Top 10 Vendors by PO Value**: Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
-
-**Formula Excel:** (PO SAP)
-- Filter **Material No** selain `1000076`
-- Filter **PO Deletion Flag** selain `L`
-- Filter **Vendor Name** sesuai yang diinginkan
-- Jumlahkan **Total Amount in Local Curr**
-                """)
-
-            st.caption("Top 10 vendor dengan total nilai PO terbesar.")
-
-            # == Filter lokal vendor ===========================================
-            vendor_filter_opts = ["ALL", "B01", "Investasi", "Lainnya"]
-            selected_vendor_filter = st.pills(
-                "Filter Vendor",
-                options=vendor_filter_opts,
-                default="ALL",
-                label_visibility="collapsed"
-            )
-            if not selected_vendor_filter:
-                selected_vendor_filter = "ALL"
-
-            # Bangun filter_conditions untuk PO (ganti kolom ke alias tabel yang benar)
-            vendor_filter_cond = (
-                filter_conditions
-                .replace('department_code', 'poi.department_code')
-                .replace('plant_code', 'poi.plant_code')
-                .replace('tgl_create_pr', 'poh.date_ordered')
-                .replace('first_full_release', 'poh.date_ordered')
-            )
-
-            vendor_query = f"""
-            SELECT
-                COALESCE(v.vendor_name, 'Unknown') AS vendor,
-                poi.department_code,
-                poh.purchasing_group,
-                SUM(poi.total_amount_local_curr)       AS total_value
-            FROM po_items poi
-            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
-            LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
-            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
-              AND {bagian_po_poi}
-              AND {vendor_filter_cond}
-            GROUP BY v.vendor_name, poi.department_code, poh.purchasing_group
-            """
-            with st.spinner("Memuat chart vendor..."):
-                vendor_data_raw = load_data(vendor_query)
-
-            if not vendor_data_raw.empty:
-                # Filter in-memory menggunakan Pandas agar instan saat diklik!
-                if selected_vendor_filter == "B01":
-                    vendor_data = vendor_data_raw[vendor_data_raw['purchasing_group'] == 'B01']
-                elif selected_vendor_filter == "Investasi":
-                    mask = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
-                    vendor_data = vendor_data_raw[mask]
-                elif selected_vendor_filter == "Lainnya":
-                    mask_b01 = vendor_data_raw['purchasing_group'] == 'B01'
-                    mask_inv = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
-                    vendor_data = vendor_data_raw[~mask_b01 & ~mask_inv]
-                else:
-                    vendor_data = vendor_data_raw
-
-                vendor_data = vendor_data.groupby('vendor', as_index=False)['total_value'].sum()
-                vendor_data = vendor_data.sort_values('total_value', ascending=False).head(10)
-
-            if 'vendor_data' in locals() and not vendor_data.empty:
-                vendor_data['label_text'] = vendor_data['total_value'].apply(format_idr_short)
-                fig = px.bar(
-                    vendor_data, x='total_value', y='vendor', orientation='h',
-                    labels={'total_value': 'Total Value (IDR)', 'vendor': 'Vendor'},
-                    text='label_text'
-                )
-                max_vendor_val = vendor_data['total_value'].max()
-                fig.update_layout(
-                    height=400,
-                    yaxis={'categoryorder': 'total ascending'},
-                    xaxis=idr_axis(max_vendor_val),
-                    separators=",.",
-                    margin=dict(t=20, b=20, l=20, r=20)
-                )
-                fig.update_traces(
-                    textfont_size=11, textposition="outside", cliponaxis=False,
-                    hovertemplate="<b>%{y}</b><br>Total: Rp %{text}<extra></extra>"
-                )
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("Tidak ada data yang tersedia.")
-
-        # == CHARTS ROW 2 =================================
-        col1, col2 = st.columns(2)
-
-        with col1:
-            title_col, btn_col = st.columns([9, 1])
-            with title_col:
-                st.markdown("""
-                    <h1 style='display: flex; align-items: center; font-size:30px;'>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
                             <path d="M11 6.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z"/>
                             <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
                         </svg>
@@ -865,81 +691,247 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             else:
                 st.info("Tidak ada data yang tersedia.")
 
-        # == ADDITIONAL INSIGHTS ==========================
-        st.markdown("---")
-        st.markdown("""
-            <h1 style='display: flex; align-items: center;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 8px; margin-right: 8px;">
-                    <path d="M2 6a6 6 0 1 1 10.174 4.31c-.203.196-.359.4-.453.619l-.762 1.769A.5.5 0 0 1 10.5 13h-5a.5.5 0 0 1-.46-.302l-.761-1.77a2 2 0 0 0-.453-.618A5.98 5.98 0 0 1 2 6m3 8.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1l-.224.447a1 1 0 0 1-.894.553H6.618a1 1 0 0 1-.894-.553L5.5 15a.5.5 0 0 1-.5-.5"/>
-                </svg>
-                Additional Insights
-            </h1>
-        """, unsafe_allow_html=True)
+        # == CHARTS ROW 2 =================================
+        col1, col2 = st.columns(2)
 
-        title_col, btn_col = st.columns([19, 1])
-        with title_col:
-            st.markdown("""
-                <h1 style='display: flex; align-items: center; font-size:30px;'>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                        <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
-                    </svg>
-                    Top 10 PR Without PO (Pending)
-                </h1>
-            """, unsafe_allow_html=True)
-        with btn_col:
-            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
-                st.info("""\
-**Top 10 PR Without PO (Pending)**: Tabel 10 PR tertua yang belum diproses menjadi PO.
+        with col1:
+            title_col, btn_col = st.columns([9, 1])
+            with title_col:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:30px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                            <path d="M1 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1zm5-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1zm5-5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1z"/>
+                        </svg>
+                        PR Status by Department
+                    </h1>
+                """, unsafe_allow_html=True)
+            with btn_col:
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""
+**PR Status by Department**: Stacked bar chart jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.
 
 **Formula Excel:** (PR SAP)
+- Filter **1St Full Release** selain `blanks`
 - Filter **Material No** selain `1000076`
 - Filter **PR Deletion Flag** selain `X`
 - Filter **Account Assignment** selain `U`
-- Filter **Nomor PO** yang kosong
-- Urutkan **Tgl Create PR** dari yang paling lama ke paling baru
-            """)
+- Filter **Departement(Requisitioner)** sesuai yang diinginkan
 
-        st.caption("Tabel 10 PR tertua yang belum diproses menjadi PO.")
+**Kalkulasi:**
+| Metrik | Keterangan |
+|---|---|
+| Total PR | Semua PR unik di periode filter |
+| PR with PO | PR yang sudah ada PO-nya |
+| PR without PO | PR yang belum diproses |
 
-        pr_without_po_query = f"""
-        SELECT
-            no_pr,
-            line_item_pr,
-            tgl_create_pr,
-            department_code AS department,
-            bagian_pr AS bagian,
-            COALESCE(oe, 0) AS total_estimasi
-        FROM vw_pr_po_complete
-        WHERE {filter_conditions} AND nomor_po IS NULL
-        AND no_pr != 'No PR' AND {bagian_pr_cond}
-        ORDER BY tgl_create_pr ASC, no_pr ASC, line_item_pr ASC
-        LIMIT 10
-        """
-        with st.spinner("Memuat PR pending..."):
-            pr_without_po = load_data(pr_without_po_query)
+⚠️ **Catatan:** Jika suatu **Nomor PR** sudah memiliki **Nomor PO** di excel **PR SAP**, namun di **Nomor PO** tersebut belum terbit di excel **PO SAP**, maka **Nomor PR** tersebut akan masuk kategori `pr wihtout po`.
 
-        if not pr_without_po.empty:
-            pr_without_po['tgl_create_pr'] = pd.to_datetime(pr_without_po['tgl_create_pr']).dt.strftime('%Y-%m-%d')
-            pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
-                lambda x: format_currency(x) if pd.notna(x) else ""
+                """)
+
+            st.caption("Jumlah PR per departemen, dibedakan antara PR yang sudah memiliki PO dan yang belum.")
+
+            dept_query = f"""
+            SELECT
+                COALESCE(department_code, 'Unknown') AS department,
+                -- Ubah dari COUNT(DISTINCT no_pr) menjadi per-item:
+                COUNT(DISTINCT no_pr || '-' || line_item_pr::text) AS total_pr,
+                -- Ubah juga penghitungan With PO-nya:
+                COUNT(DISTINCT CASE WHEN nomor_po IS NOT NULL THEN no_pr || '-' || line_item_pr::text END) AS pr_with_po
+            FROM vw_pr_po_complete
+            WHERE {filter_conditions} AND {bagian_pr_cond} AND no_pr != 'No PR'
+              AND first_full_release IS NOT NULL
+            GROUP BY department_code
+            ORDER BY total_pr DESC
+            LIMIT 10
+            """
+            with st.spinner("Memuat chart department..."):
+                dept_data = load_data(dept_query)
+
+            if not dept_data.empty:
+                pr_without_po_series = dept_data['total_pr'] - dept_data['pr_with_po']
+                fig = go.Figure(data=[
+                    go.Bar(name='PR with PO', x=dept_data['department'], y=dept_data['pr_with_po'], marker_color='#1f77b4'),
+                    
+                    go.Bar(name='PR without PO', x=dept_data['department'], y=pr_without_po_series, marker_color='#ff7f0e')
+                ])
+                fig.update_layout(barmode='group', height=400, separators=",.",
+                                    margin=dict(t=20, b=20, l=20, r=20))
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Tidak ada data yang tersedia.")
+
+        with col2:
+            title_col, btn_col = st.columns([9, 1])
+            with title_col:
+                st.markdown("""
+                    <h1 style='display: flex; align-items: center; font-size:30px;'>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-cash-stack" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+                            <path d="M1 3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1zm7 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
+                            <path d="M0 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V7a2 2 0 0 1-2-2z"/>
+                        </svg>
+                        Top 10 Vendors by PO Value
+                    </h1>
+                """, unsafe_allow_html=True)
+            with btn_col:
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                with st.popover(":material/visibility:", help="Lihat Formula"):
+                    st.info("""\
+**Top 10 Vendors by PO Value**: Bar chart horizontal 10 vendor dengan total nilai PO terbesar.
+
+**Formula Excel:** (PO SAP)
+- Filter **Material No** selain `1000076`
+- Filter **PO Deletion Flag** selain `L`
+- Filter **Vendor Name** sesuai yang diinginkan
+- Jumlahkan **Total Amount in Local Curr**
+                """)
+
+            st.caption("Top 10 vendor dengan total nilai PO terbesar.")
+
+            # == Filter lokal vendor ===========================================
+            vendor_filter_opts = ["ALL", "B01", "Investasi", "Lainnya"]
+            selected_vendor_filter = st.pills(
+                "Filter Vendor",
+                options=vendor_filter_opts,
+                default="ALL",
+                label_visibility="collapsed"
             )
-            pr_without_po.index = pr_without_po.index + 1
-            st.dataframe(
-                pr_without_po.rename(columns={
-                    'no_pr':          'No PR',
-                    'line_item_pr':   'Item',
-                    'tgl_create_pr':  'Tgl Dibuat',
-                    'department':     'Department',
-                    'bagian':         'Bagian',
-                    'total_estimasi': 'Estimasi (Rp)',
-                }),
-                use_container_width=True, height=300
-            )
-        else:
-            st.success("Kerja bagus! Semua PR telah diproses menjadi PO.")
+            if not selected_vendor_filter:
+                selected_vendor_filter = "ALL"
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            # Bangun filter_conditions untuk PO (ganti kolom ke alias tabel yang benar)
+            vendor_filter_cond = (
+                filter_conditions
+                .replace('department_code', 'poi.department_code')
+                .replace('plant_code', 'poi.plant_code')
+                .replace('tgl_create_pr', 'poh.date_ordered')
+                .replace('first_full_release', 'poh.date_ordered')
+            )
+
+            vendor_query = f"""
+            SELECT
+                COALESCE(v.vendor_name, 'Unknown') AS vendor,
+                poi.department_code,
+                poh.purchasing_group,
+                SUM(poi.total_amount_local_curr)       AS total_value
+            FROM po_items poi
+            JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+            LEFT JOIN vendors v ON poh.vendor_code = v.vendor_code
+            WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
+              AND {bagian_po_poi}
+              AND {vendor_filter_cond}
+            GROUP BY v.vendor_name, poi.department_code, poh.purchasing_group
+            """
+            with st.spinner("Memuat chart vendor..."):
+                vendor_data_raw = load_data(vendor_query)
+
+            if not vendor_data_raw.empty:
+                # Filter in-memory menggunakan Pandas agar instan saat diklik!
+                if selected_vendor_filter == "B01":
+                    vendor_data = vendor_data_raw[vendor_data_raw['purchasing_group'] == 'B01']
+                elif selected_vendor_filter == "Investasi":
+                    mask = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
+                    vendor_data = vendor_data_raw[mask]
+                elif selected_vendor_filter == "Lainnya":
+                    mask_b01 = vendor_data_raw['purchasing_group'] == 'B01'
+                    mask_inv = vendor_data_raw['department_code'].str.startswith('INV', na=False) & (vendor_data_raw['department_code'] != 'INV')
+                    vendor_data = vendor_data_raw[~mask_b01 & ~mask_inv]
+                else:
+                    vendor_data = vendor_data_raw
+
+                vendor_data = vendor_data.groupby('vendor', as_index=False)['total_value'].sum()
+                vendor_data = vendor_data.sort_values('total_value', ascending=False).head(10)
+
+            if 'vendor_data' in locals() and not vendor_data.empty:
+                vendor_data['label_text'] = vendor_data['total_value'].apply(format_idr_short)
+                fig = px.bar(
+                    vendor_data, x='total_value', y='vendor', orientation='h',
+                    labels={'total_value': 'Total Value (IDR)', 'vendor': 'Vendor'},
+                    text='label_text'
+                )
+                max_vendor_val = vendor_data['total_value'].max()
+                fig.update_layout(
+                    height=400,
+                    yaxis={'categoryorder': 'total ascending'},
+                    xaxis=idr_axis(max_vendor_val),
+                    separators=",.",
+                    margin=dict(t=20, b=20, l=20, r=20)
+                )
+                fig.update_traces(
+                    textfont_size=11, textposition="outside", cliponaxis=False,
+                    hovertemplate="<b>%{y}</b><br>Total: Rp %{text}<extra></extra>"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Tidak ada data yang tersedia.")
+
+        # == ADDITIONAL INSIGHTS ==========================
+        # st.markdown("---")
+
+        # title_col, btn_col = st.columns([19, 1])
+        # with title_col:
+        #     st.markdown("""
+        #         <h1 style='display: flex; align-items: center; font-size:30px;'>
+        #             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-bar-chart-fill" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
+        #                 <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2"/>
+        #             </svg>
+        #             Top 10 PR Without PO (Pending)
+        #         </h1>
+        #     """, unsafe_allow_html=True)
+        # with btn_col:
+        #     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+        #     with st.popover(":material/visibility:", help="Lihat Formula"):
+        #         st.info("""\
+        # **Top 10 PR Without PO (Pending)**: Tabel 10 PR tertua yang belum diproses menjadi PO.
+
+        # **Formula Excel:** (PR SAP)
+        # - Filter **Material No** selain `1000076`
+        # - Filter **PR Deletion Flag** selain `X`
+        # - Filter **Account Assignment** selain `U`
+        # - Filter **Nomor PO** yang kosong
+        # - Urutkan **Tgl Create PR** dari yang paling lama ke paling baru
+        #     """)
+
+        # st.caption("Tabel 10 PR tertua yang belum diproses menjadi PO.")
+
+        # pr_without_po_query = f"""
+        # SELECT
+        #     no_pr,
+        #     line_item_pr,
+        #     tgl_create_pr,
+        #     department_code AS department,
+        #     bagian_pr AS bagian,
+        #     COALESCE(oe, 0) AS total_estimasi
+        # FROM vw_pr_po_complete
+        # WHERE {filter_conditions} AND nomor_po IS NULL
+        # AND no_pr != 'No PR' AND {bagian_pr_cond}
+        # ORDER BY tgl_create_pr ASC, no_pr ASC, line_item_pr ASC
+        # LIMIT 10
+        # """
+        # with st.spinner("Memuat PR pending..."):
+        #     pr_without_po = load_data(pr_without_po_query)
+
+        # if not pr_without_po.empty:
+        #     pr_without_po['tgl_create_pr'] = pd.to_datetime(pr_without_po['tgl_create_pr']).dt.strftime('%Y-%m-%d')
+        #     pr_without_po['total_estimasi'] = pr_without_po['total_estimasi'].apply(
+        #         lambda x: format_currency(x) if pd.notna(x) else ""
+        #     )
+        #     pr_without_po.index = pr_without_po.index + 1
+        #     st.dataframe(
+        #         pr_without_po.rename(columns={
+        #             'no_pr':          'No PR',
+        #             'line_item_pr':   'Item',
+        #             'tgl_create_pr':  'Tgl Dibuat',
+        #             'department':     'Department',
+        #             'bagian':         'Bagian',
+        #             'total_estimasi': 'Estimasi (Rp)',
+        #         }),
+        #         use_container_width=True, height=300
+        #     )
+        # else:
+        #     st.success("Kerja bagus! Semua PR telah diproses menjadi PO.")
+
+        # st.markdown("<br>", unsafe_allow_html=True)
 
         col_chart1, col_chart2 = st.columns(2)
 
@@ -1126,11 +1118,11 @@ def render(filter_conditions, bagian_pr_cond, bagian_po_cond, load_data, **kwarg
             suplemen_lines.append("")
 
         # 3. Top PR Pending Tertua
-        if 'pr_without_po' in locals() and not pr_without_po.empty:
-            suplemen_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
-            df_pending_simple = pr_without_po[['no_pr', 'department', 'total_estimasi']]
-            suplemen_lines.append(df_pending_simple.to_csv(index=False))
-            suplemen_lines.append("")
+        # if 'pr_without_po' in locals() and not pr_without_po.empty:
+        #     suplemen_lines.append("## 3. TOP PR PENDING TERTUA (Belum diproses ke PO)")
+        #     df_pending_simple = pr_without_po[['no_pr', 'department', 'total_estimasi']]
+        #     suplemen_lines.append(df_pending_simple.to_csv(index=False))
+        #     suplemen_lines.append("")
 
         # 4. Status Pengiriman
         if 'delivery_data' in locals() and not delivery_data.empty:

@@ -296,25 +296,37 @@ if admin_pages:
 if ai_pages:
     nav_dict["AI"] = ai_pages
 
+# Halaman PR-PO SAP
+sap_pages = [
+    st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
+    st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
+    st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
+    st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
+]
+if is_admin():
+    sap_pages.insert(1, st.Page(_render_detail, title="Detailed PR-PO SAP Data", icon=":material/unknown_document:"))
+
+# Halaman SIPS
+sips_pages = [
+    st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
+    st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
+    st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
+]
+if is_admin():
+    sips_pages.insert(1, st.Page(_render_sips_detail, title="Detailed SIPS Data", icon=":material/unknown_document:"))
+
+# Halaman Inklaring
+inklaring_pages = [
+    st.Page(_render_inklaring_dashboard, title="Dashboard Inklaring", icon=":material/directions_boat:"),
+    st.Page(_render_inklaring_waktu,     title="Analisis Waktu Proses Inklaring", icon=":material/schedule:"),
+]
+if is_admin():
+    inklaring_pages.insert(1, st.Page(_render_inklaring_detail, title="Detailed Inklaring Data", icon=":material/unknown_document:"))
+
 nav_dict.update({
-    "PR-PO SAP": [
-        st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
-        st.Page(_render_detail,    title="Detailed PR-PO SAP Data",      icon=":material/unknown_document:"),
-        st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
-        st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
-        st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
-    ],
-    "SIPS": [
-        st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
-        st.Page(_render_sips_detail,    title="Detailed SIPS Data",         icon=":material/unknown_document:"),
-        st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
-        st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
-    ],
-    "Inklaring Barang Impor": [
-        st.Page(_render_inklaring_dashboard, title="Dashboard Inklaring", icon=":material/directions_boat:"),
-        st.Page(_render_inklaring_detail,    title="Detailed Inklaring Data", icon=":material/unknown_document:"),
-        st.Page(_render_inklaring_waktu,     title="Analisis Waktu Proses Inklaring", icon=":material/schedule:"),
-    ]
+    "PR-PO SAP": sap_pages,
+    "SIPS": sips_pages,
+    "Inklaring Barang Impor": inklaring_pages
 })
 
 # Tambahkan navigasi khusus admin untuk modul yang masih under maintenance

@@ -16,6 +16,13 @@ Catatan SIPS:
     menerapkan strategi DELETE + REINSERT per bulan/tahun setiap kali dijalankan.
     Ini memastikan data selalu sinkron dengan isi file Excel terbaru.
 
+Catatan Bagian:
+  - BAGIAN_MAP statis sudah dihapus.
+  - Penentuan bagian karyawan sepenuhnya dikelola lewat tabel
+    karyawan_bagian_history di database (diisi via UI v_profile_departemen).
+  - ETL hanya bertanggung jawab sync data transaksi; view vw_sips
+    yang melakukan lookup bagian berdasarkan tanggal transaksi.
+
 Requirements:
   pip install pandas openpyxl sqlalchemy psycopg2-binary --break-system-packages
 """
@@ -46,22 +53,6 @@ class Config:
     # Contoh satu bulan  : PERIODE_IMPORT = [(1, 2026)]
     # Contoh dua bulan   : PERIODE_IMPORT = [(1, 2026), (2, 2026)]
     PERIODE_IMPORT = [(1, 2026), (2, 2026), (3, 2026)]
-
-    BAGIAN_MAP = {
-        # ALPATA
-        '2166535': 'ALPATA', '2166521': 'ALPATA', '2190478': 'ALPATA',
-        '2158619': 'ALPATA', '2170123': 'ALPATA', '2161234': 'ALPATA',
-        '2146001': 'ALPATA', '2146153': 'ALPATA', '2145923': 'ALPATA',
-        '2145997': 'ALPATA',
-        # BARUM
-        '2095185': 'BARUM', '2190601': 'BARUM', '2115464': 'BARUM',
-        '2180261': 'BARUM', '2171456': 'BARUM', '2175678': 'BARUM',
-        '2135855': 'BARUM', '2156378': 'BARUM',
-        # BB/BD/BP
-        '2190600': 'BB/BD/BP', '2190602': 'BB/BD/BP', '2156228': 'BB/BD/BP',
-        '2167890': 'BB/BD/BP', '2172345': 'BB/BD/BP', '2168901': 'BB/BD/BP',
-        '2190583': 'BB/BD/BP', '2146037': 'BB/BD/BP', '2156257': 'BB/BD/BP',
-    }
 
 
 # =====================================================================
@@ -94,28 +85,21 @@ def clean_float(v):
     try:
         if pd.isna(v): return None
     except: pass
-    
-    # Jika sudah berupa angka bawaan, langsung kembalikan
-    if isinstance(v, (int, float)): 
+
+    if isinstance(v, (int, float)):
         return float(v)
-    
+
     try:
-        # Ubah ke string, bersihkan spasi, teks "Rp", "RP", "rp", atau strip "-"
         s = str(v).upper().replace('RP', '').replace(' ', '').replace('-', '').strip()
-        
-        # Jika setelah dibersihkan string kosong, kembalikan None
         if not s:
             return None
-
-        # Tangani format Indonesia (titik = ribuan, koma = desimal)
         if ',' in s:
-            s = s.replace('.', '')   # Hapus titik pemisah ribuan
-            s = s.replace(',', '.')  # Ubah koma desimal menjadi titik ala Python
+            s = s.replace('.', '')
+            s = s.replace(',', '.')
         else:
-            s = s.replace('.', '')   # Jika tidak ada koma, asumsikan titik adalah pemisah ribuan
-            
+            s = s.replace('.', '')
         return float(s)
-    except: 
+    except:
         return None
 
 def clean_date(v):
@@ -192,15 +176,19 @@ def transform(df: pd.DataFrame):
         nik  = clean_str(row.get('nik'))
         if not nama: continue
 
-        # Ekstrak bulan & tahun dari tanggal (prioritas: tgl_dispo -> tgl_po -> req_date)
-        tgl_anchor = clean_date(row.get('tgl_disposisi_buyer')) or clean_date(row.get('tgl_po')) or clean_date(row.get('requisition_date'))
-        
+        # Ekstrak bulan & tahun dari tanggal (prioritas: tgl_dispo → tgl_po → req_date)
+        tgl_anchor = (
+            clean_date(row.get('tgl_disposisi_buyer'))
+            or clean_date(row.get('tgl_po'))
+            or clean_date(row.get('requisition_date'))
+        )
+
         if tgl_anchor:
             b_imp, t_imp = tgl_anchor.month, tgl_anchor.year
         else:
             b_imp, t_imp = 0, 0
 
-        # Filter: Hanya masukkan ke records jika periodenya terdaftar di PERIODE_IMPORT
+        # Filter: hanya masukkan ke records jika periodenya terdaftar
         if Config.PERIODE_IMPORT and (b_imp, t_imp) not in Config.PERIODE_IMPORT:
             continue
 
@@ -251,34 +239,48 @@ def transform(df: pd.DataFrame):
 # =====================================================================
 
 def sync_employees(df_clean: pd.DataFrame, engine):
+    """
+    Sync tabel sips_employees (hanya nik + nama).
+    Kolom 'bagian' di sips_employees masih ada sebagai fallback,
+    tapi TIDAK diupdate oleh ETL — dikelola lewat UI (karyawan_bagian_history).
+    """
     if df_clean.empty:
         return
 
     employees = (df_clean[['nik', 'nama']]
-                 .dropna(subset=['nik']).drop_duplicates(subset=['nik']).copy())
-    employees['bagian'] = employees['nik'].map(Config.BAGIAN_MAP)
+                 .dropna(subset=['nik'])
+                 .drop_duplicates(subset=['nik'])
+                 .copy())
 
-    unmapped = employees[employees['bagian'].isna()][['nik', 'nama']].values.tolist()
-    if unmapped:
-        print(f"   ⚠️ NIK belum terpetakan ke bagian:")
-        for nik, nama in unmapped:
-            print(f"      - {nik} : {nama}")
+    # Cek NIK mana yang belum punya history bagian sama sekali
+    with engine.connect() as conn:
+        existing_history_niks = set(
+            row[0] for row in conn.execute(text(
+                "SELECT DISTINCT nik FROM karyawan_bagian_history"
+            )).fetchall()
+        )
+
+    new_niks = employees[~employees['nik'].isin(existing_history_niks)]
+    if not new_niks.empty:
+        print(f"\n   ⚠️  NIK baru ditemukan — belum punya riwayat bagian:")
+        for _, row in new_niks.iterrows():
+            print(f"      - {row['nik']} : {row['nama']}")
+        print(f"      → Silakan tambahkan bagian via UI Profile Departemen")
+        print(f"        (menu Manajemen Riwayat Bagian)\n")
 
     inserted = updated = 0
     for i in range(0, len(employees), 1000):
         chunk = employees.iloc[i:i+1000]
         with engine.begin() as conn:
             for _, row in chunk.iterrows():
-                bagian_val = row['bagian'] if pd.notna(row.get('bagian')) else None
                 result = conn.execute(text("""
-                    INSERT INTO sips_employees (nik, nama, bagian)
-                    VALUES (:nik, :nama, :bagian)
+                    INSERT INTO sips_employees (nik, nama)
+                    VALUES (:nik, :nama)
                     ON CONFLICT (nik) DO UPDATE
                         SET nama       = EXCLUDED.nama,
-                            bagian     = COALESCE(EXCLUDED.bagian, sips_employees.bagian),
                             updated_at = CURRENT_TIMESTAMP
                     RETURNING (xmax = 0) AS is_insert
-                """), {'nik': row['nik'], 'nama': row['nama'], 'bagian': bagian_val})
+                """), {'nik': row['nik'], 'nama': row['nama']})
                 if result.fetchone()[0]: inserted += 1
                 else: updated += 1
 
@@ -287,12 +289,12 @@ def sync_employees(df_clean: pd.DataFrame, engine):
 
 def sync_sips_data(df_clean: pd.DataFrame, engine):
     """
-    DELETE semua data untuk list bulan/tahun yang ada di PERIODE_IMPORT, 
+    DELETE semua data untuk list bulan/tahun yang ada di PERIODE_IMPORT,
     lalu INSERT ulang data yang sudah di-filter.
     """
     if df_clean.empty:
         return
-        
+
     periods = df_clean[['bulan_import', 'tahun_import']].drop_duplicates().values.tolist()
     deleted_total = 0
     for b, t in periods:
@@ -317,7 +319,7 @@ def sync_sips_data(df_clean: pd.DataFrame, engine):
 
 def run_etl():
     periods_str = ", ".join([f"{b}/{t}" for b, t in Config.PERIODE_IMPORT])
-    
+
     print("=" * 55)
     print("🚀 SIPS MONITORING - ETL")
     print(f"   Periode : {periods_str}")
@@ -346,7 +348,7 @@ def run_etl():
     with engine.connect() as conn:
         total_emp  = conn.execute(text("SELECT COUNT(*) FROM sips_employees")).scalar()
         total_data = conn.execute(text("SELECT COUNT(*) FROM sips_data")).scalar()
-        
+
         total_bln = 0
         for b, t in Config.PERIODE_IMPORT:
             total_bln += conn.execute(text(
