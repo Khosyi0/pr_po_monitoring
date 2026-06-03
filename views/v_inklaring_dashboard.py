@@ -424,6 +424,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         'MOROCCO': {'name': 'Morocco', 'lat': 31.7917, 'lon': -7.0926},
         'MAROKO': {'name': 'Morocco', 'lat': 31.7917, 'lon': -7.0926},
         'KUWAIT': {'name': 'Kuwait', 'lat': 29.3117, 'lon': 47.4818},
+        'INDIA': {'name': 'India', 'lat': 20.5937, 'lon': 78.9629},
+        'AUSTRALIA': {'name': 'Australia', 'lat': -25.2744, 'lon': 133.7751},
     }
 
     # 3. Terapkan Master Data ke Dataframe
