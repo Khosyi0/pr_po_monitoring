@@ -17,8 +17,9 @@ class Config:
     DB_USER     = 'postgres'
     DB_PASSWORD = 'Hx4Khos2'
 
-    PR_FILE = 'PR SAP - 2026 - Mar.xlsx'
-    PO_FILE = 'PO SAP - 2026 - Mar.xlsx'
+    SAP_FILE   = 'SAP.xlsx'
+    PR_SHEET   = 'PR SAP'
+    PO_SHEET   = 'PO SAP'
 
 def get_db_engine():
     cs = f"postgresql://{Config.DB_USER}:{Config.DB_PASSWORD}@{Config.DB_HOST}:{Config.DB_PORT}/{Config.DB_NAME}"
@@ -107,7 +108,7 @@ def calculate_ontime_delivery(row):
 def load_excel_files():
     print("📂 Membaca file Excel...")
     try:
-        df_pr = pd.read_excel(Config.PR_FILE)
+        df_pr = pd.read_excel(Config.SAP_FILE, sheet_name=Config.PR_SHEET)
         col_flag = df_pr['PR Deletion Flag'].fillna('').astype(str).str.strip().str.upper() if 'PR Deletion Flag' in df_pr.columns else pd.Series([''] * len(df_pr))
         col_acc  = df_pr['Account Assignment'].fillna('').astype(str).str.strip().str.upper() if 'Account Assignment' in df_pr.columns else pd.Series([''] * len(df_pr))
         pr_mat   = 'Material No' if 'Material No' in df_pr.columns else 'Material'
@@ -118,7 +119,7 @@ def load_excel_files():
         print(f"❌ Gagal membaca PR: {e}"); return None, None
 
     try:
-        df_po = pd.read_excel(Config.PO_FILE)
+        df_po = pd.read_excel(Config.SAP_FILE, sheet_name=Config.PO_SHEET)
         po_mat   = 'Material No' if 'Material No' in df_po.columns else 'Material'
         col_mp   = df_po[po_mat].astype(str).str.replace('.0', '', regex=False).str.strip() if po_mat in df_po.columns else pd.Series([''] * len(df_po))
         tdc      = next((c for c in ['PO Deletion Flag', 'Deletion Indicator', 'D', 'L'] if c in df_po.columns), None)

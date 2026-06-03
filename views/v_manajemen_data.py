@@ -423,38 +423,94 @@ def render(**kwargs):
             </h3>
         """, unsafe_allow_html=True)
         
-        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "Inklaring Barang Impor"])
-        
+        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor"])
+
         if tipe_etl == "SAP (PR & PO)":
-            file_pr = st.file_uploader("Upload File PR SAP (.xlsx)", type=["xlsx"])
-            file_po = st.file_uploader("Upload File PO SAP (.xlsx)", type=["xlsx"])
+            file_sap = st.file_uploader("Upload File SAP (.xlsx) — harus ada sheet 'PR SAP' dan 'PO SAP'", type=["xlsx"])
             update_tgl_sap = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_sap")
-            if file_pr and file_po:
+            if file_sap:
                 if st.button("Jalankan ETL SAP", type="primary", icon=":material/cloud_upload:"):
-                    # Simpan sementara ke sistem lokal agar dapat dibaca library openpyxl
-                    pr_path, po_path = "temp_pr_sap.xlsx", "temp_po_sap.xlsx"
-                    with open(pr_path, "wb") as f: f.write(file_pr.getbuffer())
-                    with open(po_path, "wb") as f: f.write(file_po.getbuffer())
-                    
+                    sap_path = "temp_sap.xlsx"
+                    with open(sap_path, "wb") as f: f.write(file_sap.getbuffer())
+
                     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
                     import etl_sap as etl_sap  # type: ignore
-                    
-                    etl_sap.Config.PR_FILE = pr_path
-                    etl_sap.Config.PO_FILE = po_path
-                    etl_sap.get_db_engine  = _get_engine  # Override koneksi db menggunakan versi dashboard yang rahasia
-                    
+
+                    etl_sap.Config.SAP_FILE  = sap_path
+                    etl_sap.Config.PR_SHEET  = 'PR SAP'
+                    etl_sap.Config.PO_SHEET  = 'PO SAP'
+                    etl_sap.get_db_engine    = _get_engine
+
                     terminal = st.empty()
                     capture_sap = StreamlitCapture(terminal)
                     with redirect_stdout(capture_sap), redirect_stderr(capture_sap):
                         etl_sap.run_etl()
                         capture_sap.flush()
-                    
-                    os.remove(pr_path)
-                    os.remove(po_path)
 
+                    os.remove(sap_path)
                     if update_tgl_sap:
                         set_setting("DATA_UPDATE_SAP", datetime.today().strftime("%Y-%m-%d"))
-                    st.success("Proses sinkronisasi SAP selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+                    st.success("Proses sinkronisasi SAP selesai!")
+
+        elif tipe_etl == "SAP + SIPS (1 File)":
+            file_gabung = st.file_uploader(
+                "Upload File Excel Gabungan (.xlsx) — harus ada sheet: 'PR SAP', 'PO SAP', 'SIPS'",
+                type=["xlsx"]
+            )
+            update_tgl_sap  = st.checkbox("Update Tanggal SAP Menjadi Hari Ini",  value=False, key="chk_sap2")
+            update_tgl_sips = st.checkbox("Update Tanggal SIPS Menjadi Hari Ini", value=False, key="chk_sips2")
+
+            if file_gabung:
+                # Validasi sheet sebelum proses
+                try:
+                    xl = pd.ExcelFile(file_gabung)
+                    sheets_ada = xl.sheet_names
+                    sheets_wajib = ['PR SAP', 'PO SAP', 'SIPS']
+                    sheets_kurang = [s for s in sheets_wajib if s not in sheets_ada]
+                    if sheets_kurang:
+                        st.error(f"❌ Sheet tidak ditemukan di file: {', '.join(sheets_kurang)}")
+                    else:
+                        st.success(f"✅ Sheet ditemukan: {', '.join(sheets_wajib)}")
+                except Exception as e:
+                    st.error(f"Gagal membaca file: {e}")
+                    sheets_kurang = ['error']
+
+                if not sheets_kurang and st.button("Jalankan ETL SAP + SIPS", type="primary", icon=":material/cloud_upload:"):
+                    gabung_path = "temp_gabung.xlsx"
+                    with open(gabung_path, "wb") as f: f.write(file_gabung.getbuffer())
+
+                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                    import etl_sap as etl_sap    # type: ignore
+                    import etl_sips              # type: ignore
+
+                    # --- ETL SAP ---
+                    etl_sap.Config.SAP_FILE  = gabung_path
+                    etl_sap.Config.PR_SHEET  = 'PR SAP'
+                    etl_sap.Config.PO_SHEET  = 'PO SAP'
+                    etl_sap.get_db_engine    = _get_engine
+
+                    terminal = st.empty()
+                    capture = StreamlitCapture(terminal)
+                    with redirect_stdout(capture), redirect_stderr(capture):
+                        etl_sap.run_etl()
+                        capture.flush()
+
+                    # --- ETL SIPS ---
+                    etl_sips.Config.SIPS_FILE      = gabung_path
+                    etl_sips.Config.SIPS_SHEET     = 'SIPS'
+                    etl_sips.Config.PERIODE_IMPORT = []
+                    etl_sips.db_get_engine         = _get_engine
+
+                    with redirect_stdout(capture), redirect_stderr(capture):
+                        etl_sips.run_etl()
+                        capture.flush()
+
+                    os.remove(gabung_path)
+                    if update_tgl_sap:
+                        set_setting("DATA_UPDATE_SAP",  datetime.today().strftime("%Y-%m-%d"))
+                    if update_tgl_sips:
+                        set_setting("DATA_UPDATE_SIPS", datetime.today().strftime("%Y-%m-%d"))
+                    st.success("Proses sinkronisasi SAP + SIPS selesai!")
                     
         elif tipe_etl == "SIPS":
             file_sips = st.file_uploader("Upload File SIPS (.xlsx)", type=["xlsx"])

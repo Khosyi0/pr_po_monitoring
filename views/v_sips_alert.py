@@ -67,12 +67,24 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
     st.markdown("<br>", unsafe_allow_html=True)
  
-    # == WHERE clause dasar (tanpa filter status agar bisa ambil semua status) =
-    where_all = build_sips_where(
+    # == WHERE clause dasar ====================================================
+    where_pr = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
         selected_pgroup=selected_pgroup
     )
+
+    where_po = build_sips_where(
+        date_from=None, date_to=None,
+        selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup
+    )
+
+    po_date_cond = f"""(
+        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        OR tgl_po IS NULL 
+        OR tgl_po::text IN ('', '-')
+    )"""
 
     # ══════════════════════════════════════════════════════════════════════════
     # ALERT 1: PR Pending > 30 Hari (Selain Closed & Proses PO)
@@ -132,7 +144,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         (CURRENT_DATE - tgl_disposisi_buyer)::INT       AS umur_hari,
         status
     FROM vw_sips
-    WHERE {where_all}
+    WHERE {where_pr}
       AND status NOT IN ('Closed', 'Proses PO')
       AND tgl_disposisi_buyer IS NOT NULL
       AND (CURRENT_DATE - tgl_disposisi_buyer) > 30
@@ -238,7 +250,7 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
             END AS umur_pr,
             COUNT(*) AS total_pr
         FROM vw_sips
-        WHERE {where_all}
+        WHERE {where_pr}
           AND status NOT IN ('Closed', 'Proses PO')
           AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY 1
@@ -307,7 +319,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) AS pr_kuning,
             COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END) AS pr_merah
         FROM vw_sips
-        WHERE {where_all}
+        WHERE {where_pr}
           AND status NOT IN ('Closed', 'Proses PO')
           AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY nama
@@ -397,7 +409,10 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             END
         )::numeric, 1)                          AS avg_umur_hari
     FROM vw_sips
-    WHERE {where_all}
+    WHERE 
+        (UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO') AND {where_pr})
+        OR 
+        (UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {where_po} AND {po_date_cond})
     GROUP BY status
     ORDER BY
         CASE status

@@ -140,12 +140,23 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
 
     # == WHERE clause =========================================================
-    where = build_sips_where(
-        date_from=date_from, date_to=date_to,
+    where_po = build_sips_where(
+        date_from=None, date_to=None,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
-        selected_pgroup=selected_pgroup,
-        extra=["status IN ('Closed','Proses PO')"]
+        selected_pgroup=selected_pgroup
     )
+
+    po_date_cond = f"""(
+        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        OR tgl_po IS NULL 
+        OR tgl_po::text IN ('', '-')
+    )"""
+
+    where = f"""
+        {where_po} 
+        AND UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
+        AND {po_date_cond}
+    """
 
     kpi_q = f"""
     SELECT

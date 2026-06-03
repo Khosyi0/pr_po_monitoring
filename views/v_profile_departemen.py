@@ -141,8 +141,8 @@ SECTION_CAPACITIES = {"ALPATA": 10, "BARUM": 7, "BB/BD/BP": 8, "EPP": 6}
 
 def _panel_manajemen_karyawan(load_data, engine):
     """Panel untuk tambah/edit/hapus data di tabel profile_karyawan (struktur organisasi)."""
-    with st.expander("⚙️ Manajemen Data Karyawan (Edit Manual)"):
-        tab_tambah, tab_hapus = st.tabs(["➕ Tambah / Edit", "🗑️ Hapus"])
+    with st.expander("Manajemen Data Karyawan (Edit Manual)", icon=":material/settings:"):
+        tab_tambah, tab_hapus = st.tabs(["Tambah / Edit", "Hapus"])
 
         with tab_tambah:
             with st.form("form_tambah_karyawan"):
@@ -214,7 +214,7 @@ def _panel_riwayat_bagian(load_data, engine):
     Panel untuk mengelola historis keanggotaan bagian karyawan SIPS.
     Ini yang menentukan bagian karyawan pada laporan berdasarkan tanggal transaksi.
     """
-    with st.expander("🔄 Manajemen Riwayat Bagian SIPS (Mutasi Karyawan)"):
+    with st.expander("Manajemen Riwayat Bagian SIPS (Mutasi Karyawan)", icon=":material/sync:"):
         st.info(
             "**Cara kerja:** Setiap karyawan SIPS bisa punya lebih dari satu riwayat bagian. "
             "Laporan akan otomatis menggunakan bagian yang berlaku sesuai tanggal transaksi. "
@@ -222,12 +222,9 @@ def _panel_riwayat_bagian(load_data, engine):
             "laporan Januari–Mei tetap masuk BARUM, laporan Juni+ masuk ALPATA."
         )
 
-        tab_lihat, tab_tambah, tab_tutup, tab_hapus = st.tabs([
-            "📋 Lihat Riwayat",
-            "➕ Tambah Riwayat Baru",
-            "🔒 Tutup Riwayat Aktif",
-            "🗑️ Hapus Riwayat",
-        ])
+        tab_lihat, tab_tambah, tab_tutup, tab_hapus = st.tabs(
+            ["Lihat Riwayat", "Tambah Riwayat Baru", "Tutup Riwayat Aktif", "Hapus"]
+        )
 
         # -- Tab: Lihat Riwayat ------------------------------------------------
         with tab_lihat:
@@ -386,16 +383,28 @@ def _panel_riwayat_bagian(load_data, engine):
                     )
 
                     if st.form_submit_button("🔒 Tutup Riwayat", type="primary"):
-                        id_terpilih = id_map[sel_aktif]
-                        with engine.begin() as conn:
+                        id_terpilih = int(id_map[sel_aktif]) 
+                        with engine.connect() as conn: # <-- UBAH JADI CONNECT
                             # Cek berlaku_dari agar berlaku_sampai tidak lebih awal
                             row_check = conn.execute(text(
                                 "SELECT berlaku_dari FROM karyawan_bagian_history WHERE id = :id"
                             ), {'id': id_terpilih}).fetchone()
-                            if row_check and tgl_tutup < row_check[0]:
+                            
+                            berlaku_dari_db = row_check[0] if row_check else None
+                            
+                            # Konversi ke objek date dengan aman
+                            if isinstance(berlaku_dari_db, str):
+                                try:
+                                    berlaku_dari_db = datetime.strptime(berlaku_dari_db[:10], "%Y-%m-%d").date()
+                                except ValueError:
+                                    pass
+                            elif isinstance(berlaku_dari_db, datetime):
+                                berlaku_dari_db = berlaku_dari_db.date()
+
+                            if berlaku_dari_db and tgl_tutup < berlaku_dari_db:
                                 st.error(
-                                    f"Tanggal tutup ({tgl_tutup}) tidak boleh sebelum "
-                                    f"tanggal berlaku_dari ({row_check[0]})."
+                                    f"Tanggal tutup ({tgl_tutup.strftime('%d %b %Y')}) tidak boleh sebelum "
+                                    f"tanggal berlaku dari ({berlaku_dari_db.strftime('%d %b %Y')})."
                                 )
                             else:
                                 keterangan_baru = ket_tutup.strip() or None
@@ -404,9 +413,23 @@ def _panel_riwayat_bagian(load_data, engine):
                                     SET berlaku_sampai = :sampai,
                                         keterangan     = COALESCE(:ket, keterangan)
                                     WHERE id = :id
-                                """), {'sampai': tgl_tutup, 'ket': keterangan_baru, 'id': id_terpilih})
+                                """), {
+                                    'sampai': tgl_tutup.strftime('%Y-%m-%d'),
+                                    'ket': keterangan_baru, 
+                                    'id': id_terpilih
+                                })
+                                
+                                conn.commit() # <--- KUNCI UTAMA: PAKSA COMMIT TRANSAKSI KE DATABASE!
+                                
                                 st.success(f"Riwayat berhasil ditutup per {tgl_tutup.strftime('%d %b %Y')}.")
+                                
+                                # Sapu bersih SEMUA jenis cache Streamlit
                                 st.cache_data.clear()
+                                try:
+                                    st.cache_resource.clear()
+                                except:
+                                    pass
+                                
                                 st.rerun()
 
         # -- Tab: Hapus Riwayat ------------------------------------------------

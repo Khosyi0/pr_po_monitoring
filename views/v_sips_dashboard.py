@@ -160,33 +160,128 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
 
     # == WHERE clause ==========================================================
-    where = build_sips_where(
+    # 1. Standard Where (menggunakan filter tanggal, untuk menghitung PR)
+    where_pr = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
         selected_pgroup=selected_pgroup
     )
 
-    # == Query KPI =============================================================
+    # 2. Where khusus PO (mengabaikan filter tanggal global pada level WHERE dasar)
+    where_po = build_sips_where(
+        date_from=None, date_to=None,
+        selected_nama=selected_nama, selected_bagian=selected_bagian,
+        selected_pgroup=selected_pgroup
+    )
+
+    # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel secara harfiah
+    po_date_cond = f"""(
+        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        OR tgl_po IS NULL 
+        OR tgl_po::text IN ('', '-')
+    )"""
+
+    # == Query KPI (Menggunakan pendekatan Subquery Mandiri) ====================
     kpi_query = f"""
         SELECT
-            COUNT(*)                                                          AS total_pr,
-            COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END)          AS total_po,
-            ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
-            COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO')
-                              THEN nilai_sla END), 0)                             AS sla_ontime,
-            COALESCE(SUM(CASE WHEN status='Proses PO' THEN oe_pr END),0)          AS oe_proses,
-            COALESCE(SUM(CASE WHEN status='Closed'    THEN oe_pr END),0)          AS oe_closed,
-            COALESCE(SUM(CASE WHEN status='Proses PO' THEN nilai_item_po END),0)  AS po_proses,
-            COALESCE(SUM(CASE WHEN status='Closed'    THEN nilai_item_po END),0)  AS po_closed,
-            COUNT(CASE WHEN persen_po_sr_mr<=1.0
-                        AND status IN ('Closed','Proses PO') THEN 1 END)          AS on_budget_count,
-            COUNT(CASE WHEN nilai_sla = 0 AND status IN ('Closed','Proses PO') THEN 1 END) AS sla_miss,
-            -- Tambahan Filter untuk KPI Efisiensi Khusus Non Agreement
-            COALESCE(SUM(CASE WHEN status='Proses PO' AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END),0) AS oe_proses_na,
-            COALESCE(SUM(CASE WHEN status='Closed'    AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END),0) AS oe_closed_na,
-            COALESCE(SUM(CASE WHEN status='Proses PO' AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END),0) AS po_proses_na,
-            COALESCE(SUM(CASE WHEN status='Closed'    AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END),0) AS po_closed_na
-        FROM vw_sips WHERE {where}
+            -- TOTAL PR: menggunakan filter tanggal global (where_pr)
+            (SELECT COUNT(*) FROM vw_sips 
+             WHERE {where_pr} 
+            ) AS total_pr,
+
+            -- TOTAL PO:
+            (SELECT COUNT(*) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
+               AND {po_date_cond}
+            ) AS total_po,
+
+            -- AVG PR PO
+            (SELECT ROUND(AVG(pr_po_days)::numeric, 2) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'CLOSED'
+               AND {po_date_cond}
+            ) AS avg_pr_po,
+
+            -- SLA ONTIME
+            (SELECT COALESCE(SUM(nilai_sla), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
+               AND {po_date_cond}
+            ) AS sla_ontime,
+
+            -- OE PROSES
+            (SELECT COALESCE(SUM(oe_pr), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'PROSES PO'
+               AND {po_date_cond}
+            ) AS oe_proses,
+
+            -- OE CLOSED
+            (SELECT COALESCE(SUM(oe_pr), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'CLOSED'
+               AND {po_date_cond}
+            ) AS oe_closed,
+
+            -- PO PROSES
+            (SELECT COALESCE(SUM(nilai_item_po), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'PROSES PO'
+               AND {po_date_cond}
+            ) AS po_proses,
+
+            -- PO CLOSED
+            (SELECT COALESCE(SUM(nilai_item_po), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'CLOSED'
+               AND {po_date_cond}
+            ) AS po_closed,
+
+            -- ON BUDGET COUNT
+            (SELECT COUNT(*) FROM vw_sips 
+             WHERE {where_po} 
+               AND persen_po_sr_mr <= 1.0
+               AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
+               AND {po_date_cond}
+            ) AS on_budget_count,
+
+            -- SLA MISS
+            (SELECT COUNT(*) FROM vw_sips 
+             WHERE {where_po} 
+               AND nilai_sla = 0
+               AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
+               AND {po_date_cond}
+            ) AS sla_miss,
+
+            -- Non Agreement variants
+            (SELECT COALESCE(SUM(oe_pr), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'PROSES PO'
+               AND {po_date_cond}
+               AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+            ) AS oe_proses_na,
+
+            (SELECT COALESCE(SUM(oe_pr), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'CLOSED'
+               AND {po_date_cond}
+               AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+            ) AS oe_closed_na,
+
+            (SELECT COALESCE(SUM(nilai_item_po), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'PROSES PO'
+               AND {po_date_cond}
+               AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+            ) AS po_proses_na,
+
+            (SELECT COALESCE(SUM(nilai_item_po), 0) FROM vw_sips 
+             WHERE {where_po} 
+               AND UPPER(TRIM(status)) = 'CLOSED'
+               AND {po_date_cond}
+               AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+            ) AS po_closed_na
     """
 
     # Query untuk breakdown SLA per prioritas
@@ -196,25 +291,32 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             COUNT(*) AS total_po,
             COALESCE(SUM(nilai_sla), 0) AS sla_ontime
         FROM vw_sips
-        WHERE {where} AND status IN ('Closed', 'Proses PO')
+        WHERE {where_po}
+            AND UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
+            AND {po_date_cond}
         GROUP BY prioritas
     """
 
-    # == Query chart data (satu round-trip) ===================================
+    # == Query chart data ==
     chart_query = f"""
         SELECT
             nama,
             status,
             pr_po_days,
-            COALESCE(nilai_sla, 0)                                      AS nilai_sla,
-            CASE WHEN status IN ('Closed','Proses PO') THEN 1 ELSE 0 END AS is_po,
-            COALESCE(oe_pr, 0)                                          AS oe_pr,
-            COALESCE(nilai_item_po, 0)                                  AS nilai_item_po,
+            COALESCE(nilai_sla, 0)   AS nilai_sla,
+            CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
+                AND {po_date_cond}
+            THEN 1 ELSE 0 END        AS is_po,
+            CASE WHEN {where_pr} THEN 1 ELSE 0 END AS is_pr,  -- <--- TAMBAHKAN BARIS INI
+            COALESCE(oe_pr, 0)       AS oe_pr,
+            COALESCE(nilai_item_po, 0) AS nilai_item_po,
             b.bulan,
             outline_agreement
         FROM vw_sips
-        LEFT JOIN LATERAL (SELECT TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan) AS b ON true
-        WHERE {where}
+        LEFT JOIN LATERAL (
+            SELECT TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan
+        ) AS b ON true
+        WHERE ({where_pr}) OR ({where_po} AND {po_date_cond})
     """
 
     with st.spinner("Memuat data..."):
@@ -322,12 +424,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed` dan `Proses PO`
     - Hitung seluruh baris
-
-    | Status | Termasuk PO? |
-    |---|---|
-    | Closed | ✅ Ya |
-    | Proses PO | ✅ Ya |
-    | Open | ❌ Tidak |
 
     **Target:** -""",
             },
@@ -768,32 +864,38 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 - Filter nama karyawan yang ingin dicari
 - Filter **Requisition Date** sesuai bulan yang diinginkan
 - Hitung seluruh baris untuk menghitung **Total PR**
-- Filter **Status** menjadi `Proses PO` dan `Closed` untuk menghitung **Total PO**         
-            """)
+- Filter **Status** menjadi `Proses PO` dan `Closed` untuk menghitung **Total PO** """)
 
         st.caption("Distribusi volume PR-PO per bulan.")
         
         if 'bulan' in df_chart.columns and df_chart['bulan'].notna().any():
             trend = (df_chart.groupby('bulan')
-                     .agg(Total_PR=('nama', 'count'),
+                     .agg(Total_PR=('is_pr', 'sum'),
                           Total_PO=('is_po', 'sum'))
                      .reset_index()
                      .sort_values('bulan'))
             
             trend['bulan'] = pd.to_datetime(trend['bulan'])
 
-            show_cumulative = st.toggle("Tampilkan Kumulatif", value=False, key="toggle_trend_sips")
-            
-            if show_cumulative:
-                y_pr = trend['Total_PR'].cumsum()
-                y_po = trend['Total_PO'].cumsum()
-                y_axis_title = 'Total Akumulasi'
-            else:
-                y_pr = trend['Total_PR']
-                y_po = trend['Total_PO']
-                y_axis_title = 'Jumlah per Bulan'
+            dt_from = pd.to_datetime(date_from).replace(day=1)
+            dt_to   = pd.to_datetime(date_to)
+            trend   = trend[(trend['bulan'] >= dt_from) & (trend['bulan'] <= dt_to)]
 
-            fig_trend = go.Figure()
+            if trend.empty:
+                st.info("Tidak ada data tren untuk filter tanggal yang dipilih.")
+            else:
+                show_cumulative = st.toggle("Tampilkan Kumulatif", value=False, key="toggle_trend_sips")
+                
+                if show_cumulative:
+                    y_pr = trend['Total_PR'].cumsum()
+                    y_po = trend['Total_PO'].cumsum()
+                    y_axis_title = 'Total Akumulasi'
+                else:
+                    y_pr = trend['Total_PR']
+                    y_po = trend['Total_PO']
+                    y_axis_title = 'Jumlah per Bulan'
+
+                fig_trend = go.Figure()
             fig_trend.add_trace(go.Scatter(
                 x=trend['bulan'], y=y_pr,
                 name='Total PR', mode='lines+markers',
@@ -1008,11 +1110,11 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
     """)
         
-    st.caption("Perbandingan total dokumen PR yang ditugaskan dan diselesaikan (PO) oleh masing-masing karyawan.")
+    st.caption("Perbandingan total dokumen PR yang ditugaskan and diselesaikan (PO) oleh masing-masing karyawan.")
 
     if 'nama' in df_chart.columns:
         vol = (df_chart.groupby('nama')
-            .agg(Total_PR=('nama', 'count'), Total_PO=('is_po', 'sum'))
+            .agg(Total_PR=('is_pr', 'sum'), Total_PO=('is_po', 'sum'))
             .reset_index())
         
         if not vol.empty:
@@ -1199,10 +1301,8 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
     # INTEGRASI AI: PANGGIL MELATI DENGAN KONTEKS GLOBAL
     # =====================================================================
 
-    # Ambil konteks global (SIPS default + SAP aktif) yang sudah dibangun di app.py
     global_context = kwargs.get("global_context", "")
 
-    # Tambahkan detail chart halaman ini sebagai suplemen konteks lokal
     suplemen_lines = [
         "# SUPLEMEN - DETAIL CHART HALAMAN INI (SIPS Dashboard)",
     ]
@@ -1238,7 +1338,7 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_chart.to_excel(writer, index=False, sheet_name='SIPS_Dashboard_Data')
-        excel_buffer.seek(0) # Kembali ke awal buffer
+        excel_buffer.seek(0)
         st.download_button(
             label="Download Semua Data Chart (XLSX)",
             data=excel_buffer,
