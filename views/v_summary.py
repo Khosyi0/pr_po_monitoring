@@ -307,45 +307,62 @@ def render(load_data, **kwargs):
     )
     st.markdown("---")
 
+    dt_from_pd = pd.to_datetime(date_from).replace(day=1)
+    dt_to_pd   = pd.to_datetime(date_to)
+
+    # =========================================================================
+    # DEFINISI LOGIKA FILTER SIPS (Menyamakan dengan Dashboard SIPS)
+    # =========================================================================
+    
+    where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
+    
+    po_date_cond = f"""(
+        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        OR tgl_po IS NULL 
+        OR tgl_po::text IN ('', '-')
+    )"""
+
+    where_gabungan = f"(({where_pr}) OR ({po_date_cond} AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')))"
+
     # == Eksekusi Kueri =======================================================
-    # Kueri Tren SIPS (Menggantikan SAP)
+    # Kueri Tren SIPS
     trend_query = f"""
     SELECT
         DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
-        COUNT(*) AS total_pr,
-        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
+        SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
     FROM vw_sips
-    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    WHERE {where_gabungan}
     GROUP BY 1
     ORDER BY month
     """
 
-    # Kueri Tren Nilai SIPS (Menggantikan SAP)
+    # Kueri Tren Nilai SIPS
     value_trend_query = f"""
     SELECT
         DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS total_oe,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS total_po_val
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS total_oe,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS total_po_val
     FROM vw_sips
-    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    WHERE {where_gabungan}
     GROUP BY 1
     ORDER BY month
     """
 
-    # Kueri SIPS Diperluas untuk mengambil total volume & nilai keseluruhan serta nilai Khusus Non Agreement
+    # Kueri SIPS Diperluas
     sips_otobos_query = f"""
     SELECT
-        COUNT(*) AS total_pr,
-        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
-        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
-        COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
-        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na
+        SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
+        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
+        SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na
     FROM vw_sips
-    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    WHERE {where_gabungan}
     """
 
     # Kueri KPI dari SAP (untuk Sinergi, Pengiriman, Ketepatan)
@@ -372,7 +389,7 @@ def render(load_data, **kwargs):
             st.error(f"Gagal memuat data: {e}")
             return
 
-    # Proses tanggal untuk kedua chart (PENTING: dilakukan di luar kolom agar aman)
+    # Proses tanggal untuk chart
     today = datetime.now().date()
     def resolve_month_date(month_ts):
         y, m = month_ts.year, month_ts.month
@@ -388,20 +405,38 @@ def render(load_data, **kwargs):
     def fmt_date(ts):
         return f"{ts.day} {ts.strftime('%b')} {ts.year}"
 
+    # Proses Data Pandas untuk Grafik
     if not trend_data.empty:
-        trend_data['month'] = pd.to_datetime(trend_data['month'])
+        trend_data['month'] = pd.to_datetime(trend_data['month']).dt.tz_localize(None)
         trend_data = trend_data.sort_values('month')
+        
+        # Hitung Cumsum (Akumulasi) sebelum data dipotong, agar ekor/backlog tahun 2025 ikut terbawa
+        trend_data['cum_pr'] = trend_data['total_pr'].cumsum()
+        trend_data['cum_po'] = trend_data['total_po'].cumsum()
+        
+        # Potong sumbu X (Slicing) agar grafik tetap rapi
+        trend_data = trend_data[(trend_data['month'] >= dt_from_pd) & (trend_data['month'] <= dt_to_pd)]
+        
         trend_data['month_display'] = trend_data['month'].apply(resolve_month_date)
         trend_data['hover_label'] = trend_data['month_display'].apply(fmt_date)
 
     if not val_trend_data.empty:
-        val_trend_data['month'] = pd.to_datetime(val_trend_data['month'])
+        val_trend_data['month'] = pd.to_datetime(val_trend_data['month']).dt.tz_localize(None)
         val_trend_data = val_trend_data.sort_values('month')
+        
+        # Hitung Cumsum (Akumulasi) sebelum data dipotong
+        val_trend_data['cum_oe'] = val_trend_data['total_oe'].cumsum()
+        val_trend_data['cum_po'] = val_trend_data['total_po_val'].cumsum()
+        
+        # Potong sumbu X (Slicing)
+        val_trend_data = val_trend_data[(val_trend_data['month'] >= dt_from_pd) & (val_trend_data['month'] <= dt_to_pd)]
+        
         val_trend_data['month_display'] = val_trend_data['month'].apply(resolve_month_date)
         val_trend_data['hover_label'] = val_trend_data['month_display'].apply(fmt_date)
         val_trend_data['oe_fmt'] = val_trend_data['total_oe'].apply(format_idr)
         val_trend_data['po_fmt'] = val_trend_data['total_po_val'].apply(format_idr)
-
+        val_trend_data['cum_oe_fmt'] = val_trend_data['cum_oe'].apply(format_idr)
+        val_trend_data['cum_po_fmt'] = val_trend_data['cum_po'].apply(format_idr)
 
     # Perhitungan Metrik SIPS
     if not sips_otobos_data.empty:
@@ -472,7 +507,6 @@ def render(load_data, **kwargs):
     color_ketepatan = "green" if sap_ketepatan_pct > 90 else "red"
     color_otobos = "green" if otobos_val > 90 else "red"
 
-    # Map performance color names to CSS class names for borders
     border_class_map = {
         "green": "border-green",
         "red":   "border-red",
@@ -480,7 +514,7 @@ def render(load_data, **kwargs):
 
 
     # ═════════════════════════════════════════════════════════════════════════
-    # BAGIAN 1: KPI PENGADAAN BARANG (Sekarang menggunakan data SIPS)
+    # BAGIAN 1: KPI PENGADAAN BARANG (SIPS & SAP)
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown(
         f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
@@ -513,7 +547,6 @@ def render(load_data, **kwargs):
     # Baris 3
     c7, c8, c9 = st.columns(3)
     with c7:
-        # Pemenuhan SLA Pembebasan Barang now uses SIPS On Time SLA, but with a static delta text
         pembebasan_val = f"{format_number(sla_on_time_pct, decimals=2)}%"
         pembebasan_delta = "Target: > 80%"
         pembebasan_color = "green" if sla_on_time_pct >= 80 else "red"
@@ -617,12 +650,12 @@ def render(load_data, **kwargs):
 
             if chart_type == "Kumulatif (Line)":
                 fig1.add_trace(go.Scatter(
-                    x=trend_data['month_display'], y=trend_data['total_pr'].cumsum(),
+                    x=trend_data['month_display'], y=trend_data['cum_pr'],
                     mode='lines+markers', name='PR Created', line=dict(color='#1f77b4', width=2),
                     customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PR: %{y}<extra></extra>'
                 ))
                 fig1.add_trace(go.Scatter(
-                    x=trend_data['month_display'], y=trend_data['total_po'].cumsum(),
+                    x=trend_data['month_display'], y=trend_data['cum_po'],
                     mode='lines+markers', name='PO Created', line=dict(color='#2ca02c', width=2),
                     customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PO: %{y}<extra></extra>'
                 ))
@@ -701,14 +734,8 @@ def render(load_data, **kwargs):
             fig2 = go.Figure()
 
             if chart_type_val == "Kumulatif (Line)":
-                y_oe_cum = val_trend_data['total_oe'].cumsum()
-                y_po_cum = val_trend_data['total_po_val'].cumsum()
-                
-                val_trend_data['cum_oe_fmt'] = y_oe_cum.apply(format_idr)
-                val_trend_data['cum_po_fmt'] = y_po_cum.apply(format_idr)
-
                 fig2.add_trace(go.Scatter(
-                    x=val_trend_data['month_display'], y=y_oe_cum,
+                    x=val_trend_data['month_display'], y=val_trend_data['cum_oe'],
                     mode='lines+markers', name='Estimasi PR (OE)',
                     line=dict(color='#1f77b4', width=3, shape='spline'),
                     fill='tozeroy', fillcolor='rgba(31,119,180,0.1)',
@@ -716,7 +743,7 @@ def render(load_data, **kwargs):
                     hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Estimasi PR: %{customdata[1]}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
-                    x=val_trend_data['month_display'], y=y_po_cum,
+                    x=val_trend_data['month_display'], y=val_trend_data['cum_po'],
                     mode='lines+markers', name='Nilai PO',
                     line=dict(color='#2ca02c', width=3, shape='spline'),
                     fill='tozeroy', fillcolor='rgba(44,160,44,0.1)',
@@ -724,7 +751,7 @@ def render(load_data, **kwargs):
                     hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Nilai PO: %{customdata[1]}<extra></extra>'
                 ))
                 
-                max_val = max(y_oe_cum.max(), y_po_cum.max())
+                max_val = max(val_trend_data['cum_oe'].max(), val_trend_data['cum_po'].max())
                 
             else:
                 fig2.add_trace(go.Bar(
@@ -797,17 +824,17 @@ def render(load_data, **kwargs):
     # Kueri khusus untuk mengambil metrik performa dan Efisiensi NA per Bagian dari SIPS
     bagian_query = f"""
     SELECT
-        COUNT(*) AS total_pr,
-        COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
-        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
-        COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
-        COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
-        COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
+        SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
+        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
+        SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
     FROM vw_sips
-    WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+    WHERE {where_gabungan}
       AND bagian = '{pilihan_bagian}'
     """
 
@@ -881,17 +908,17 @@ def render(load_data, **kwargs):
         karyawan_query = f"""
         SELECT
             nama,
-            COUNT(*) AS total_pr,
-            COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po,
-            ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
-            COALESCE(SUM(CASE WHEN status IN ('Closed','Proses PO') THEN nilai_sla END), 0) AS sla_ontime,
-            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN oe_pr END), 0) AS sips_oe_total,
-            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') THEN nilai_item_po END), 0) AS sips_po_total,
-            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
-            COALESCE(SUM(CASE WHEN status IN ('Closed', 'Proses PO') AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
-            COUNT(CASE WHEN persen_po_sr_mr <= 1.0 AND status IN ('Closed','Proses PO') THEN 1 END) AS on_budget_count
+            SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
+            SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
+            ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
+            SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
         FROM vw_sips
-        WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+        WHERE {where_gabungan}
           AND bagian = '{pilihan_bagian}'
         GROUP BY nama
         ORDER BY total_pr DESC
@@ -943,10 +970,10 @@ def render(load_data, **kwargs):
         trend_bagian_query = f"""
         SELECT
             DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
-            COUNT(*) AS total_pr,
-            COUNT(CASE WHEN status IN ('Closed','Proses PO') THEN 1 END) AS total_po
+            SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
+            SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
         FROM vw_sips
-        WHERE tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'
+        WHERE {where_gabungan}
           AND bagian = '{pilihan_bagian}'
         GROUP BY 1
         ORDER BY month
@@ -957,8 +984,12 @@ def render(load_data, **kwargs):
 
         if not trend_bagian_data.empty:
             # Format Data
-            trend_bagian_data['month'] = pd.to_datetime(trend_bagian_data['month'])
+            trend_bagian_data['month'] = pd.to_datetime(trend_bagian_data['month']).dt.tz_localize(None)
             trend_bagian_data = trend_bagian_data.sort_values('month')
+            
+            # Potong sumbu X (Slicing) karena chart ini bukan tipe kumulatif
+            trend_bagian_data = trend_bagian_data[(trend_bagian_data['month'] >= dt_from_pd) & (trend_bagian_data['month'] <= dt_to_pd)]
+            
             trend_bagian_data['month_display'] = trend_bagian_data['month'].apply(resolve_month_date)
             trend_bagian_data['hover_label'] = trend_bagian_data['month_display'].apply(fmt_date)
 
