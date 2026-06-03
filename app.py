@@ -299,12 +299,13 @@ if ai_pages:
 # Halaman PR-PO SAP
 sap_pages = [
     st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
-    st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"),
     st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
     st.Page(_render_alert,     title="Halaman Alert SAP",            icon=":material/assignment_late:"),
 ]
 if is_admin():
+    # Halaman khusus admin disisipkan di sini agar urutannya benar
     sap_pages.insert(1, st.Page(_render_detail, title="Detailed PR-PO SAP Data", icon=":material/unknown_document:"))
+    sap_pages.insert(2, st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"))
 
 # Halaman SIPS
 sips_pages = [
