@@ -122,7 +122,7 @@ def render(**kwargs):
             </div>
         """, unsafe_allow_html=True)
 
-    with st.expander("✏️ Edit Manual Tanggal Pembaruan"):
+    with st.expander("Edit Manual Tanggal Pembaruan", icon=":material/edit:"):
         with st.form("form_edit_tanggal"):
             c1, c2, c3 = st.columns(3)
             with c1:

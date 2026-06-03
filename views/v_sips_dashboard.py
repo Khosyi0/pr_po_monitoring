@@ -877,6 +877,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             
             trend['bulan'] = pd.to_datetime(trend['bulan'])
 
+            trend['Cum_PR'] = trend['Total_PR'].cumsum()
+            trend['Cum_PO'] = trend['Total_PO'].cumsum()
+
             dt_from = pd.to_datetime(date_from).replace(day=1)
             dt_to   = pd.to_datetime(date_to)
             trend   = trend[(trend['bulan'] >= dt_from) & (trend['bulan'] <= dt_to)]
@@ -887,8 +890,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 show_cumulative = st.toggle("Tampilkan Kumulatif", value=False, key="toggle_trend_sips")
                 
                 if show_cumulative:
-                    y_pr = trend['Total_PR'].cumsum()
-                    y_po = trend['Total_PO'].cumsum()
+                    y_pr = trend['Cum_PR']
+                    y_po = trend['Cum_PO']
                     y_axis_title = 'Total Akumulasi'
                 else:
                     y_pr = trend['Total_PR']
