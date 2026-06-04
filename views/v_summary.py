@@ -9,7 +9,7 @@ import numpy as np
 import calendar
 import plotly.graph_objects as go
 from datetime import datetime
-from config_db import get_setting
+from config_db import get_setting, set_setting
 from utils import format_idr, format_number, format_idr_short, idr_axis
 
 # =============================================================================
@@ -109,7 +109,7 @@ div[data-testid="stPlotlyChart"] {
 
 .sum-row-label {
     font-size: 14px; font-weight: 700; letter-spacing: 0.04em;
-    text-transform: uppercase; color: #1f77b4; margin: 32px 0 12px 4px;
+    text-transform: uppercase; color: var(--text-color); margin: 16px 0 12px 4px;
 }
 
 @media screen { .pagebreak { display: none; } }
@@ -159,6 +159,82 @@ def _card(icon_d: str, label: str, value: str,
 def _row_label(text: str) -> None:
     st.markdown(f'<div class="sum-row-label">{text}</div>', unsafe_allow_html=True)
 
+def _parse_label_to_num(label: str) -> float | None:
+    """
+    Ekstrak angka dari label teks KPI.
+    Aturan:
+      - Ada 'Rp' → pemisah desimal = titik, lalu kalikan suffix:
+            M/m/Miliar → ×1_000_000_000
+            Jt/jt/Juta → ×1_000_000
+            T/t/Triliun → ×1_000_000_000_000
+      - Ada '%' di akhir → pemisah desimal = koma (ganti koma→titik)
+      - Lainnya → coba parse langsung (titik sebagai desimal)
+    Kembalikan float atau None jika gagal.
+    """
+    import re
+    s = str(label).strip()
+    if not s or s == "-":
+        return None
+
+    has_rp  = bool(re.search(r'Rp', s, re.IGNORECASE))
+    has_pct = s.endswith("%")
+
+    # Ambil angka pertama yang ditemukan
+    if has_rp:
+        # Desimal pakai titik; hapus karakter non-angka kecuali titik
+        nums = re.findall(r'[\d]+(?:\.[\d]+)?', s.replace(",", "."))
+    elif has_pct:
+        # Desimal pakai koma; ganti koma→titik dulu
+        nums = re.findall(r'[\d]+(?:\.[\d]+)?', s.replace(",", "."))
+    else:
+        nums = re.findall(r'[\d]+(?:[.,][\d]+)?', s)
+
+    if not nums:
+        return None
+
+    try:
+        num = float(nums[0].replace(",", "."))
+    except ValueError:
+        return None
+
+    # Kalikan suffix satuan (hanya untuk Rp)
+    if has_rp:
+        upper = s.upper()
+        if re.search(r'\bT\b|TRILIUN', upper):
+            num *= 1_000_000_000_000
+        elif re.search(r'\bM\b|MILIAR', upper):
+            num *= 1_000_000_000
+        elif re.search(r'\bJT\b|\bJUTA\b', upper):
+            num *= 1_000_000
+
+    return num
+
+
+def _eval_kpi_color(nilai_label: str, target_label: str, arah: str):
+    """
+    Bandingkan nilai dan target yang di-parse dari label teks.
+    arah: '>'  → hijau jika nilai >  target
+          '>=' → hijau jika nilai >= target
+          '<'  → hijau jika nilai <  target
+          '<=' → hijau jika nilai <= target
+          '='  → hijau jika nilai == target (toleransi 0.001%)
+    Kembalikan (delta_type, border_class).
+    Jika tidak bisa di-parse, kembalikan ("neutral", "").
+    """
+    n = _parse_label_to_num(nilai_label)
+    t = _parse_label_to_num(target_label)
+    if n is None or t is None:
+        return "neutral", ""
+
+    if   arah == ">":  color = "green" if n >  t else "red"
+    elif arah == ">=": color = "green" if n >= t else "red"
+    elif arah == "<":  color = "green" if n <  t else "red"
+    elif arah == "<=": color = "green" if n <= t else "red"
+    elif arah == "=":  color = "green" if abs(n - t) / max(abs(t), 1e-9) < 0.00001 else "red"
+    else:              return "neutral", ""
+
+    return color, f"border-{color}"
+
 # =============================================================================
 # Icon path constants (Bootstrap Icons)
 # =============================================================================
@@ -191,6 +267,7 @@ ICONS = {
 def render(load_data, **kwargs):
     st.markdown(SUMMARY_CSS, unsafe_allow_html=True)
 
+    is_admin = kwargs.get("is_admin", False)
     current_year = datetime.now().year
 
     # Pengambilan tanggal update SAP
@@ -506,6 +583,7 @@ def render(load_data, **kwargs):
     color_pengiriman = "green" if sap_pct_pengiriman > 80 else "red"
     color_ketepatan = "green" if sap_ketepatan_pct > 90 else "red"
     color_otobos = "green" if otobos_val > 90 else "red"
+    color_otobos = "green" if otobos_val >= 90 else "red"
 
     border_class_map = {
         "green": "border-green",
@@ -517,70 +595,307 @@ def render(load_data, **kwargs):
     # BAGIAN 1: KPI PENGADAAN BARANG (SIPS & SAP)
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 24px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['graph_up'], 32)}</span>"
         f"KPI Pengadaan Barang"
         f"</h2>", 
         unsafe_allow_html=True
     )
-    
-    # Baris 1
+
+    # ── Konstanta arah ────────────────────────────────────────────────────
+    _ARAH_SYM    = {">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "="}
+    _ARAH_OPTIONS = [">", ">=", "<", "<=", "="]
+    _ARAH_LABELS  = {
+        ">":  "Lebih besar dari  ( nilai > target )",
+        ">=": "Lebih besar atau sama dengan  ( nilai ≥ target )",
+        "<":  "Lebih kecil dari  ( nilai < target )",
+        "<=": "Lebih kecil atau sama dengan  ( nilai ≤ target )",
+        "=":  "Sama dengan  ( nilai = target )",
+    }
+
+    # ── Helper: baca satu KPI dari DB dan kembalikan (nilai, target, arah, color, border, delta_label) ──
+    def _load_kpi(prefix: str, default_arah: str = ">="):
+        nilai  = get_setting(f"{prefix}_NILAI",  "-")
+        target = get_setting(f"{prefix}_TARGET", "-")
+        arah   = get_setting(f"{prefix}_ARAH",   default_arah)
+        color, border = _eval_kpi_color(nilai, target, arah)
+        sym   = _ARAH_SYM.get(arah, "")
+        delta = f"Target: {sym} {target}".strip() if target != "-" else "Target: -"
+        return nilai, target, arah, color, border, delta
+
+    # ── Helper: render dialog edit nilai+target+arah (full) ───────────────
+    def _dialog_full(title: str, prefix: str, default_arah: str = ">="):
+        @st.dialog(f"Edit KPI: {title}")
+        def _dlg():
+            st.markdown(
+                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
+                "Angka diekstrak otomatis dari label untuk menentukan warna kartu.</p>",
+                unsafe_allow_html=True
+            )
+            inp_nilai = st.text_input(
+                "Nilai Pencapaian",
+                value=get_setting(f"{prefix}_NILAI", "-"),
+                placeholder="Contoh: Rp 12.5 M  |  87,5%  |  95"
+            )
+            inp_target = st.text_input(
+                "Target",
+                value=get_setting(f"{prefix}_TARGET", "-"),
+                placeholder="Contoh: Rp 10 M  |  90%  |  100"
+            )
+            _cur_arah = get_setting(f"{prefix}_ARAH", default_arah)
+            _cur_idx  = _ARAH_OPTIONS.index(_cur_arah) if _cur_arah in _ARAH_OPTIONS else 1
+            inp_arah = st.radio(
+                "Kondisi hijau (kapan nilai dianggap baik?)",
+                options=_ARAH_OPTIONS,
+                index=_cur_idx,
+                format_func=lambda x: _ARAH_LABELS[x],
+            )
+            n_parsed = _parse_label_to_num(inp_nilai)
+            t_parsed = _parse_label_to_num(inp_target)
+            if n_parsed is not None and t_parsed is not None:
+                prev_color, _ = _eval_kpi_color(inp_nilai, inp_target, inp_arah)
+                st.caption(f"Preview: **{n_parsed:,.4g}** vs **{t_parsed:,.4g}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
+            else:
+                st.caption("Angka belum terdeteksi - kartu tetap netral.")
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
+                    set_setting(f"{prefix}_NILAI",  inp_nilai.strip()  or "-")
+                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
+                    set_setting(f"{prefix}_ARAH",   inp_arah)
+                    st.success("Tersimpan!")
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True):
+                    st.rerun()
+        return _dlg
+
+    # ── Helper: dialog edit delta saja (untuk OTOBOS & Produktivitas) ─────
+    def _dialog_delta_only(title: str, prefix: str):
+        @st.dialog(f"Edit Delta: {title}")
+        def _dlg():
+            st.markdown(
+                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
+                "Ubah teks keterangan (baris bawah) pada kartu KPI ini.</p>",
+                unsafe_allow_html=True
+            )
+            inp_delta = st.text_input(
+                "Teks Keterangan (delta)",
+                value=get_setting(f"{prefix}_DELTA", ""),
+                placeholder="Contoh: Target: > 90%"
+            )
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
+                    set_setting(f"{prefix}_DELTA", inp_delta.strip())
+                    st.success("Tersimpan!")
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True):
+                    st.rerun()
+        return _dlg
+
+    # ── Helper: dialog edit nilai saja (SLA On Spec) ─────────────────────
+    def _dialog_nilai_only(title: str, prefix: str):
+        @st.dialog(f"Edit Nilai: {title}")
+        def _dlg():
+            st.markdown(
+                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
+                "Ubah nilai On Spec. Nilai ini juga mempengaruhi perhitungan Total SLA OTOBOS.</p>",
+                unsafe_allow_html=True
+            )
+            inp_val = st.text_input(
+                "Nilai On Spec (%)",
+                value=get_setting(f"{prefix}_NILAI", ""),
+                placeholder="Contoh: 99,30"
+            )
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
+                    set_setting(f"{prefix}_NILAI", inp_val.strip())
+                    st.success("Tersimpan!")
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True):
+                    st.rerun()
+        return _dlg
+        
+    # ── Helper: dialog edit nilai dan delta (full) ───────────────
+    def _dialog_nilai_delta(title: str, prefix: str):
+        @st.dialog(f"Edit KPI: {title}")
+        def _dlg():
+            st.markdown(
+                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
+                "Ubah nilai dan teks keterangan (delta) pada kartu KPI ini.</p>",
+                unsafe_allow_html=True
+            )
+            inp_nilai = st.text_input("Nilai Pencapaian", value=get_setting(f"{prefix}_NILAI", "-"), placeholder="Contoh: 100% | 2 / 2")
+            inp_delta = st.text_input("Teks Keterangan (delta)", value=get_setting(f"{prefix}_DELTA", ""), placeholder="Contoh: Target: 2 / 2")
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
+                    set_setting(f"{prefix}_NILAI", inp_nilai.strip() or "-")
+                    set_setting(f"{prefix}_DELTA", inp_delta.strip())
+                    st.success("Tersimpan!")
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True): st.rerun()
+        return _dlg
+
+    # ── Baca semua KPI dari DB ─────────────────────────────────────────────
+    ni_nilai,   ni_target,   ni_arah,   ni_color,   ni_border,   ni_delta   = _load_kpi("KPI_NET_INCOME")
+    co_nilai,   co_target,   co_arah,   co_color,   co_border,   co_delta   = _load_kpi("KPI_COST_OPT")
+    pd_nilai,   pd_target,   pd_arah,   pd_color,   pd_border,   pd_delta   = _load_kpi("KPI_PENAGIHAN")
+    pdn_nilai,  pdn_target,  pdn_arah,  pdn_color,  pdn_border,  pdn_delta  = _load_kpi("KPI_PDN")
+    npk_nilai,  npk_target,  npk_arah,  npk_color,  npk_border,  npk_delta  = _load_kpi("KPI_TRADING_NPK")
+    imp_nilai,  imp_target,  imp_arah,  imp_color,  imp_border,  imp_delta  = _load_kpi("KPI_BARANG_IMPOR")
+    zbb_nilai,  zbb_target,  zbb_arah,  zbb_color,  zbb_border,  zbb_delta  = _load_kpi("KPI_ZSO_BB")
+    zkn_nilai,  zkn_target,  zkn_arah,  zkn_color,  zkn_border,  zkn_delta  = _load_kpi("KPI_ZSO_KANTONG")
+    usp_nilai,  usp_target,  usp_arah,  usp_color,  usp_border,  usp_delta  = _load_kpi("KPI_UTILISASI")
+    saf_nilai,  saf_target,  saf_arah,  saf_color,  saf_border,  saf_delta  = _load_kpi("KPI_SAFETY",      default_arah=">=")
+    tde_nilai,  tde_target,  tde_arah,  tde_color,  tde_border,  tde_delta  = _load_kpi("KPI_TALENT_DEV")
+    sla_pembebasan_delta = get_setting("KPI_SLA_PEMBEBASAN_DELTA", "Target: > 80%")
+    efisiensi_pengadaan_delta = get_setting("KPI_EFISIENSI_PENGADAAN_DELTA", "Target: > 2%")
+    laporan_kinerja_nilai, laporan_kinerja_delta = get_setting("KPI_LAPORAN_KINERJA_NILAI", "-"), get_setting("KPI_LAPORAN_KINERJA_DELTA", "")
+    izin_impor_nilai, izin_impor_delta = get_setting("KPI_IZIN_IMPOR_NILAI", "100%"), get_setting("KPI_IZIN_IMPOR_DELTA", "Target: 2 / 2")
+
+    # Khusus: On Spec bisa di-override dari DB, fallback ke nilai hardcode
+    _on_spec_override = get_setting("KPI_ON_SPEC_NILAI", "")
+    if _on_spec_override:
+        try:
+            sla_on_spec_pct = float(_on_spec_override.replace(",", "."))
+            otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
+            color_otobos = "green" if otobos_val >= 90 else "red"
+        except ValueError:
+            pass  # tetap pakai nilai hardcode jika parsing gagal
+
+    # Delta OTOBOS & Produktivitas dari DB
+    otobos_delta     = get_setting("KPI_OTOBOS_DELTA",      "Target: > 90%")
+    produktivitas_delta = get_setting("KPI_PRODUKTIVITAS_DELTA", "Target: > 90%")
+
+    # ── Buat semua dialog ─────────────────────────────────────────────────
+    dlg_net_income  = _dialog_full("Net Income",                            "KPI_NET_INCOME")
+    dlg_cost_opt    = _dialog_full("% Cost Optimization",                   "KPI_COST_OPT")
+    dlg_penagihan   = _dialog_full("% Penagihan Despatch",                  "KPI_PENAGIHAN")
+    dlg_pdn         = _dialog_full("% Pembelian PDN",                       "KPI_PDN")
+    dlg_npk         = _dialog_full("% Pelaksanaan Trading Pupuk NPK",       "KPI_TRADING_NPK")
+    dlg_zso_bb      = _dialog_full("% Zero Stock Out Bahan Baku",           "KPI_ZSO_BB",      default_arah=">=")
+    dlg_zso_kantong = _dialog_full("% Zero Stock Out Kantong",              "KPI_ZSO_KANTONG", default_arah=">=")
+    dlg_utilisasi   = _dialog_full("% Utilisasi Single Platform Pengadaan", "KPI_UTILISASI")
+    dlg_safety      = _dialog_full("# Safety Score Pengadaan Barang",       "KPI_SAFETY",      default_arah=">=")
+    dlg_talent      = _dialog_full("% Talent Development Effectiveness",    "KPI_TALENT_DEV")
+    dlg_sla_pembebasan_delta = _dialog_delta_only("Pemenuhan SLA Pembebasan Barang", "KPI_SLA_PEMBEBASAN")
+    dlg_laporan_kinerja = _dialog_nilai_delta("Penyusunan Laporan Kinerja", "KPI_LAPORAN_KINERJA")
+    dlg_izin_impor = _dialog_nilai_delta("Pemenuhan Izin Impor", "KPI_IZIN_IMPOR")
+    dlg_otobos_delta      = _dialog_delta_only("Total SLA OTOBOS",   "KPI_OTOBOS")
+    dlg_on_spec_nilai     = _dialog_nilai_only("SLA - On Spec",       "KPI_ON_SPEC")
+    dlg_produktivitas_delta = _dialog_delta_only("Produktivitas PR-PO", "KPI_PRODUKTIVITAS")
+
+    # ── Baris 1: Financial ────────────────────────────────────────────────
+    _row_label("Financial")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(_card(ICONS["house"], "Pengelolaan Anggaran Operasional", "-", "Target: ≤ 100%", "neutral"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["graph_up"], "Net Income",          ni_nilai,  ni_delta,  ni_color,  border_class=ni_border),  unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_net_income",  icon=":material/edit:", use_container_width=True): dlg_net_income()
     with c2:
-        st.markdown(_card(ICONS["people"], "Sinergi PI Group", format_idr(sap_sinergi_pi_val), "Target: -", "neutral"), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai,  co_delta,  co_color,  border_class=co_border),  unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_cost_opt",    icon=":material/edit:", use_container_width=True): dlg_cost_opt()
     with c3:
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", "Target: > 90%", color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["truck"], "% Penagihan Despatch",   pd_nilai,  pd_delta,  pd_color,  border_class=pd_border),  unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_penagihan",   icon=":material/edit:", use_container_width=True): dlg_penagihan()
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    # Baris 2
+    # ── Baris 2: Customer ─────────────────────────────────────────────────
+    _row_label("Customer")
     c4, c5, c6 = st.columns(3)
     with c4:
-        st.markdown(_card(ICONS["clock"], "Kecepatan Proses PO", f"{format_number(sips_avg_lt, decimals=2)} Hari", "Target: ≤ 55 Hari", color_kecepatan, border_class=border_class_map.get(color_kecepatan, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["house"],   "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_pdn",   icon=":material/edit:", use_container_width=True): dlg_pdn()
     with c5:
-        st.markdown(_card(ICONS["truck"], "% Pengiriman Barang (GR/PO)", f"{format_number(sap_pct_pengiriman, decimals=1)}%", "Target: > 80%", color_pengiriman, border_class=border_class_map.get(color_pengiriman, "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK",          npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_npk",   icon=":material/edit:", use_container_width=True): dlg_npk()
     with c6:
-        st.markdown(_card(ICONS["check_circle"], "Ketepatan Pengiriman Barang", f"{format_number(sap_ketepatan_pct, decimals=1)}%", "Target: > 90%", color_ketepatan, border_class=border_class_map.get(color_ketepatan, "")), unsafe_allow_html=True)
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-    # Baris 3
-    c7, c8, c9 = st.columns(3)
-    with c7:
         pembebasan_val = f"{format_number(sla_on_time_pct, decimals=2)}%"
-        pembebasan_delta = "Target: > 80%"
         pembebasan_color = "green" if sla_on_time_pct >= 80 else "red"
         pembebasan_border = border_class_map.get(pembebasan_color, "")
-        st.markdown(_card(ICONS["check_all"], "Pemenuhan SLA Pembebasan Barang", pembebasan_val, pembebasan_delta, pembebasan_color, border_class=pembebasan_border), unsafe_allow_html=True)
-
-    with c8:
-        st.markdown(_card(ICONS["refresh"], "Efisiensi Pengadaan (PO/OE)", f"{format_number(sips_savings_pct, decimals=2)}%", "Target: > 2%", color_efisiensi_pengadaan, border_class=border_class_map.get(color_efisiensi_pengadaan, "")), unsafe_allow_html=True)
-    with c9:
-        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", "100%", "Target: 2 / 2", "green", border_class=border_class_map.get("green", "")), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["clock"], "% Kecepatan Pembebasan Barang Impor", pembebasan_val, sla_pembebasan_delta, pembebasan_color, border_class=pembebasan_border), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_impor", icon=":material/edit:", use_container_width=True): dlg_sla_pembebasan_delta()
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    # Baris 4: Rincian Pemenuhan SLA OTOBOS
-    st.markdown(
-        "<div style='font-size:13px; font-weight:700; color:var(--text-color); margin: 20px 0 10px 4px; opacity:0.8;'>"
-        "RINCIAN PEMENUHAN SLA OTOBOS"
-        "</div>", 
-        unsafe_allow_html=True
-    )
-    
-    c10, c11, c12, c13 = st.columns(4)
+    # ── Baris 3: % OTOBOS Barang (4 kolom, perlakuan khusus) ─────────────
+    _row_label("% OTOBOS Barang")
+    c7, c8, c9, c10 = st.columns(4)
+    with c7:
+        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", f"{format_number(otobos_val, decimals=2)}%", otobos_delta, color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_otobos_delta", icon=":material/edit:", use_container_width=True): dlg_otobos_delta()
+    with c8:
+        st.markdown(_card(ICONS["clock"],     "SLA - On Time",   f"{format_number(sla_on_time_pct,   decimals=2)}%"), unsafe_allow_html=True)
+    with c9:
+        st.markdown(_card(ICONS["currency"],  "SLA - On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
     with c10:
-        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", f"{format_number(otobos_val, decimals=2)}%", "Target: > 90%", color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
-    with c11:
-        st.markdown(_card(ICONS["clock"], "SLA - On Time", f"{format_number(sla_on_time_pct, decimals=2)}%"), unsafe_allow_html=True)
-    with c12:
-        st.markdown(_card(ICONS["currency"], "SLA - On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
-    with c13:
-        st.markdown(_card(ICONS["check_all"], "SLA - On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%", ""), unsafe_allow_html=True)
+        st.markdown(_card(ICONS["check_all"], "SLA - On Spec",   f"{format_number(sla_on_spec_pct,   decimals=2)}%"), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_on_spec", icon=":material/edit:", use_container_width=True): dlg_on_spec_nilai()
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # ── Baris 4 & 5: Learning & Growth + Internal Business Process ───────────
+    main_c1, main_c2 = st.columns([1, 2], gap="small")
+
+    with main_c1:
+        _row_label("Learning & Growth")
+        st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_talent", icon=":material/edit:", use_container_width=True): dlg_talent()
+
+    with main_c2:
+        _row_label("Internal Business Process")
+        sub_c1, sub_c2 = st.columns(2)
+        with sub_c1:
+            st.markdown(_card(ICONS["box"], "% Zero Stock Out Bahan Baku", zbb_nilai, zbb_delta, zbb_color, border_class=zbb_border), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key="btn_zso_bb",      icon=":material/edit:", use_container_width=True): dlg_zso_bb()
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            st.markdown(_card(ICONS["building"],     "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key="btn_utilisasi", icon=":material/edit:", use_container_width=True): dlg_utilisasi()
+        with sub_c2:
+            st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong",    zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key="btn_zso_kantong", icon=":material/edit:", use_container_width=True): dlg_zso_kantong()
+            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+            st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang",       saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key="btn_safety",    icon=":material/edit:", use_container_width=True): dlg_safety()
+    
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+
+    # ── Baris 6: Efficiency ──────────────────────────────────────────────
+    _row_label("Efficiency")
+    c16, c17, c18 = st.columns(3)
+    with c16:
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_produktivitas_delta", icon=":material/edit:", use_container_width=True): dlg_produktivitas_delta()
+    with c17:
+        st.markdown(_card(ICONS["file_text"], "Penyusunan Laporan Kinerja", laporan_kinerja_nilai, laporan_kinerja_delta, "neutral"), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_laporan_kinerja", icon=":material/edit:", use_container_width=True): dlg_laporan_kinerja()
+    with c18:
+        izin_impor_color = "green" # Untuk saat ini selalu green
+        izin_impor_border = border_class_map.get(izin_impor_color, "")
+        st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", izin_impor_nilai, izin_impor_delta, izin_impor_color, border_class=izin_impor_border), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_izin_impor", icon=":material/edit:", use_container_width=True): dlg_izin_impor()
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
-    
     st.markdown('</div>', unsafe_allow_html=True)
-
 
     # ═════════════════════════════════════════════════════════════════════════
     # BAGIAN 2: LAPORAN PENGADAAN BARANG (Kiri: Volume | Kanan: Nilai)
@@ -612,12 +927,12 @@ def render(load_data, **kwargs):
         c11, c12 = st.columns(2)
         with c11:
             st.markdown(_card(
-                ICONS["file_text"], "Total PR (SIPS)", format_number(sips_total_pr), 
+                ICONS["file_text"], "Total PR", format_number(sips_total_pr), 
                 f"{format_number(sips_total_po)} sudah memiliki PO"
             ), unsafe_allow_html=True)
         with c12:
             st.markdown(_card(
-                ICONS["bag"], "Total PO (SIPS)", format_number(sips_total_po), 
+                ICONS["bag"], "Total PO", format_number(sips_total_po), 
                 "Status Closed & Proses PO"
             ), unsafe_allow_html=True)
         
@@ -700,13 +1015,13 @@ def render(load_data, **kwargs):
         c15, c16 = st.columns(2)
         with c15:
             st.markdown(_card(
-                ICONS["currency"], "Total OE (SIPS)", format_idr(sips_oe_total), 
+                ICONS["currency"], "Total OE", format_idr(sips_oe_total), 
                 "OE dari PR (Closed/Proses PO)"
             ), unsafe_allow_html=True)
         with c16:
             st.markdown(_card(
-                ICONS["bag"], "Total Nilai PO (SIPS)", format_idr(sips_po_total), 
-                "Seluruh realisasi PO SIPS"
+                ICONS["bag"], "Total Nilai PO", format_idr(sips_po_total), 
+                "Seluruh realisasi PO"
             ), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -1019,7 +1334,5 @@ def render(load_data, **kwargs):
             st.info(f"Tidak ada data tren untuk bagian **{pilihan_bagian}**.")
             
         st.markdown("<br><br>", unsafe_allow_html=True) # Jarak aman di paling bawah halaman
-        
-        st.markdown('</div>', unsafe_allow_html=True)
     else:
         st.info(f"Tidak ada transaksi PO untuk bagian **{pilihan_bagian}** pada periode ini.")
