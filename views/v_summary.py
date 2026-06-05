@@ -456,12 +456,34 @@ def render(load_data, **kwargs):
     WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
     """
 
+    # Kueri Utilisasi EPROC (Overall) - Akan menyesuaikan bulan di Dashboard
+    eproc_kpi_query = f"""
+    SELECT
+        COUNT(*) AS total_dokumen,
+        SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc
+    FROM data_eproc
+    WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
+    """
+
+    # Kueri Utilisasi EPROC (Per Karyawan / PIC)
+    eproc_emp_query = f"""
+    SELECT
+        UPPER(TRIM(pic)) AS nama_join,
+        COUNT(*) AS total_dokumen_eproc,
+        SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc_method
+    FROM data_eproc
+    WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
+    GROUP BY UPPER(TRIM(pic))
+    """
+
     with st.spinner("Memuat data laporan..."):
         try:
             trend_data = load_data(trend_query)
             val_trend_data = load_data(value_trend_query)
             sips_otobos_data = load_data(sips_otobos_query)
             sap_kpi_data = load_data(sap_kpi_query)
+            eproc_kpi_data = load_data(eproc_kpi_query)
+            eproc_emp_data = load_data(eproc_emp_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -804,6 +826,18 @@ def render(load_data, **kwargs):
     efisiensi_pengadaan_delta = get_setting("KPI_EFISIENSI_PENGADAAN_DELTA", "Target: > 2%")
     laporan_kinerja_nilai,  laporan_kinerja_target,  laporan_kinerja_arah,  laporan_kinerja_color,  laporan_kinerja_border,  laporan_kinerja_delta  = _load_kpi("KPI_LAPORAN_KINERJA", default_arah="<")
     izin_impor_nilai, izin_impor_delta = get_setting("KPI_IZIN_IMPOR_NILAI", "100%"), get_setting("KPI_IZIN_IMPOR_DELTA", "Target: 2 / 2")
+
+    # --- OVERRIDE NILAI UTILISASI DARI DATABASE EPROC ---
+    if not eproc_kpi_data.empty and pd.notna(eproc_kpi_data['total_dokumen'][0]) and eproc_kpi_data['total_dokumen'][0] > 0:
+        tot_dok = float(eproc_kpi_data['total_dokumen'][0])
+        tot_epr = float(eproc_kpi_data['total_eproc'][0])
+        util_pct = (tot_epr / tot_dok) * 100
+        
+        # Format ke string persentase
+        usp_nilai = f"{format_number(util_pct, decimals=2)}%"
+        
+        # Update warna secara dinamis berdasarkan target yang ada di konfigurasi
+        usp_color, usp_border = _eval_kpi_color(usp_nilai, usp_target, usp_arah)
 
     # Khusus: On Spec bisa di-override dari DB, fallback ke nilai hardcode
     _on_spec_override = get_setting("KPI_ON_SPEC_NILAI", "")
@@ -1301,13 +1335,30 @@ def render(load_data, **kwargs):
 
         if not karyawan_data.empty:
             df_karyawan = karyawan_data.copy()
+            
+            # --- MERGE DATA EPROC PER KARYAWAN ---
+            if not eproc_emp_data.empty:
+                # 1. UPPERCASE dan potong gelar (pisahkan berdasarkan koma)
+                df_karyawan['nama_join'] = df_karyawan['nama'].astype(str).str.upper().str.split(',').str[0].str.strip()
+                eproc_emp_data['nama_join'] = eproc_emp_data['nama_join'].astype(str).str.split(',').str[0].str.strip()
+                
+                # 2. Gabungkan berdasarkan kolom 'nama_join' (Left Join)
+                df_karyawan = pd.merge(df_karyawan, eproc_emp_data, on='nama_join', how='left')
+                df_karyawan['total_dokumen_eproc'] = df_karyawan['total_dokumen_eproc'].fillna(0)
+                df_karyawan['total_eproc_method'] = df_karyawan['total_eproc_method'].fillna(0)
+                
+                # 3. Kalkulasi Utilisasi Per Karyawan
+                df_karyawan['% Utilisasi'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
+            else:
+                df_karyawan['% Utilisasi'] = 0.0
+            # ---------------------------------------
+
             df_karyawan['Total PR'] = df_karyawan['total_pr']
             df_karyawan['Total PO'] = df_karyawan['total_po']
             df_karyawan['PO/PR'] = (df_karyawan['total_po'] / df_karyawan['total_pr'].replace(0, float('nan')) * 100).fillna(0).apply(lambda x: f"{x:.1f}%")
             df_karyawan['PR-PO (Hari)'] = df_karyawan['avg_pr_po'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "0.0")
             df_karyawan['% On Time'] = (df_karyawan['sla_ontime'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
             
-            # Efisiensi di tabel khusus menggunakan variabel Non Agreement
             df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_na'] - df_karyawan['sips_po_na']
             df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_na'].replace(0, float('nan')) * 100).fillna(0)
             
@@ -1315,14 +1366,16 @@ def render(load_data, **kwargs):
             df_karyawan['% On Spec'] = 99.30
             df_karyawan['OTOBOS'] = ((df_karyawan['% On Time'] + df_karyawan['% On Budget'] + df_karyawan['% On Spec']) / 3).fillna(0)
             
+            # Formatting ke String
             df_karyawan['% On Time'] = df_karyawan['% On Time'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi %'] = df_karyawan['Efisiensi %'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi Rp'] = df_karyawan['Efisiensi Rp_val'].apply(lambda x: format_idr_short(x) if pd.notna(x) else "0")
             df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
+            df_karyawan['% Utilisasi'] = df_karyawan['% Utilisasi'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
             
-            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS']].rename(columns={'nama': 'Nama'})
+            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% Utilisasi']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
             st.dataframe(df_table, use_container_width=True)
         else:

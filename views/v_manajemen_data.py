@@ -423,7 +423,7 @@ def render(**kwargs):
             </h3>
         """, unsafe_allow_html=True)
         
-        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor"])
+        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)"])
 
         if tipe_etl == "SAP (PR & PO)":
             file_sap = st.file_uploader("Upload File SAP (.xlsx) — harus ada sheet 'PR SAP' dan 'PO SAP'", type=["xlsx"])
@@ -575,6 +575,38 @@ def render(**kwargs):
                         finally:
                             if os.path.exists(inklaring_path):
                                 os.remove(inklaring_path)
+
+        elif tipe_etl == "EPROC (Utilisasi)":
+            file_eproc = st.file_uploader("Upload File EPROC (.xlsx) — harus ada sheet 'EPROC'", type=["xlsx"])
+            if file_eproc:
+                if st.button("Jalankan ETL EPROC", type="primary", icon=":material/cloud_upload:"):
+                    # 1. Simpan file buffer sementara
+                    eproc_path = "temp_eproc.xlsx"
+                    with open(eproc_path, "wb") as f: 
+                        f.write(file_eproc.getbuffer())
+
+                    # 2. Panggil ETL Script
+                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                    import etl_eproc # type: ignore
+
+                    etl_eproc.Config.EPROC_FILE = eproc_path
+                    etl_eproc.db_get_engine = _get_engine
+
+                    # 3. Jalankan dengan StreamlitCapture
+                    terminal = st.empty()
+                    capture_eproc = StreamlitCapture(terminal)
+                    with redirect_stdout(capture_eproc), redirect_stderr(capture_eproc):
+                        sukses = etl_eproc.run_etl()
+                        capture_eproc.flush()
+
+                        if sukses:
+                            st.success("✅ Proses unggah data EPROC selesai! Cek Dashboard Summary untuk melihat perubahannya.")
+                        else:
+                            st.error("❌ Proses gagal, silakan periksa log terminal di atas.")
+
+                    # 4. Hapus file temp
+                    if os.path.exists(eproc_path):
+                        os.remove(eproc_path)
 
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
