@@ -4,7 +4,7 @@ Jalankan dengan: streamlit run app.py
 
 Navigasi: st.navigation() dengan grouped dict
   → Back/Forward browser berfungsi penuh
-  → Section headers PR-PO SAP / SIPS distyle menjadi toggle pill
+  → Section headers SAP / SIPS distyle menjadi toggle pill
   → Filter sidebar berbeda per sistem
 """
 
@@ -41,7 +41,7 @@ from views import v_manajemen_user, v_manajemen_data, v_changelog
 # Views - AI (Uji Coba)
 from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediksi_sips
 
-# Views - PR-PO SAP
+# Views - SAP
 from views import v_sap_dashboard, v_sap_detail, v_sap_evaluasi, v_sap_kinerja_pg, v_sap_alert
 
 # Views - SIPS
@@ -296,7 +296,7 @@ if admin_pages:
 if ai_pages:
     nav_dict["AI"] = ai_pages
 
-# Halaman PR-PO SAP
+# Halaman SAP
 sap_pages = [
     st.Page(_render_dashboard, title="Dashboard Monitoring SAP",     icon=":material/dashboard:"),
     st.Page(_render_kinerja,   title="Kinerja Purchasing Group", icon=":material/checked_bag:"),
@@ -304,7 +304,7 @@ sap_pages = [
 ]
 if is_admin():
     # Halaman khusus admin disisipkan di sini agar urutannya benar
-    sap_pages.insert(1, st.Page(_render_detail, title="Detailed PR-PO SAP Data", icon=":material/unknown_document:"))
+    sap_pages.insert(1, st.Page(_render_detail, title="Detailed SAP Data", icon=":material/unknown_document:"))
     sap_pages.insert(2, st.Page(_render_evaluasi,  title="Evaluasi Harga Barang",    icon=":material/sell:"))
 
 # Halaman SIPS
@@ -325,9 +325,9 @@ if is_admin():
     inklaring_pages.insert(1, st.Page(_render_inklaring_detail, title="Detailed Inklaring Data", icon=":material/unknown_document:"))
 
 nav_dict.update({
-    "PR-PO SAP": sap_pages,
     "SIPS": sips_pages,
-    "Inklaring Barang Impor": inklaring_pages
+    "Inklaring Barang Impor": inklaring_pages,
+    "SAP": sap_pages
 })
 
 # Tambahkan navigasi khusus admin untuk modul yang masih under maintenance
@@ -390,16 +390,15 @@ if is_admin():
     if is_summary:        active_div = "1"
     elif is_admin_pg:     active_div = "2"
     elif is_ai:           active_div = "3"
-    elif is_sips:         active_div = "5"
-    elif is_inklaring:    active_div = "6"
+    elif is_sips:         active_div = "4"
+    elif is_inklaring:    active_div = "5"
     elif is_lainnya:      active_div = "7"
-    else:                 active_div = "4" # SAP
+    else:                 active_div = "6" # SAP
 else:
     if is_summary:        active_div = "1"
-    elif is_sips:         active_div = "3"
-    elif is_inklaring:    active_div = "4"
-    elif is_lainnya:      active_div = "5"
-    else:                 active_div = "2" # SAP
+    elif is_sips:         active_div = "2"
+    elif is_inklaring:    active_div = "3"
+    else:                 active_div = "4" # SAP
 
 st.markdown(f"""
 <style>
@@ -673,7 +672,7 @@ if not is_summary and not is_admin_pg:
                         unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS PR-PO SAP / SIPS / INKLARING: hanya tampil jika mode sidebar
+# FILTERS SAP / SIPS / INKLARING: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 
 if st.session_state.filter_mode == 'sidebar' and is_lainnya:
@@ -1316,7 +1315,7 @@ _logo_path_footer = "assets/logo_pg.png"
 _logo_b64_footer  = _load_icon_b64(_logo_path_footer)
 
 with col_foot1:
-    system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "PR-PO SAP"))
+    system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP"))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.8.7 | "
