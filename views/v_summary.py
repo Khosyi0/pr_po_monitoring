@@ -842,6 +842,51 @@ def render(load_data, **kwargs):
                     st.rerun()
         return _dlg
 
+    # ── Helper: dialog edit target efisiensi per bagian (Laporan Bagian) ────
+    def _dialog_efisiensi_bagian(bagian_label: str, prefix: str):
+        @st.dialog(f"Edit Target Efisiensi: {bagian_label}")
+        def _dlg():
+            st.markdown(
+                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
+                "Atur target efisiensi untuk bagian ini. Nilai Rp aktual dari data akan "
+                "ditambahkan otomatis sebagai keterangan di belakang target.</p>",
+                unsafe_allow_html=True
+            )
+            inp_target = st.text_input(
+                "Target (%)",
+                value=get_setting(f"{prefix}_TARGET", ""),
+                placeholder="Contoh: 5%  |  0,05%"
+            )
+            _cur_arah = get_setting(f"{prefix}_ARAH", ">")
+            _cur_idx  = _ARAH_OPTIONS.index(_cur_arah) if _cur_arah in _ARAH_OPTIONS else 0
+            inp_arah = st.radio(
+                "Kondisi hijau (kapan nilai dianggap baik?)",
+                options=_ARAH_OPTIONS,
+                index=_cur_idx,
+                format_func=lambda x: _ARAH_LABELS[x],
+            )
+            # Preview warna
+            _nilai_aktual_pct = st.session_state.get(f"_aktual_{prefix}", None)
+            if _nilai_aktual_pct is not None and inp_target.strip():
+                t_parsed = _parse_label_to_num(inp_target)
+                if t_parsed is not None:
+                    prev_color, _ = _eval_kpi_color(str(_nilai_aktual_pct), inp_target, inp_arah)
+                    sym = _ARAH_SYM.get(inp_arah, ">")
+                    st.caption(f"Preview: **{_nilai_aktual_pct:.2f}%** vs Target {sym} **{inp_target}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
+                else:
+                    st.caption("Masukkan angka target untuk melihat preview warna.")
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
+                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
+                    set_setting(f"{prefix}_ARAH",   inp_arah)
+                    st.success("Tersimpan!")
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True):
+                    st.rerun()
+        return _dlg
+
     # ── Baca semua KPI dari DB ─────────────────────────────────────────────
     ni_nilai,   ni_target,   ni_arah,   ni_color,   ni_border,   ni_delta   = _load_kpi("KPI_NET_INCOME")
     co_nilai,   co_target,   co_arah,   co_color,   co_border,   co_delta   = _load_kpi("KPI_COST_OPT")
@@ -1305,7 +1350,33 @@ def render(load_data, **kwargs):
         b_efis_val   = b_sips_oe_na - b_sips_po_na
         b_efis_pct   = (b_efis_val / b_sips_oe_na * 100) if b_sips_oe_na > 0 else 0.0
 
-        # Logika Warna
+        # ── Key DB per bagian (BB/BD/BP pakai key aman tanpa '/') ───────────
+        _bagian_key_map = {"ALPATA": "ALPATA", "BARUM": "BARUM", "BB/BD/BP": "BBBD"}
+        _bagian_key     = _bagian_key_map.get(pilihan_bagian, pilihan_bagian)
+        _efis_prefix    = f"KPI_EFISIENSI_BAGIAN_{_bagian_key}"
+
+        # ── Tulis nilai aktual ke session_state untuk preview di dialog ─────
+        st.session_state[f"_aktual_{_efis_prefix}"] = b_efis_pct
+
+        # ── Baca target & arah dari DB ───────────────────────────────────────
+        _efis_target = get_setting(f"{_efis_prefix}_TARGET", "")
+        _efis_arah   = get_setting(f"{_efis_prefix}_ARAH",   ">")
+
+        # ── Tentukan warna: pakai target DB jika ada, fallback b_efis_val ≥ 0
+        if _efis_target and _efis_target != "-":
+            _efis_color_key, _ = _eval_kpi_color(f"{b_efis_pct:.4f}%", _efis_target, _efis_arah)
+            tipe_efis_tampil = _efis_color_key if _efis_color_key in ("green", "red") else ("green" if b_efis_val >= 0 else "red")
+        else:
+            tipe_efis_tampil = "green" if b_efis_val >= 0 else "red"
+
+        # ── Susun teks delta: "Target: > 5% | Rp 18,71 M" ──────────────────
+        _efis_sym = _ARAH_SYM.get(_efis_arah, ">")
+        if _efis_target and _efis_target != "-":
+            str_efis_delta = f"Target: {_efis_sym} {_efis_target} | {format_idr(b_efis_val)}"
+        else:
+            str_efis_delta = format_idr(b_efis_val)
+
+        # Logika Warna lainnya
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
         col_ontime   = "#09ab3b" if pct_ontime >= 80 else "#f0a500"
         col_efis     = "#09ab3b" if b_efis_val >= 0 else "#e03c3c"
@@ -1318,37 +1389,9 @@ def render(load_data, **kwargs):
         tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
         
         str_efis_pct_tampil = str_efis_pct
-        str_efis_val_tampil = format_idr(b_efis_val)
-        tipe_efis_tampil    = "green" if b_efis_val >= 0 else "red"
 
-        # == 4 KARTU KPI LAPORAN BAGIAN ==
-        c1, c2, c3, c4 = st.columns(4)
-        
-        with c1:
-            st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
-            
-        with c2:
-            tipe_time = "green" if pct_ontime >= 80 else "red"
-            st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
-            
-        with c3:
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
-            
-        with c4:
-            st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_val_tampil, tipe_efis_tampil), unsafe_allow_html=True)
-
-        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
-
-        # == TABEL KINERJA KARYAWAN PER BAGIAN ==
-        st.markdown(
-            f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
-            f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['people'], 26)}</span>"
-            f"<span style='vertical-align: middle;'>Kinerja Karyawan</span>"
-            f"</h3>", 
-            unsafe_allow_html=True
-        )
-
-        karyawan_query = f"""
+        # ── Load data karyawan lebih awal untuk kalkulasi utilisasi bagian ──
+        karyawan_query_early = f"""
         SELECT
             nama,
             SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
@@ -1366,10 +1409,70 @@ def render(load_data, **kwargs):
         GROUP BY nama
         ORDER BY total_pr DESC
         """
+        with st.spinner(f"Memuat data bagian {pilihan_bagian}..."):
+            karyawan_data = load_data(karyawan_query_early)
 
-        with st.spinner(f"Memuat kinerja karyawan {pilihan_bagian}..."):
-            karyawan_data = load_data(karyawan_query)
+        # ── Kalkulasi % EPROC (Utilisasi) per bagian dari eproc_emp_data ────
+        b_eproc_pct   = 0.0
+        b_eproc_nilai = "-"
+        b_eproc_delta = usp_delta   # warisi target & delta dari KPI_UTILISASI global
+        b_eproc_color = "neutral"
+        b_eproc_border = ""
+        if not karyawan_data.empty and not eproc_emp_data.empty:
+            _df_k = karyawan_data.copy()
+            _df_e = eproc_emp_data.copy()
+            _df_k['nama_join'] = _df_k['nama'].astype(str).str.upper().str.split(',').str[0].str.strip()
+            _df_e['nama_join'] = _df_e['nama_join'].astype(str).str.split(',').str[0].str.strip()
+            _merged = pd.merge(_df_k[['nama_join']], _df_e, on='nama_join', how='left')
+            _tot_dok  = _merged['total_dokumen_eproc'].fillna(0).sum()
+            _tot_epr  = _merged['total_eproc_method'].fillna(0).sum()
+            if _tot_dok > 0:
+                b_eproc_pct   = (_tot_epr / _tot_dok) * 100
+                b_eproc_nilai = f"{format_number(b_eproc_pct, decimals=2)}%"
+                b_eproc_color, b_eproc_border = _eval_kpi_color(b_eproc_nilai, usp_target, usp_arah)
+                b_eproc_delta = usp_delta  # "Target: ≥ X%" sudah disusun oleh _load_kpi
 
+        # ── Dialog edit efisiensi (dibuat di dalam blok agar tahu pilihan_bagian) ──
+        if is_admin:
+            dlg_efisiensi_bagian = _dialog_efisiensi_bagian(pilihan_bagian, _efis_prefix)
+
+        # == KARTU KPI LAPORAN BAGIAN: BARIS 1 (3 kartu) ==
+        r1c1, r1c2, r1c3 = st.columns(3)
+        with r1c1:
+            st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
+        with r1c2:
+            tipe_time = "green" if pct_ontime >= 80 else "red"
+            st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
+        with r1c3:
+            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+        # == KARTU KPI LAPORAN BAGIAN: BARIS 2 (2 kartu + kolom kosong tengah) ==
+        r2c1, r2c2 = st.columns(2)
+        with r2c1:
+            st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key=f"btn_efisiensi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
+                    dlg_efisiensi_bagian()
+        with r2c2:
+            st.markdown(_card(ICONS["building"], "% EPROC", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
+            if is_admin:
+                if st.button("Edit", key=f"btn_utilisasi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
+                    dlg_utilisasi()
+
+        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+
+        # == TABEL KINERJA KARYAWAN PER BAGIAN ==
+        st.markdown(
+            f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
+            f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['people'], 26)}</span>"
+            f"<span style='vertical-align: middle;'>Kinerja Karyawan</span>"
+            f"</h3>", 
+            unsafe_allow_html=True
+        )
+
+        # karyawan_data sudah di-load sebelumnya (digunakan juga untuk kalkulasi % EPROC)
         if not karyawan_data.empty:
             df_karyawan = karyawan_data.copy()
             
