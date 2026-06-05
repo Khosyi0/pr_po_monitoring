@@ -1488,9 +1488,9 @@ def render(load_data, **kwargs):
                 df_karyawan['total_eproc_method'] = df_karyawan['total_eproc_method'].fillna(0)
                 
                 # 3. Kalkulasi Utilisasi Per Karyawan
-                df_karyawan['% Utilisasi'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
+                df_karyawan['% EPROC'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
             else:
-                df_karyawan['% Utilisasi'] = 0.0
+                df_karyawan['% EPROC'] = 0.0
             # ---------------------------------------
 
             df_karyawan['Total PR'] = df_karyawan['total_pr']
@@ -1513,9 +1513,9 @@ def render(load_data, **kwargs):
             df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
-            df_karyawan['% Utilisasi'] = df_karyawan['% Utilisasi'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
+            df_karyawan['% EPROC'] = df_karyawan['% EPROC'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
             
-            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% Utilisasi']].rename(columns={'nama': 'Nama'})
+            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% EPROC']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
             st.dataframe(df_table, use_container_width=True)
         else:
