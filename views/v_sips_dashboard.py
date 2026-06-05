@@ -176,7 +176,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel secara harfiah
     po_date_cond = f"""(
-        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
         OR tgl_po IS NULL 
         OR tgl_po::text IN ('', '-')
     )"""
@@ -431,7 +431,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "key":      "sips_kpi_po_pr",
                 "icon":     "percent",
                 "label":    "PO/PR",
-                "value":    f"{format_number(po_pr_pct, decimals=1)}%",
+                "value":    f"{format_number(po_pr_pct, decimals=2)}%",
                 "delta":    f"{format_number(total_po)} dari {format_number(total_pr)} PR",
                 "dtype":    "positive" if po_pr_pct >= 80 else ("negative" if po_pr_pct < 60 else "neutral"),
                 "formula":  f"""\
@@ -875,14 +875,24 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                      .reset_index()
                      .sort_values('bulan'))
             
+            # 1. Konversi 'YYYY-MM' ke tanggal 1 awal bulan terlebih dahulu
             trend['bulan'] = pd.to_datetime(trend['bulan'])
 
+            # 2. Hitung kumulatif SEBELUM filter. 
+            # (Agar backlog/saldo awal sebelum date_from tetap masuk ke total kumulatif)
             trend['Cum_PR'] = trend['Total_PR'].cumsum()
             trend['Cum_PO'] = trend['Total_PO'].cumsum()
 
+            # 3. Sesuaikan batas filter agar hanya mengecek Tahun & Bulannya saja
             dt_from = pd.to_datetime(date_from).replace(day=1)
-            dt_to   = pd.to_datetime(date_to)
-            trend   = trend[(trend['bulan'] >= dt_from) & (trend['bulan'] <= dt_to)]
+            dt_to_month = pd.to_datetime(date_to).replace(day=1)
+
+            # 4. Eksekusi filter untuk memotong tampilan chart
+            trend = trend[(trend['bulan'] >= dt_from) & (trend['bulan'] <= dt_to_month)]
+
+            # 5. Geser ke akhir bulan, TAPI batasi maksimal ke tanggal akhir filter (date_to)
+            dt_to_exact = pd.to_datetime(date_to)
+            trend['bulan'] = (trend['bulan'] + pd.offsets.MonthEnd(0)).clip(upper=dt_to_exact)
 
             if trend.empty:
                 st.info("Tidak ada data tren untuk filter tanggal yang dipilih.")
@@ -903,13 +913,15 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 x=trend['bulan'], y=y_pr,
                 name='Total PR', mode='lines+markers',
                 line=dict(color='#6c8ebf', width=2),
-                marker=dict(size=6)
+                marker=dict(size=6),
+                hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PR: %{y}<extra></extra>'
             ))
             fig_trend.add_trace(go.Scatter(
                 x=trend['bulan'], y=y_po,
                 name='Total PO', mode='lines+markers',
                 line=dict(color='#f0a500', width=2),
-                marker=dict(size=6)
+                marker=dict(size=6),
+                hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PO: %{y}<extra></extra>'
             ))
             
             fig_trend.update_layout(
@@ -919,7 +931,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 font_color='gray',
-                xaxis=dict(gridcolor='rgba(128,128,128,0.15)'),
+                xaxis=dict(
+                    gridcolor='rgba(128,128,128,0.15)',
+                    tickmode='array',
+                    tickvals=trend['bulan'],
+                    ticktext=trend['bulan'].dt.strftime('%b %Y') # Memastikan sumbu X bawah tetap "Jan 2026"
+                ),
                 yaxis=dict(title=y_axis_title, gridcolor='rgba(128,128,128,0.15)'),
                 separators=",."
             )

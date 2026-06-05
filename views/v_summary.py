@@ -385,7 +385,7 @@ def render(load_data, **kwargs):
     st.markdown("---")
 
     dt_from_pd = pd.to_datetime(date_from).replace(day=1)
-    dt_to_pd   = pd.to_datetime(date_to)
+    dt_to_pd   = pd.to_datetime(date_to).replace(day=1)  # DATE_TRUNC hasilkan awal bulan, jadi compare dengan awal bulan juga
 
     # =========================================================================
     # DEFINISI LOGIKA FILTER SIPS (Menyamakan dengan Dashboard SIPS)
@@ -394,36 +394,36 @@ def render(load_data, **kwargs):
     where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
     
     po_date_cond = f"""(
-        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
-        OR tgl_po IS NULL 
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
+        OR tgl_po IS NULL
         OR tgl_po::text IN ('', '-')
     )"""
 
     where_gabungan = f"(({where_pr}) OR ({po_date_cond} AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')))"
 
     # == Eksekusi Kueri =======================================================
-    # Kueri Tren SIPS
+    # Kueri Tren SIPS (Volume)
     trend_query = f"""
     SELECT
-        DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
+        TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
         SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
         SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
     FROM vw_sips
-    WHERE {where_gabungan}
+    WHERE ({where_pr}) OR ({po_date_cond})
     GROUP BY 1
-    ORDER BY month
+    ORDER BY 1
     """
 
-    # Kueri Tren Nilai SIPS
+    # Kueri Tren SIPS (Nilai Rupiah)
     value_trend_query = f"""
     SELECT
-        DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS total_oe,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS total_po_val
+        TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr ELSE 0 END) AS total_oe,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po ELSE 0 END) AS total_po_val
     FROM vw_sips
-    WHERE {where_gabungan}
+    WHERE ({where_pr}) OR ({po_date_cond})
     GROUP BY 1
-    ORDER BY month
+    ORDER BY 1
     """
 
     # Kueri SIPS Diperluas
@@ -1339,16 +1339,17 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
+        # Kueri Tren Realisasi Item per Bagian
         trend_bagian_query = f"""
         SELECT
-            DATE_TRUNC('month', tgl_disposisi_buyer) AS month,
+            TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
             SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
             SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
         FROM vw_sips
-        WHERE {where_gabungan}
+        WHERE (({where_pr}) OR ({po_date_cond}))
           AND bagian = '{pilihan_bagian}'
         GROUP BY 1
-        ORDER BY month
+        ORDER BY 1
         """
 
         with st.spinner(f"Memuat tren bagian {pilihan_bagian}..."):
