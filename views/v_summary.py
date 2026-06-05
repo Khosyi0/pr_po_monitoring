@@ -640,12 +640,15 @@ def render(load_data, **kwargs):
 
     # ── Helper: baca satu KPI dari DB dan kembalikan (nilai, target, arah, color, border, delta_label) ──
     def _load_kpi(prefix: str, default_arah: str = ">="):
-        nilai  = get_setting(f"{prefix}_NILAI",  "-")
-        target = get_setting(f"{prefix}_TARGET", "-")
-        arah   = get_setting(f"{prefix}_ARAH",   default_arah)
+        nilai     = get_setting(f"{prefix}_NILAI",     "-")
+        target    = get_setting(f"{prefix}_TARGET",    "-")
+        arah      = get_setting(f"{prefix}_ARAH",      default_arah)
+        free_text = get_setting(f"{prefix}_FREE_TEXT", "")
         color, border = _eval_kpi_color(nilai, target, arah)
         sym   = _ARAH_SYM.get(arah, "")
         delta = f"Target: {sym} {target}".strip() if target != "-" else "Target: -"
+        if free_text:
+            delta = f"{delta} | {free_text}"
         return nilai, target, arah, color, border, delta
 
     # ── Helper: render dialog edit nilai+target+arah (full) ───────────────
@@ -682,12 +685,19 @@ def render(load_data, **kwargs):
                 st.caption(f"Preview: **{n_parsed:,.4g}** vs **{t_parsed:,.4g}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
             else:
                 st.caption("Angka belum terdeteksi - kartu tetap netral.")
+            inp_free_text = st.text_input(
+                "Free Text (opsional)",
+                value=get_setting(f"{prefix}_FREE_TEXT", ""),
+                placeholder="Contoh: per tanggal 24 Maret 2026",
+                help="Teks ini akan ditambahkan ke delta: Target: ≥ X% | <free text>"
+            )
             col_s, col_c = st.columns(2)
             with col_s:
                 if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
                     set_setting(f"{prefix}_NILAI",  inp_nilai.strip()  or "-")
                     set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
                     set_setting(f"{prefix}_ARAH",   inp_arah)
+                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
                     st.success("Tersimpan!")
                     st.rerun()
             with col_c:
@@ -709,10 +719,17 @@ def render(load_data, **kwargs):
                 value=get_setting(f"{prefix}_DELTA", ""),
                 placeholder="Contoh: Target: > 90%"
             )
+            inp_free_text = st.text_input(
+                "Free Text (opsional)",
+                value=get_setting(f"{prefix}_FREE_TEXT", ""),
+                placeholder="Contoh: per tanggal 24 Maret 2026",
+                help="Teks ini akan ditambahkan ke delta: <delta> | <free text>"
+            )
             col_s, col_c = st.columns(2)
             with col_s:
                 if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
                     set_setting(f"{prefix}_DELTA", inp_delta.strip())
+                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
                     st.success("Tersimpan!")
                     st.rerun()
             with col_c:
@@ -756,11 +773,18 @@ def render(load_data, **kwargs):
             )
             inp_nilai = st.text_input("Nilai Pencapaian", value=get_setting(f"{prefix}_NILAI", "-"), placeholder="Contoh: 100% | 2 / 2")
             inp_delta = st.text_input("Teks Keterangan (delta)", value=get_setting(f"{prefix}_DELTA", ""), placeholder="Contoh: Target: 2 / 2")
+            inp_free_text = st.text_input(
+                "Free Text (opsional)",
+                value=get_setting(f"{prefix}_FREE_TEXT", ""),
+                placeholder="Contoh: per tanggal 24 Maret 2026",
+                help="Teks ini akan ditambahkan ke delta: <delta> | <free text>"
+            )
             col_s, col_c = st.columns(2)
             with col_s:
                 if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
                     set_setting(f"{prefix}_NILAI", inp_nilai.strip() or "-")
                     set_setting(f"{prefix}_DELTA", inp_delta.strip())
+                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
                     st.success("Tersimpan!")
                     st.rerun()
             with col_c:
@@ -799,11 +823,18 @@ def render(load_data, **kwargs):
                     st.caption(f"Preview: **{_nilai_aktual:.2f}%** vs Target {sym} **{inp_target}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
                 else:
                     st.caption("Masukkan angka target untuk melihat preview warna.")
+            inp_free_text = st.text_input(
+                "Free Text (opsional)",
+                value=get_setting(f"{prefix}_FREE_TEXT", ""),
+                placeholder="Contoh: per tanggal 24 Maret 2026",
+                help="Teks ini akan ditambahkan ke delta: Target: ≥ X% | <free text>"
+            )
             col_s, col_c = st.columns(2)
             with col_s:
                 if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
                     set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
                     set_setting(f"{prefix}_ARAH",   inp_arah)
+                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
                     st.success("Tersimpan!")
                     st.rerun()
             with col_c:
@@ -824,8 +855,14 @@ def render(load_data, **kwargs):
     saf_nilai,  saf_target,  saf_arah,  saf_color,  saf_border,  saf_delta  = _load_kpi("KPI_SAFETY",      default_arah=">=")
     tde_nilai,  tde_target,  tde_arah,  tde_color,  tde_border,  tde_delta  = _load_kpi("KPI_TALENT_DEV")
     efisiensi_pengadaan_delta = get_setting("KPI_EFISIENSI_PENGADAAN_DELTA", "Target: > 2%")
+    _efisiensi_free_text = get_setting("KPI_EFISIENSI_PENGADAAN_FREE_TEXT", "")
+    if _efisiensi_free_text:
+        efisiensi_pengadaan_delta = f"{efisiensi_pengadaan_delta} | {_efisiensi_free_text}"
     laporan_kinerja_nilai,  laporan_kinerja_target,  laporan_kinerja_arah,  laporan_kinerja_color,  laporan_kinerja_border,  laporan_kinerja_delta  = _load_kpi("KPI_LAPORAN_KINERJA", default_arah="<")
     izin_impor_nilai, izin_impor_delta = get_setting("KPI_IZIN_IMPOR_NILAI", "100%"), get_setting("KPI_IZIN_IMPOR_DELTA", "Target: 2 / 2")
+    _izin_impor_free_text = get_setting("KPI_IZIN_IMPOR_FREE_TEXT", "")
+    if _izin_impor_free_text:
+        izin_impor_delta = f"{izin_impor_delta} | {_izin_impor_free_text}"
 
     # --- OVERRIDE NILAI UTILISASI DARI DATABASE EPROC ---
     if not eproc_kpi_data.empty and pd.notna(eproc_kpi_data['total_dokumen'][0]) and eproc_kpi_data['total_dokumen'][0] > 0:
