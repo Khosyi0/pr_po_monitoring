@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import calendar
 import plotly.graph_objects as go
+from zoneinfo import ZoneInfo
 from datetime import datetime
 from config_db import get_setting, set_setting
 from utils import format_idr, format_number, format_idr_short, idr_axis
@@ -268,7 +269,8 @@ def render(load_data, **kwargs):
     st.markdown(SUMMARY_CSS, unsafe_allow_html=True)
 
     is_admin = kwargs.get("is_admin", False)
-    current_year = datetime.now().year
+    tz_wib = ZoneInfo("Asia/Jakarta")
+    current_year = datetime.now(tz_wib).year
 
     # Pengambilan tanggal update SAP
     sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
@@ -379,7 +381,7 @@ def render(load_data, **kwargs):
         f"<p style='font-size:16px; margin-top:6px;'>"
         f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b> "
         f"&nbsp;|&nbsp; Data SIPS per {DATA_UPDATE_SIPS.strftime('%d %B %Y')} "
-        f"&nbsp;|&nbsp; Dicetak: {datetime.now().strftime('%d %B %Y %H:%M')}</p>",
+        f"&nbsp;|&nbsp; Dicetak: {datetime.now(tz_wib).strftime('%d %B %Y %H:%M')}</p>",
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -489,7 +491,7 @@ def render(load_data, **kwargs):
             return
 
     # Proses tanggal untuk chart
-    today = datetime.now().date()
+    today = datetime.now(tz_wib).date()
     def resolve_month_date(month_ts):
         y, m = month_ts.year, month_ts.month
         cy, cm = today.year, today.month
