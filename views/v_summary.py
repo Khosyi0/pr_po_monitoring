@@ -971,7 +971,7 @@ def render(load_data, **kwargs):
     _row_label("Financial")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown(_card(ICONS["graph_up"], "Net Income",          ni_nilai,  ni_delta,  ni_color,  border_class=ni_border),  unsafe_allow_html=True)
+        st.markdown(_card(ICONS["currency"], "Net Income",          ni_nilai,  ni_delta,  ni_color,  border_class=ni_border),  unsafe_allow_html=True)
         if is_admin:
             if st.button("Edit", key="btn_net_income",  icon=":material/edit:", use_container_width=True): dlg_net_income()
     with c2:

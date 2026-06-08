@@ -1327,7 +1327,7 @@ with col_foot1:
     system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP"))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.8.7 | "
+        f"Monitoring Dashboard - {system_label} | v1.9 | "
         f"{datetime.now(tz_wib).strftime('%Y-%m-%d %H:%M:%S')} WIB" 
         f"</div>",
         unsafe_allow_html=True

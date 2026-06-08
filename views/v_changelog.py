@@ -20,6 +20,42 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "5 Juni 2026", "Versi": "v1.9", "Perubahan": """
+    - Update rumus pengambilan data Total PR dan Total PO di halaman Dashboard Monitoring SIPS dan Executive Summary
+    - Merombak isi KPI Pengadaan Barang di halaman Executive Summary:
+        - Net Income
+        - % Cost Optimization
+        - % Penagihan Despatch
+        - % Pembelian PDN terhadap Total Pengadaan
+        - % Pelaksanaan Trading Pupuk NPK
+        - % Kecepatan Pembebasan Barang Impor
+        - Total SLA OTOBOS
+        - SLA - On Time
+        - SLA - On Budget
+        - SLA - On Spec
+        - % Talent Development Effectiveness
+        - Produktivitas PR-PO
+        - % Zero Stock Out Bahan Baku
+        - % Zero Stock Out Kantong
+        - % Utilisasi Single Platform Pengadaan
+        - # Safety Score Pengadaan Barang
+        - Penyusunan Laporan Kinerja
+        - Pemenuhan Izin Impor
+    - """},
+        {"Tanggal": "29 Mei 2026", "Versi": "v1.8.9", "Perubahan": """
+    - Membatasi akses untuk viewer ke beberapa data sensitif
+    - Menambahkan filter bulan secara Triwulanan di halaman Executive Summary
+    - Update pengambilan data di halaman Executive Summary berdasarkan data SIPS, bukan SAP
+    - Update rumus Efisiensi menjadi hanya PR-PO yang jenisnya Non-Agreement
+    - """},
+        {"Tanggal": "8 Mei 2026", "Versi": "v1.8.8", "Perubahan": """
+    - Menambahkan fitur pencarian chart dan KPI
+    - Menambahkan halaman untuk model AI:
+        - Prediksi Jalur Impor
+        - Prediksi Keterlambatan Vendor
+        - Estimasi Durasi Pengadaan
+    - Menambahkan halaman Profile Departemen
+    - """},
         {"Tanggal": "24 Apr 2026", "Versi": "v1.8.7", "Perubahan": """
     - Update UI pada kotak KPI dan chart di seluruh halaman
     - Menambahkan halaman Analisis Waktu Proses Inklaring
@@ -324,5 +360,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.8.7"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9"])):
             st.markdown(item["Perubahan"])
