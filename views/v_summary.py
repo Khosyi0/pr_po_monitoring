@@ -1019,13 +1019,19 @@ def render(load_data, **kwargs):
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 4 & 5: Learning & Growth + Internal Business Process ───────────
-    main_c1, main_c2 = st.columns([1, 2], gap="small")
+    main_c1, main_c2 = st.columns([1, 2], gap="medium")
 
     with main_c1:
         _row_label("Learning & Growth")
         st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
         if is_admin:
             if st.button("Edit", key="btn_talent", icon=":material/edit:", use_container_width=True): dlg_talent()
+        
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
+        if is_admin:
+            if st.button("Edit", key="btn_produktivitas_delta", icon=":material/edit:", use_container_width=True): dlg_produktivitas_delta()
 
     with main_c2:
         _row_label("Internal Business Process")
@@ -1050,12 +1056,10 @@ def render(load_data, **kwargs):
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 6: Efficiency ──────────────────────────────────────────────
-    _row_label("Efficiency")
-    c16, c17, c18 = st.columns(3)
-    with c16:
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_produktivitas_delta", icon=":material/edit:", use_container_width=True): dlg_produktivitas_delta()
+    # Menambahkan jarak vertikal untuk menggantikan label "Efficiency" yang dihapus
+    st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+
+    c17, c18 = st.columns(2)
     with c17:
         st.markdown(_card(ICONS["file_text"], "Penyusunan Laporan Kinerja", laporan_kinerja_nilai, laporan_kinerja_delta, laporan_kinerja_color, border_class=laporan_kinerja_border), unsafe_allow_html=True)
         if is_admin:
