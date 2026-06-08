@@ -163,14 +163,7 @@ def _row_label(text: str) -> None:
 def _parse_label_to_num(label: str) -> float | None:
     """
     Ekstrak angka dari label teks KPI.
-    Aturan:
-      - Ada 'Rp' → pemisah desimal = titik, lalu kalikan suffix:
-            M/m/Miliar → ×1_000_000_000
-            Jt/jt/Juta → ×1_000_000
-            T/t/Triliun → ×1_000_000_000_000
-      - Ada '%' di akhir → pemisah desimal = koma (ganti koma→titik)
-      - Lainnya → coba parse langsung (titik sebagai desimal)
-    Kembalikan float atau None jika gagal.
+    Format Indonesia: hapus titik (ribuan), ubah koma jadi titik desimal Python.
     """
     import re
     s = str(label).strip()
@@ -180,21 +173,19 @@ def _parse_label_to_num(label: str) -> float | None:
     has_rp  = bool(re.search(r'Rp', s, re.IGNORECASE))
     has_pct = s.endswith("%")
 
+    # FIX: Bersihkan format Indonesia
+    # 1. Hapus titik pemisah ribuan
+    # 2. Ubah koma menjadi titik desimal
+    s_clean = s.replace(".", "").replace(",", ".")
+
     # Ambil angka pertama yang ditemukan
-    if has_rp:
-        # Desimal pakai titik; hapus karakter non-angka kecuali titik
-        nums = re.findall(r'[\d]+(?:\.[\d]+)?', s.replace(",", "."))
-    elif has_pct:
-        # Desimal pakai koma; ganti koma→titik dulu
-        nums = re.findall(r'[\d]+(?:\.[\d]+)?', s.replace(",", "."))
-    else:
-        nums = re.findall(r'[\d]+(?:[.,][\d]+)?', s)
+    nums = re.findall(r'[\d]+(?:\.[\d]+)?', s_clean)
 
     if not nums:
         return None
 
     try:
-        num = float(nums[0].replace(",", "."))
+        num = float(nums[0])
     except ValueError:
         return None
 
@@ -346,7 +337,7 @@ def render(load_data, **kwargs):
 
     else:
         # Logika Filter Triwulanan
-        opsi_triwulan = ["Q1 (Jan - Mar)", "Q2 (Apr - Jun)", "Q3 (Jul - Sep)", "Q4 (Okt - Des)"]
+        opsi_triwulan = ["TW I (Jan - Mar)", "TW II (Apr - Jun)", "TW III (Jul - Sep)", "TW IV (Okt - Des)"]
         opsi_tahun = list(range(current_year - 2, current_year + 2))
         
         # Menentukan Default Q berdasarkan Update Data SIPS
@@ -363,13 +354,13 @@ def render(load_data, **kwargs):
             pilihan_t = st.selectbox("Pilih Tahun", options=opsi_tahun, index=opsi_tahun.index(DATA_UPDATE_SIPS.year), label_visibility="collapsed")
 
         # Penetapan Tanggal Berdasarkan Triwulan
-        if pilihan_q == "Q1 (Jan - Mar)":
+        if pilihan_q == "TW I (Jan - Mar)":
             date_from = datetime(pilihan_t, 1, 1).date()
             date_to = datetime(pilihan_t, 3, 31).date()
-        elif pilihan_q == "Q2 (Apr - Jun)":
+        elif pilihan_q == "TW II (Apr - Jun)":
             date_from = datetime(pilihan_t, 4, 1).date()
             date_to = datetime(pilihan_t, 6, 30).date()
-        elif pilihan_q == "Q3 (Jul - Sep)":
+        elif pilihan_q == "TW III (Jul - Sep)":
             date_from = datetime(pilihan_t, 7, 1).date()
             date_to = datetime(pilihan_t, 9, 30).date()
         else:
@@ -433,7 +424,7 @@ def render(load_data, **kwargs):
     SELECT
         SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
         SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
-        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
         SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
@@ -1320,7 +1311,7 @@ def render(load_data, **kwargs):
     SELECT
         SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
         SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
-        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
@@ -1396,13 +1387,22 @@ def render(load_data, **kwargs):
         
         str_efis_pct_tampil = str_efis_pct
 
+        b_otobos_val = (pct_ontime + pct_onbudget + sla_on_spec_pct) / 3
+        tipe_otobos_bagian = "green" if b_otobos_val >= 90 else "red"
+        str_otobos_bagian = f"{format_number(b_otobos_val, decimals=2)}%"
+
+        b_pct_pr_po = (b_total_po / b_total_pr * 100) if b_total_pr > 0 else 0.0
+        b_prod_color, _ = _eval_kpi_color(f"{b_pct_pr_po:.2f}%", _prod_target, _prod_arah)
+        tipe_prod_bagian = b_prod_color if b_prod_color in ("green", "red") else ("green" if b_pct_pr_po > 90 else "red")
+        str_prod_bagian = f"{format_number(b_pct_pr_po, decimals=2)}%"
+
         # ── Load data karyawan lebih awal untuk kalkulasi utilisasi bagian ──
         karyawan_query_early = f"""
         SELECT
             nama,
             SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
             SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
-            ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+            ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
@@ -1418,7 +1418,7 @@ def render(load_data, **kwargs):
         with st.spinner(f"Memuat data bagian {pilihan_bagian}..."):
             karyawan_data = load_data(karyawan_query_early)
 
-        # ── Kalkulasi % EPROC (Utilisasi) per bagian dari eproc_emp_data ────
+        # ── Kalkulasi % Single Platform (Utilisasi) per bagian dari eproc_emp_data ────
         b_eproc_pct   = 0.0
         b_eproc_nilai = "-"
         b_eproc_delta = usp_delta   # warisi target & delta dari KPI_UTILISASI global
@@ -1450,22 +1450,28 @@ def render(load_data, **kwargs):
             tipe_time = "green" if pct_ontime >= 80 else "red"
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
         with r1c3:
-            st.markdown(_card(ICONS["clock"], "Lead Time (PR → PO)", f"{format_number(b_lt, decimals=2)} Hari", "Rata-rata", "neutral"), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         # == KARTU KPI LAPORAN BAGIAN: BARIS 2 (2 kartu + kolom kosong tengah) ==
-        r2c1, r2c2 = st.columns(2)
+        r2c1, r2c2, r2c3 = st.columns(3)
+        
         with r2c1:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil), unsafe_allow_html=True)
             if is_admin:
                 if st.button("Edit", key=f"btn_efisiensi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
                     dlg_efisiensi_bagian()
+                    
         with r2c2:
             st.markdown(_card(ICONS["building"], "% EPROC", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
             if is_admin:
                 if st.button("Edit", key=f"btn_utilisasi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
                     dlg_utilisasi()
+                    
+        with r2c3:
+            # Menambahkan kartu Produktivitas PR-PO Bagian
+            st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", str_prod_bagian, produktivitas_delta, tipe_prod_bagian, border_class=border_class_map.get(tipe_prod_bagian, "")), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
@@ -1478,7 +1484,7 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
-        # karyawan_data sudah di-load sebelumnya (digunakan juga untuk kalkulasi % EPROC)
+        # karyawan_data sudah di-load sebelumnya (digunakan juga untuk kalkulasi % Single Platform)
         if not karyawan_data.empty:
             df_karyawan = karyawan_data.copy()
             
@@ -1494,9 +1500,9 @@ def render(load_data, **kwargs):
                 df_karyawan['total_eproc_method'] = df_karyawan['total_eproc_method'].fillna(0)
                 
                 # 3. Kalkulasi Utilisasi Per Karyawan
-                df_karyawan['% EPROC'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
+                df_karyawan['% Single Platform'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
             else:
-                df_karyawan['% EPROC'] = 0.0
+                df_karyawan['% Single Platform'] = 0.0
             # ---------------------------------------
 
             df_karyawan['Total PR'] = df_karyawan['total_pr']
@@ -1519,9 +1525,9 @@ def render(load_data, **kwargs):
             df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
-            df_karyawan['% EPROC'] = df_karyawan['% EPROC'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
+            df_karyawan['% Single Platform'] = df_karyawan['% Single Platform'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
             
-            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% EPROC']].rename(columns={'nama': 'Nama'})
+            df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% Single Platform']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
             st.dataframe(df_table, use_container_width=True)
         else:
