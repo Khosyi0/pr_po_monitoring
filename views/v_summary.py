@@ -1464,7 +1464,7 @@ def render(load_data, **kwargs):
                     dlg_efisiensi_bagian()
                     
         with r2c2:
-            st.markdown(_card(ICONS["building"], "% EPROC", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["building"], "% Single Platform", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
             if is_admin:
                 if st.button("Edit", key=f"btn_utilisasi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
                     dlg_utilisasi()
