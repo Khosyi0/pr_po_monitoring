@@ -877,13 +877,20 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
         if 'All' not in sips_selected_bagian and sips_selected_bagian:
             bagian_sql = "', '".join(sips_selected_bagian)
             nama_data = load_data(f"""
-                SELECT DISTINCT nama FROM sips_employees
-                WHERE bagian IN ('{bagian_sql}') ORDER BY nama
+                SELECT DISTINCT se.nama
+                FROM sips_employees se
+                JOIN karyawan_bagian_history kbh ON kbh.nik = se.nik
+                WHERE kbh.bagian IN ('{bagian_sql}')
+                ORDER BY se.nama
             """)
         else:
             nama_data = load_data("""
-                SELECT DISTINCT nama FROM sips_employees
-                WHERE bagian IS NOT NULL ORDER BY nama
+                SELECT DISTINCT se.nama
+                FROM sips_employees se
+                WHERE EXISTS (
+                    SELECT 1 FROM karyawan_bagian_history kbh WHERE kbh.nik = se.nik
+                )
+                ORDER BY se.nama
             """)
 
         options_nama = ['All'] + nama_data['nama'].tolist()
@@ -930,7 +937,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
             sips_selected_nama = ['All']
 
         bagian_data = load_data("""
-            SELECT DISTINCT bagian FROM sips_employees
+            SELECT DISTINCT bagian FROM karyawan_bagian_history
             WHERE bagian IS NOT NULL ORDER BY bagian
         """)
         options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
