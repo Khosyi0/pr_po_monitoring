@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import warnings
 import base64
 import os
+from zoneinfo import ZoneInfo
 warnings.filterwarnings('ignore')
 
 # == Load Dashboard icon (untuk page_icon & halaman login) ====================
@@ -555,7 +556,8 @@ st.components.v1.html("""
 # =============================================================================
 
 # Default values (dipakai jika filter tidak ter-render / error)
-current_year = datetime.now().year
+tz_wib = ZoneInfo("Asia/Jakarta")
+current_year = datetime.now(tz_wib).year
 default_start_date = datetime(current_year, 1, 1).date()
 
 # Tanggal terakhir data diperbarui — diambil dari database (diatur via Manajemen Data)
@@ -1326,7 +1328,7 @@ with col_foot1:
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.8.7 | "
-        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        f"{datetime.now(tz_wib).strftime('%Y-%m-%d %H:%M:%S')} WIB" 
         f"</div>",
         unsafe_allow_html=True
     )
