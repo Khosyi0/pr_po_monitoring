@@ -67,7 +67,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
     st.markdown("<br>", unsafe_allow_html=True)
  
-    # == WHERE clause dasar ====================================================
+    # == WHERE clause ====================================================
     where_pr = build_sips_where(
         date_from=date_from, date_to=date_to,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
@@ -80,8 +80,9 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         selected_pgroup=selected_pgroup
     )
 
+    # Kondisi filter tanggal PO yang sinkron dengan dashboard utama
     po_date_cond = f"""(
-        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
         OR tgl_po IS NULL 
         OR tgl_po::text IN ('', '-')
     )"""
@@ -409,10 +410,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             END
         )::numeric, 1)                          AS avg_umur_hari
     FROM vw_sips
-    WHERE 
-        (UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO') AND {where_pr})
-        OR 
-        (UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {where_po} AND {po_date_cond})
+    WHERE {where_pr}
     GROUP BY status
     ORDER BY
         CASE status

@@ -48,11 +48,26 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                                     placeholder="Ketik No PR, No PO, nama barang, atau nama karyawan...")
 
         # == WHERE clause ==========================================================
-        where = build_sips_where(
+        # 1. Standard Where (menggunakan filter tanggal global)
+        where_pr = build_sips_where(
             date_from=date_from, date_to=date_to,
             selected_nama=selected_nama, selected_bagian=selected_bagian,
             selected_pgroup=selected_pgroup
         )
+
+        # 2. Where khusus PO (mengabaikan filter tanggal global)
+        where_po = build_sips_where(
+            date_from=None, date_to=None,
+            selected_nama=selected_nama, selected_bagian=selected_bagian,
+            selected_pgroup=selected_pgroup
+        )
+
+        # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel
+        po_date_cond = f"""(
+            (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
+            OR tgl_po IS NULL 
+            OR tgl_po::text IN ('', '-')
+        )"""
 
         # == Query tabel ===========================================================
         table_query = f"""
@@ -77,7 +92,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 ROUND((persen_po_sr_mr * 100)::numeric, 2)         AS "PO/MR (%)",
                 nomor_mr_sr                                        AS "No MR/SR"
             FROM vw_sips
-            WHERE {where}
+            WHERE ({where_pr}) OR ({where_po} AND {po_date_cond})
             ORDER BY requisition_date DESC
         """
 

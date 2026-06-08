@@ -972,7 +972,8 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         if df_chart.empty:
             st.info("Tidak ada data untuk filter yang dipilih.")
         else:
-            status_counts = df_chart['status'].value_counts().reset_index()
+            pr_data = df_chart[df_chart['is_pr'] == 1]
+            status_counts = pr_data['status'].value_counts().reset_index()
             status_counts.columns = ['Status', 'Jumlah']
             fig_donut = px.pie(
                 status_counts, names='Status', values='Jumlah',
@@ -1085,7 +1086,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             
         st.caption("Persebaran hari PR→PO seluruh karyawan.")
 
-        days_data = df_chart[df_chart['pr_po_days'].notna() & (df_chart['pr_po_days'] > 0)]
+        days_data = df_chart[
+            (df_chart['is_po'] == 1) & 
+            (df_chart['status'].str.upper() == 'CLOSED') & 
+            df_chart['pr_po_days'].notna() & 
+            (df_chart['pr_po_days'] > 0)
+        ]
         if not days_data.empty:
             fig_hist = px.histogram(
                 days_data, x='pr_po_days', nbins=30,

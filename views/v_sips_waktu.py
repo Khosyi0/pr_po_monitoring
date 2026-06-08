@@ -140,18 +140,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     st.markdown("---")
 
     # == WHERE clause =========================================================
+    # Where khusus PO (mengabaikan filter tanggal global pada build_sips_where)
     where_po = build_sips_where(
         date_from=None, date_to=None,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
         selected_pgroup=selected_pgroup
     )
 
+    # Kondisi filter tanggal PO yang sinkron dengan dashboard utama
     po_date_cond = f"""(
-        EXTRACT(YEAR FROM tgl_po) = EXTRACT(YEAR FROM '{date_to}'::date)
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
         OR tgl_po IS NULL 
         OR tgl_po::text IN ('', '-')
     )"""
 
+    # Gabungan kriteria khusus analisis waktu (Hanya dokumen yang diproses)
     where = f"""
         {where_po} 
         AND UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
@@ -175,10 +178,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     SELECT
         nama, standar_sla, pr_po_days, realisasi_sla, nilai_sla,
         kontrak_status, prioritas, purchasing_group,
-        TO_CHAR(DATE_TRUNC('month',requisition_date),'YYYY-MM')         AS bulan,
-        (tgl_disposisi_buyer - requisition_date)                        AS waktu_pra,
-        (tgl_po - requisition_date)                                     AS e2e,
-        (standar_sla - realisasi_sla)                                   AS headroom
+        
+        TO_CHAR(DATE_TRUNC('month', tgl_po), 'YYYY-MM') AS bulan,
+        
+        (tgl_disposisi_buyer - requisition_date)        AS waktu_pra,
+        (tgl_po - requisition_date)                     AS e2e,
+        (standar_sla - realisasi_sla)                   AS headroom
     FROM vw_sips WHERE {where}
     """
 
