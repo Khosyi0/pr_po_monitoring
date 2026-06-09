@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from zoneinfo import ZoneInfo
 from datetime import datetime
 from config_db import get_setting, set_setting
-from utils import format_idr, format_number, format_idr_short, idr_axis
+from utils import format_idr, format_number, format_idr_short, idr_axis, build_sips_bagian_cond
 
 # =============================================================================
 # CSS: tampilan kartu KPI yang bersih & print-friendly
@@ -264,19 +264,19 @@ def render(load_data, **kwargs):
     current_year = datetime.now(tz_wib).year
 
     # Pengambilan tanggal update SAP
-    sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
+    sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-05-31")
     try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
-    except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
+    except: DATA_UPDATE_SAP = datetime(2026, 5, 31).date()
 
     # Pengambilan tanggal update Inklaring
-    ink_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
+    ink_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-05-31")
     try: DATA_UPDATE_INKLARING = datetime.strptime(ink_date_str, "%Y-%m-%d").date()
-    except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
+    except: DATA_UPDATE_INKLARING = datetime(2026, 5, 31).date()
 
     # Pengambilan tanggal update SIPS
-    sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
+    sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-05-31")
     try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
-    except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
+    except: DATA_UPDATE_SIPS = datetime(2026, 5, 31).date()
 
     # == Header Utama =========================================================
     st.markdown("""
@@ -1307,6 +1307,8 @@ def render(load_data, **kwargs):
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Kueri khusus untuk mengambil metrik performa dan Efisiensi NA per Bagian dari SIPS
+    # Filter bagian menggunakan build_sips_bagian_cond agar mutasi karyawan berefek pada date_to
+    _bagian_filter_cond = build_sips_bagian_cond([pilihan_bagian], date_to=date_to)
     bagian_query = f"""
     SELECT
         SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
@@ -1320,7 +1322,7 @@ def render(load_data, **kwargs):
         SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
     FROM vw_sips
     WHERE {where_gabungan}
-      AND bagian = '{pilihan_bagian}'
+      AND {_bagian_filter_cond}
     """
 
     with st.spinner(f"Memuat performa bagian {pilihan_bagian}..."):
@@ -1411,7 +1413,7 @@ def render(load_data, **kwargs):
             SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
         FROM vw_sips
         WHERE {where_gabungan}
-          AND bagian = '{pilihan_bagian}'
+          AND {_bagian_filter_cond}
         GROUP BY nama
         ORDER BY total_pr DESC
         """
@@ -1552,7 +1554,7 @@ def render(load_data, **kwargs):
             SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
         FROM vw_sips
         WHERE (({where_pr}) OR ({po_date_cond}))
-          AND bagian = '{pilihan_bagian}'
+          AND {_bagian_filter_cond}
         GROUP BY 1
         ORDER BY 1
         """

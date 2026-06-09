@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
-from utils import build_sips_where, format_number, render_chat_analyst
+from utils import build_sips_where, build_sips_bagian_cond, format_number, render_chat_analyst
 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
 
@@ -55,11 +55,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             selected_pgroup=selected_pgroup
         )
 
-        # 2. Where khusus PO (mengabaikan filter tanggal global)
+        # 2. Where khusus PO: tanpa filter tanggal tgl_disposisi_buyer,
+        #    tapi tetap pakai date_to sebagai acuan mutasi bagian
         where_po = build_sips_where(
             date_from=None, date_to=None,
             selected_nama=selected_nama, selected_bagian=selected_bagian,
-            selected_pgroup=selected_pgroup
+            selected_pgroup=selected_pgroup,
+            extra=[build_sips_bagian_cond(selected_bagian, date_to=date_to)]
+            if (selected_bagian and 'All' not in selected_bagian) else None
         )
 
         # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel

@@ -9,7 +9,7 @@ import io
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where
+from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where, build_sips_bagian_cond
  
 SIPS_ALERT_CSS = """
 <style>
@@ -74,10 +74,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         selected_pgroup=selected_pgroup
     )
 
+    # Where khusus PO: tanpa filter tanggal tgl_disposisi_buyer,
+    # tapi tetap pakai date_to sebagai acuan mutasi bagian
     where_po = build_sips_where(
         date_from=None, date_to=None,
         selected_nama=selected_nama, selected_bagian=selected_bagian,
-        selected_pgroup=selected_pgroup
+        selected_pgroup=selected_pgroup,
+        extra=[build_sips_bagian_cond(selected_bagian, date_to=date_to)]
+        if (selected_bagian and 'All' not in selected_bagian) else None
     )
 
     # Kondisi filter tanggal PO yang sinkron dengan dashboard utama

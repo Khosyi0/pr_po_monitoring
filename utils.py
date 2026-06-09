@@ -257,6 +257,60 @@ def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
 # SIPS WHERE CLAUSE BUILDER
 # =============================================================================
 
+def build_sips_bagian_cond(selected_bagian, date_to=None) -> str:
+    """
+    Bangun kondisi filter bagian untuk query vw_sips menggunakan logika
+    "bagian karyawan ditentukan berdasarkan date_to filter, bukan tanggal transaksi".
+
+    LOGIKA MUTASI:
+    Ketika date_to >= berlaku_dari mutasi baru seorang karyawan, maka SELURUH
+    transaksi karyawan tersebut dianggap milik bagian baru (tidak peduli kapan
+    transaksi itu dibuat). Ini berarti filter bagian tidak menggunakan kolom
+    `bagian` di vw_sips (yang berbasis tanggal transaksi), melainkan mengecek
+    bagian aktif karyawan pada tanggal date_to via karyawan_bagian_history.
+
+    Aturan penentuan bagian karyawan pada tanggal D (date_to):
+      - Ambil baris di karyawan_bagian_history dengan berlaku_dari <= D
+        DAN (berlaku_sampai IS NULL OR berlaku_sampai >= D)
+      - Jika date_to tidak diberikan (None), pakai bagian saat ini
+        (berlaku_sampai IS NULL = masih aktif)
+
+    Parameters
+    ----------
+    selected_bagian : list
+        Daftar bagian yang dipilih user. ['All'] = tanpa filter.
+    date_to : date | str | None
+        Batas akhir tanggal filter. Digunakan sebagai "tanggal acuan"
+        untuk menentukan bagian aktif karyawan.
+
+    Returns
+    -------
+    str
+        Kondisi SQL siap pakai, atau '1=1' jika tidak ada filter bagian.
+    """
+    if not selected_bagian or "All" in selected_bagian:
+        return "1=1"
+
+    bg = ", ".join(f"'{b}'" for b in selected_bagian)
+
+    if date_to:
+        # Bagian karyawan = bagian yang berlaku pada date_to
+        # (berlaku_dari <= date_to AND (berlaku_sampai IS NULL OR berlaku_sampai >= date_to))
+        return f"""nik IN (
+            SELECT nik FROM karyawan_bagian_history
+            WHERE bagian IN ({bg})
+              AND berlaku_dari <= '{date_to}'::date
+              AND (berlaku_sampai IS NULL OR berlaku_sampai >= '{date_to}'::date)
+        )"""
+    else:
+        # Tanpa date_to: gunakan bagian aktif saat ini (berlaku_sampai IS NULL)
+        return f"""nik IN (
+            SELECT nik FROM karyawan_bagian_history
+            WHERE bagian IN ({bg})
+              AND berlaku_sampai IS NULL
+        )"""
+
+
 def build_sips_where(date_from=None, date_to=None,
                      selected_nama=None, selected_bagian=None,
                      selected_pgroup=None,
@@ -268,7 +322,9 @@ def build_sips_where(date_from=None, date_to=None,
       Alasan: ETL menentukan bulan_import dari tgl_disposisi_buyer sebagai
       anchor utama, sehingga filter dashboard harus mengikuti kolom yang sama
       agar Total PR / Total PO sesuai dengan rekapan Excel atasan.
-    - Filter bagian hanya aktif jika selected_bagian bukan ['All']
+    - Filter bagian menggunakan build_sips_bagian_cond() dengan acuan date_to,
+      sehingga karyawan yang mutasi bagian akan "membawa" seluruh transaksinya
+      ke bagian baru begitu date_to melewati tanggal efektif mutasi.
     - Filter purchasing_group hanya aktif jika selected_pgroup bukan ['All']
     - Sertakan extra=['nilai_sla IS NOT NULL'] dsb. jika perlu kondisi tambahan
     """
@@ -279,9 +335,12 @@ def build_sips_where(date_from=None, date_to=None,
         wp.append(f"tgl_disposisi_buyer >= '{date_from}'")
     if date_to:
         wp.append(f"tgl_disposisi_buyer <= '{date_to}'")
-    if selected_bagian and "All" not in selected_bagian:
-        bg = ", ".join(f"'{b}'" for b in selected_bagian)
-        wp.append(f"bagian IN ({bg})")
+
+    # Filter bagian berbasis date_to (bukan kolom bagian statis di vw_sips)
+    bagian_cond = build_sips_bagian_cond(selected_bagian, date_to=date_to)
+    if bagian_cond != "1=1":
+        wp.append(bagian_cond)
+
     if selected_pgroup and "All" not in selected_pgroup:
         pg = ", ".join(f"'{p}'" for p in selected_pgroup)
         wp.append(f"purchasing_group IN ({pg})")
