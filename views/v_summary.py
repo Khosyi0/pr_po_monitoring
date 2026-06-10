@@ -1368,12 +1368,12 @@ def render(load_data, **kwargs):
         else:
             tipe_efis_tampil = "green" if b_efis_val >= 0 else "red"
 
-        # ── Susun teks delta: "Target: > 5% | Rp 18,71 M" ──────────────────
+        # ── Susun teks delta: Hapus nilai Rp dari delta ────────────────────
         _efis_sym = _ARAH_SYM.get(_efis_arah, ">")
         if _efis_target and _efis_target != "-":
-            str_efis_delta = f"Target: {_efis_sym} {_efis_target} | {format_idr(b_efis_val)}"
+            str_efis_delta = f"Target: {_efis_sym} {_efis_target}"
         else:
-            str_efis_delta = format_idr(b_efis_val)
+            str_efis_delta = ""
 
         # Logika Warna lainnya
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
@@ -1387,7 +1387,8 @@ def render(load_data, **kwargs):
         str_onbudget_tampil = str_onbudget
         tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
         
-        str_efis_pct_tampil = str_efis_pct
+        # ── Gabungkan dengan hierarki ukuran (Persentase utama, Rupiah pendukung) ──
+        str_efis_pct_tampil = f"{str_efis_pct} <span style='font-size: 0.7em; font-weight: 500; opacity: 0.85;'>({format_idr(b_efis_val)})</span>"
 
         b_otobos_val = (pct_ontime + pct_onbudget + sla_on_spec_pct) / 3
         tipe_otobos_bagian = "green" if b_otobos_val >= 90 else "red"
