@@ -1460,7 +1460,7 @@ def render(load_data, **kwargs):
         r2c1, r2c2, r2c3 = st.columns(3)
         
         with r2c1:
-            st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil, border_class=border_class_map.get(tipe_efis_tampil, "")), unsafe_allow_html=True)
             if is_admin:
                 if st.button("Edit", key=f"btn_efisiensi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
                     dlg_efisiensi_bagian()
