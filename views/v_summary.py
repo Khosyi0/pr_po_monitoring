@@ -633,15 +633,21 @@ def render(load_data, **kwargs):
 
     # ── Helper: baca satu KPI dari DB dan kembalikan (nilai, target, arah, color, border, delta_label) ──
     def _load_kpi(prefix: str, default_arah: str = ">="):
-        nilai     = get_setting(f"{prefix}_NILAI",     "-")
-        target    = get_setting(f"{prefix}_TARGET",    "-")
-        arah      = get_setting(f"{prefix}_ARAH",      default_arah)
+        # Cek session_state dulu agar tidak perlu tanya database saat rerunning
+        if f"{prefix}_NILAI" not in st.session_state:
+            st.session_state[f"{prefix}_NILAI"] = get_setting(f"{prefix}_NILAI", "-")
+        
+        nilai = st.session_state[f"{prefix}_NILAI"]
+        target = get_setting(f"{prefix}_TARGET", "-") # Target jarang berubah, aman
+        arah = get_setting(f"{prefix}_ARAH", default_arah)
         free_text = get_setting(f"{prefix}_FREE_TEXT", "")
+        
         color, border = _eval_kpi_color(nilai, target, arah)
-        sym   = _ARAH_SYM.get(arah, "")
+        sym = _ARAH_SYM.get(arah, "")
         delta = f"Target: {sym} {target}".strip() if target != "-" else "Target: -"
         if free_text:
             delta = f"{delta} | {free_text}"
+            
         return nilai, target, arah, color, border, delta
 
     # ── Helper: render dialog edit nilai+target+arah (full) ───────────────
@@ -686,12 +692,18 @@ def render(load_data, **kwargs):
             )
             col_s, col_c = st.columns(2)
             with col_s:
+                # Di dalam _dialog_full untuk Net Income
                 if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_NILAI",  inp_nilai.strip()  or "-")
+                    # 1. Simpan ke DB (Proses lambat yang tetap berjalan di background)
+                    set_setting(f"{prefix}_NILAI", inp_nilai.strip() or "-")
                     set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
                     set_setting(f"{prefix}_ARAH",   inp_arah)
                     set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
-                    st.success("Tersimpan!")
+                    
+                    # 2. Update session state (INI KUNCI KECEPATANNYA)
+                    st.session_state[f"{prefix}_NILAI"] = inp_nilai.strip() or "-"
+                    
+                    # 3. Rerun instan
                     st.rerun()
             with col_c:
                 if st.button("Batal", use_container_width=True):
@@ -918,7 +930,10 @@ def render(load_data, **kwargs):
     _on_spec_override = get_setting("KPI_ON_SPEC_NILAI", "")
     if _on_spec_override:
         try:
-            sla_on_spec_pct = float(_on_spec_override.replace(",", "."))
+            # Bersihkan simbol % dan spasi (jika ada), lalu ganti koma dengan titik
+            _clean_val = _on_spec_override.replace("%", "").strip().replace(",", ".")
+            sla_on_spec_pct = float(_clean_val)
+            
             otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
             color_otobos = "green" if otobos_val >= 90 else "red"
         except ValueError:
