@@ -128,6 +128,80 @@ div[data-testid="stPlotlyChart"] {
     .sum-value, .sum-label, .sum-delta { color: #111 !important; }
     [data-testid="stHorizontalBlock"], div[data-testid="stPlotlyChart"] { break-inside: avoid !important; }
 }
+
+/* == Hero Card Khusus OTOBOS == */
+.sum-card-hero {
+    min-height: 470px !important; /* Menyesuaikan tinggi 3 tumpukan kartu di kanannya */
+    display: flex;
+    flex-direction: column; /* Mengubah arah menjadi atas-bawah */
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.sum-card-hero .sum-icon {
+    width: 80px; 
+    height: 80px;
+    margin-bottom: 16px; /* Memberi jarak ikon dengan teks */
+}
+
+.sum-card-hero .sum-icon svg {
+    width: 48px;
+    height: 48px;
+}
+
+.sum-card-hero .sum-label {
+    font-size: 18px; /* Judul sedikit diperbesar */
+}
+
+.sum-card-hero .sum-value {
+    font-size: 4.5rem !important; /* Angka persentase dibuat raksasa */
+    margin: 12px 0 !important;
+}
+
+.sum-card-hero .sum-delta {
+    font-size: 16px;
+}
+
+/* == Spanned Hero Card Left (Tata Letak Jenius Asimetris) == */
+.sum-card-span-hero {
+    /* Total tinggi vertikal = 2 kartu standard (~145px * 2) + 1 gap vertical (~12px) */
+    min-height: 302px !important; 
+    display: flex;
+    flex-direction: column; /* Ubah arah konten atas-bawah */
+    justify-content: center; /* Rata tengah vertikal */
+    align-items: center; /* Rata tengah horizontal */
+    text-align: center;
+    padding: 24px;
+}
+
+.sum-card-span-hero .sum-icon {
+    width: 70px;
+    height: 70px;
+    margin-bottom: 12px;
+}
+
+.sum-card-span-hero .sum-icon svg {
+    width: 42px;
+    height: 42px;
+}
+
+.sum-card-span-hero .sum-body {
+    flex: none; /* Mencegah body meregang sampai ke ujung, menjaganya tetap center */
+}
+
+.sum-card-span-hero .sum-label {
+    font-size: 16px;
+}
+
+.sum-card-span-hero .sum-value {
+    font-size: 4rem !important; /* Angka diperbesar raksasa kembali */
+    margin: 8px 0 !important;
+}
+
+.sum-card-span-hero .sum-delta {
+    font-size: 14px;
+}
 </style>
 """
 
@@ -736,7 +810,7 @@ def render(load_data, **kwargs):
         def _dlg():
             st.markdown(
                 "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Ubah nilai On Spec. Nilai ini juga mempengaruhi perhitungan Total SLA OTOBOS.</p>",
+                "Ubah nilai On Spec. Nilai ini juga mempengaruhi perhitungan Total OTOBOS.</p>",
                 unsafe_allow_html=True
             )
             inp_val = st.text_input(
@@ -957,7 +1031,7 @@ def render(load_data, **kwargs):
     dlg_sla_pembebasan_delta = _dialog_target_arah("% Kecepatan Pembebasan Barang Impor", "KPI_SLA_PEMBEBASAN", default_arah=">=")
     dlg_laporan_kinerja = _dialog_full("Penyusunan Laporan Kinerja", "KPI_LAPORAN_KINERJA", default_arah="<")
     dlg_izin_impor = _dialog_nilai_delta("Pemenuhan Izin Impor", "KPI_IZIN_IMPOR")
-    dlg_otobos_delta      = _dialog_delta_only("Total SLA OTOBOS",   "KPI_OTOBOS")
+    dlg_otobos_delta      = _dialog_delta_only("Total OTOBOS",   "KPI_OTOBOS")
     dlg_on_spec_nilai     = _dialog_nilai_only("SLA - On Spec",       "KPI_ON_SPEC")
     dlg_produktivitas_delta = _dialog_target_arah("Produktivitas PR-PO", "KPI_PRODUKTIVITAS", default_arah=">")
 
@@ -997,22 +1071,52 @@ def render(load_data, **kwargs):
             if st.button("Edit", key="btn_impor", icon=":material/edit:", use_container_width=True): dlg_sla_pembebasan_delta()
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # ── Baris 3: % OTOBOS Barang (4 kolom, perlakuan khusus) ─────────────
+    # ── Baris 3: % OTOBOS Barang (Pola Jenius Asimetris) ─────────────
     _row_label("% OTOBOS Barang")
-    c7, c8, c9, c10 = st.columns(4)
-    with c7:
-        st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", f"{format_number(otobos_val, decimals=2)}%", otobos_delta, color_otobos, border_class=border_class_map.get(color_otobos, "")), unsafe_allow_html=True)
+    
+    # 1. BUAT MAIN COLUMNS DULU (Kiri:Kanan = 1:2)
+    # Kolom kiri untuk spanned 'Total', kolom kanan untuk nested grid parameter
+    main_kiri, main_kanan = st.columns([1, 2], gap="medium")
+
+    with main_kiri:
+        # --- KARTU HERO BESAR (SPANNED VERTICAL) ---
+        nilai_otobos_str = f"{format_number(otobos_val, decimals=2)}%"
+        border_cls = border_class_map.get(color_otobos, '')
+        
+        # Tambahkan class CSS baru 'sum-card-span-hero'
+        st.markdown(_card(
+            ICONS["search"], 
+            "Total OTOBOS", 
+            nilai_otobos_str, 
+            otobos_delta, 
+            color_otobos, 
+            border_class=f"{border_cls} sum-card-span-hero"
+        ), unsafe_allow_html=True)
+        
+        # Tombol Edit Total di bawah container spanned
         if is_admin:
-            if st.button("Edit", key="btn_otobos_delta", icon=":material/edit:", use_container_width=True): dlg_otobos_delta()
-    with c8:
-        st.markdown(_card(ICONS["clock"],     "SLA - On Time",   f"{format_number(sla_on_time_pct,   decimals=2)}%"), unsafe_allow_html=True)
-    with c9:
-        st.markdown(_card(ICONS["currency"],  "SLA - On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
-    with c10:
-        st.markdown(_card(ICONS["check_all"], "SLA - On Spec",   f"{format_number(sla_on_spec_pct,   decimals=2)}%"), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_on_spec", icon=":material/edit:", use_container_width=True): dlg_on_spec_nilai()
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            if st.button("Edit Total", key="btn_otobos_delta_asym", icon=":material/edit:", use_container_width=True): dlg_otobos_delta()
+
+    with main_kanan:
+        # --- NESTED GRID PARAMETER (DI DALAM MAIN_KANAN) ---
+        
+        # Baris Nested 1 (Top Row Grid)
+        n_col1_top, n_col2_top = st.columns(2)
+        with n_col1_top:
+            st.markdown(_card(ICONS["clock"], "On Time", f"{format_number(sla_on_time_pct, decimals=2)}%"), unsafe_allow_html=True)
+        with n_col2_top:
+            st.markdown(_card(ICONS["currency"], "On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%"), unsafe_allow_html=True)
+
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True) # Jarak vertikal grid
+
+        # Baris Nested 2 (To match image_4.png: card on left sub-col, empty on right)
+        n_col1_bot, n_col2_bot = st.columns(2)
+        with n_col1_bot:
+            st.markdown(_card(ICONS["check_all"], "On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%"), unsafe_allow_html=True)
+            # Tombol Edit Spec di bawah container grid bawah
+            if is_admin:
+                if st.button("Edit Spec", key="btn_on_spec_asym", icon=":material/edit:", use_container_width=True): dlg_on_spec_nilai()
+        # with n_col2_bot: biarkan kosong sepenuhnya untuk mencocokkan sketsa
 
     # ── Baris 4 & 5: Learning & Growth + Internal Business Process ───────────
     main_c1, main_c2 = st.columns([1, 2], gap="medium")
@@ -1456,7 +1560,7 @@ def render(load_data, **kwargs):
             tipe_time = "green" if pct_ontime >= 80 else "red"
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
         with r1c3:
-            st.markdown(_card(ICONS["search"], "Total SLA OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["search"], "Total OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
