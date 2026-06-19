@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import calendar
+import io
 import plotly.graph_objects as go
 from zoneinfo import ZoneInfo
 from datetime import datetime
@@ -259,6 +260,13 @@ def _eval_kpi_color(nilai_label: str, target_label: str, arah: str):
     else:              return "neutral", ""
 
     return color, f"border-{color}"
+
+def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
+    """Konversi DataFrame ke bytes Excel (.xlsx) siap download."""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=True, sheet_name="Kinerja Karyawan")
+    return output.getvalue()
 
 # =============================================================================
 # Icon path constants (Bootstrap Icons)
@@ -1580,6 +1588,44 @@ def render(load_data, **kwargs):
             df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% Single Platform']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
             st.dataframe(df_table, use_container_width=True)
+
+            import io
+            _excel_buf = io.BytesIO()
+            with pd.ExcelWriter(_excel_buf, engine="openpyxl") as _writer:
+                df_table.to_excel(_writer, index=True, sheet_name="Kinerja Karyawan")
+            _excel_bytes = _excel_buf.getvalue()
+
+            import base64
+            _b64 = base64.b64encode(_excel_bytes).decode()
+            _filename = f"Kinerja_Karyawan_{pilihan_bagian}.xlsx"
+            _mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+            st.markdown(f"""
+                <a href="data:{_mime};base64,{_b64}" download="{_filename}" style="text-decoration:none;">
+                    <button style="
+                        background-color: #e03c3c;
+                        color: white;
+                        border: none;
+                        padding: 4px 12px;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 600;
+                        cursor: pointer;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        margin-top: 2px;
+                    ">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                            fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download sebagai XLSX
+                    </button>
+                </a>
+            """, unsafe_allow_html=True)
         else:
             st.info(f"Tidak ada data kinerja karyawan untuk bagian **{pilihan_bagian}** pada periode ini.")
             
