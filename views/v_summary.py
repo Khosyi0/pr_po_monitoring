@@ -429,25 +429,45 @@ def render(load_data, **kwargs):
 
     # == Eksekusi Kueri =======================================================
     # Kueri Tren SIPS (Volume)
+    # PR dikelompokkan berdasarkan bulan tgl_disposisi_buyer.
+    # PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan tgl_disposisi_buyer
+    # (PR-nya) agar totalnya tetap sama persis dengan kotak KPI Total PO.
     trend_query = f"""
+    WITH pr_bulanan AS (
+        SELECT
+            DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
+            COUNT(*) AS total_pr
+        FROM vw_sips
+        WHERE {where_pr}
+        GROUP BY 1
+    ),
+    po_bulanan AS (
+        SELECT
+            DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month,
+            COUNT(*) AS total_po
+        FROM vw_sips
+        WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond}
+        GROUP BY 1
+    )
     SELECT
-        TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
-        SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
-        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
-    FROM vw_sips
-    WHERE ({where_pr}) OR ({po_date_cond})
-    GROUP BY 1
+        TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
+        COALESCE(pr_bulanan.total_pr, 0) AS total_pr,
+        COALESCE(po_bulanan.total_po, 0) AS total_po
+    FROM pr_bulanan
+    FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month
     ORDER BY 1
     """
 
     # Kueri Tren SIPS (Nilai Rupiah)
+    # OE & Nilai PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan
+    # tgl_disposisi_buyer agar totalnya tetap sama persis dengan kotak KPI Total OE / Total Nilai PO.
     value_trend_query = f"""
     SELECT
-        TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
-        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr ELSE 0 END) AS total_oe,
-        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po ELSE 0 END) AS total_po_val
+        TO_CHAR(DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer)), 'YYYY-MM-01')::date AS month,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN oe_pr ELSE 0 END) AS total_oe,
+        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN nilai_item_po ELSE 0 END) AS total_po_val
     FROM vw_sips
-    WHERE ({where_pr}) OR ({po_date_cond})
+    WHERE UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond}
     GROUP BY 1
     ORDER BY 1
     """
@@ -1633,15 +1653,33 @@ def render(load_data, **kwargs):
         )
 
         # Kueri Tren Realisasi Item per Bagian
+        # PR dikelompokkan berdasarkan bulan tgl_disposisi_buyer.
+        # PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan tgl_disposisi_buyer
+        # (PR-nya) agar totalnya tetap sama persis dengan kotak KPI Total PO per Bagian.
         trend_bagian_query = f"""
+        WITH pr_bulanan AS (
+            SELECT
+                DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
+                COUNT(*) AS total_pr
+            FROM vw_sips
+            WHERE {where_pr} AND {_bagian_filter_cond}
+            GROUP BY 1
+        ),
+        po_bulanan AS (
+            SELECT
+                DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month,
+                COUNT(*) AS total_po
+            FROM vw_sips
+            WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond}
+              AND {_bagian_filter_cond}
+            GROUP BY 1
+        )
         SELECT
-            TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM-01')::date AS month,
-            SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
-            SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po
-        FROM vw_sips
-        WHERE (({where_pr}) OR ({po_date_cond}))
-          AND {_bagian_filter_cond}
-        GROUP BY 1
+            TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
+            COALESCE(pr_bulanan.total_pr, 0) AS total_pr,
+            COALESCE(po_bulanan.total_po, 0) AS total_po
+        FROM pr_bulanan
+        FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month
         ORDER BY 1
         """
 
