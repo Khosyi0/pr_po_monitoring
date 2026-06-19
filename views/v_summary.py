@@ -7,7 +7,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import calendar
-import io
 import plotly.graph_objects as go
 from zoneinfo import ZoneInfo
 from datetime import datetime
@@ -261,13 +260,6 @@ def _eval_kpi_color(nilai_label: str, target_label: str, arah: str):
 
     return color, f"border-{color}"
 
-def _df_to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Konversi DataFrame ke bytes Excel (.xlsx) siap download."""
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=True, sheet_name="Kinerja Karyawan")
-    return output.getvalue()
-
 # =============================================================================
 # Icon path constants (Bootstrap Icons)
 # =============================================================================
@@ -468,8 +460,8 @@ def render(load_data, **kwargs):
         ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
         SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_total,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na
     FROM vw_sips
@@ -1370,8 +1362,8 @@ def render(load_data, **kwargs):
         SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
         ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_total,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_total,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
         SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
@@ -1462,8 +1454,8 @@ def render(load_data, **kwargs):
             SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
             ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN nilai_sla END), 0) AS sla_ontime,
-            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN oe_pr END), 0) AS sips_oe_total,
-            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN nilai_item_po END), 0) AS sips_po_total,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_total,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_total,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
             SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
