@@ -403,8 +403,7 @@ def render(load_data, **kwargs):
     # Info Teks Periode
     st.markdown(
         f"<p style='font-size:16px; margin-top:6px;'>"
-        f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b> "
-        f"&nbsp;|&nbsp; Data SIPS per {DATA_UPDATE_SIPS.strftime('%d %B %Y')} "
+        f"Data SIPS per {DATA_UPDATE_SIPS.strftime('%d %B %Y')} "
         f"&nbsp;|&nbsp; Dicetak: {datetime.now(tz_wib).strftime('%d %B %Y %H:%M')}</p>",
         unsafe_allow_html=True
     )
@@ -661,15 +660,16 @@ def render(load_data, **kwargs):
         "red":   "border-red",
     }
 
-
     # ═════════════════════════════════════════════════════════════════════════
-    # BAGIAN 1: KPI PENGADAAN BARANG (SIPS & SAP)
+    # BAGIAN 1: KPI PENGADAAN BARANG (SIPS)
     # ═════════════════════════════════════════════════════════════════════════
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 8px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 4px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['graph_up'], 32)}</span>"
         f"KPI Pengadaan Barang"
-        f"</h2>", 
+        f"</h2>"
+        f"<p style='font-size:15px; font-weight:500; opacity:0.75; margin: 0 0 16px 0;'>"
+        f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b></p>", 
         unsafe_allow_html=True
     )
 
@@ -1142,10 +1142,12 @@ def render(load_data, **kwargs):
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
     
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 16px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 4px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['file_text'], 32)}</span>"
         f"Laporan Pengadaan Barang"
-        f"</h2>", 
+        f"</h2>"
+        f"<p style='font-size:15px; font-weight:500; opacity:0.75; margin: 0 0 16px 0;'>"
+        f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b></p>", 
         unsafe_allow_html=True
     )
 
@@ -1355,10 +1357,12 @@ def render(load_data, **kwargs):
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
 
     st.markdown(
-        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 24px 0; font-weight:700; color:var(--text-color);'>"
+        f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 4px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['building'], 32)}</span>"
         f"Laporan Bagian"
-        f"</h2>", 
+        f"</h2>"
+        f"<p style='font-size:15px; font-weight:500; opacity:0.75; margin: 0 0 24px 0;'>"
+        f"Periode: <b>{date_from.strftime('%d %B %Y')} s.d. {date_to.strftime('%d %B %Y')}</b></p>", 
         unsafe_allow_html=True
     )
 
