@@ -1,6 +1,7 @@
 """
 v_summary.py - Executive Summary Dashboard
 Halaman khusus presentasi direksi dengan satu tampilan (Single Page), Filter Bulan, dan Tren PR-PO.
+Termasuk Editor KPI Bulanan (Khusus Admin) di dalamnya.
 """
 
 import streamlit as st
@@ -10,8 +11,213 @@ import calendar
 import plotly.graph_objects as go
 from zoneinfo import ZoneInfo
 from datetime import datetime
-from config_db import get_setting, set_setting
+from sqlalchemy import text  
+from config_db import get_setting, set_setting, get_db_engine  
 from utils import format_idr, format_number, format_idr_short, idr_axis, build_sips_bagian_cond
+
+# =============================================================================
+# KONSTANTA EDITOR & DATABASE
+# =============================================================================
+MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+ARAH_OPTIONS = [">", ">=", "<", "<=", "="]
+ARAH_LABELS = {">": "nilai > target", ">=": "nilai ≥ target", "<": "nilai < target", "<=": "nilai ≤ target", "=": "nilai = target"}
+FIELD_LABELS = {"nilai": "Pencapaian", "target": "Target", "free_text": "Keterangan"}
+
+KPI_DEFS = [
+    {"key": "KPI_NET_INCOME",      "label": "Net Income",                 "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_COST_OPT",        "label": "% Cost Optimization",        "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_PENAGIHAN",       "label": "% Penagihan Despatch",       "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_PDN",             "label": "% Pembelian PDN",            "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_TRADING_NPK",     "label": "% Pelaksanaan Trading NPK",  "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_SLA_PEMBEBASAN",  "label": "% Kecepatan Pembebasan Impor","fields": ["target", "free_text"]},
+    {"key": "KPI_OTOBOS",          "label": "Total OTOBOS",               "fields": ["target", "free_text"]},
+    {"key": "KPI_ON_SPEC",         "label": "On Spec",                    "fields": ["nilai"]},
+    {"key": "KPI_TALENT_DEV",      "label": "% Talent Development",       "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_ZSO_BB",          "label": "% Zero Stock Out BB",        "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_ZSO_KANTONG",     "label": "% Zero Stock Out Kantong",   "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_PRODUKTIVITAS",   "label": "Produktivitas PR-PO",        "fields": ["target", "free_text"]},
+    {"key": "KPI_UTILISASI",       "label": "% Utilisasi Single Platform","fields": ["target", "free_text"]},
+    {"key": "KPI_SAFETY",          "label": "# Safety Score",             "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_LAPORAN_KINERJA", "label": "Penyusunan Laporan Kinerja", "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_IZIN_IMPOR",      "label": "Pemenuhan Izin Impor",       "fields": ["nilai", "target", "free_text"]},
+    {"key": "KPI_EFISIENSI_BAGIAN_ALPATA", "label": "Efisiensi (ALPATA)", "fields": ["target"]},
+    {"key": "KPI_EFISIENSI_BAGIAN_BARUM",  "label": "Efisiensi (BARUM)",  "fields": ["target"]},
+    {"key": "KPI_EFISIENSI_BAGIAN_BBBD",   "label": "Efisiensi (BB/BD/BP)", "fields": ["target"]},
+]
+
+DEFAULT_ARAH = {
+    "KPI_NET_INCOME": ">=", "KPI_COST_OPT": ">=", "KPI_PENAGIHAN": ">=", "KPI_PDN": ">=", 
+    "KPI_TRADING_NPK": ">=", "KPI_SLA_PEMBEBASAN": ">=", "KPI_OTOBOS": ">=", "KPI_ON_SPEC": ">=", 
+    "KPI_TALENT_DEV": ">=", "KPI_ZSO_BB": ">=", "KPI_ZSO_KANTONG": ">=", "KPI_PRODUKTIVITAS": ">", 
+    "KPI_UTILISASI": ">=", "KPI_SAFETY": ">=", "KPI_LAPORAN_KINERJA": "<", "KPI_IZIN_IMPOR": ">=",
+    "KPI_EFISIENSI_BAGIAN_ALPATA": ">", "KPI_EFISIENSI_BAGIAN_BARUM": ">", "KPI_EFISIENSI_BAGIAN_BBBD": ">",
+}
+
+# =============================================================================
+# FUNGSI DATABASE 
+# =============================================================================
+def _get_all_kpi_for_range(engine, kpi_keys, date_from, date_to):
+    """Ambil data KPI dari database untuk bulan terakhir yang terisi pada rentang tanggal"""
+    if not engine or not kpi_keys: return {}
+    
+    placeholders = ", ".join([f"'{k}'" for k in kpi_keys])
+    sql = f"""
+        SELECT kpi_key, year, month, field, value
+        FROM kpi_monthly_values
+        WHERE kpi_key IN ({placeholders})
+          AND (year > :dy1 OR (year = :dy2 AND month >= :dm1))
+          AND (year < :dy3 OR (year = :dy4 AND month <= :dm2))
+        ORDER BY kpi_key, year DESC, month DESC
+    """
+    params = {
+        "dy1": date_from.year, "dy2": date_from.year, "dm1": date_from.month,
+        "dy3": date_to.year,   "dy4": date_to.year,   "dm2": date_to.month
+    }
+    
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), params).fetchall()
+
+    from collections import defaultdict
+    grouped = defaultdict(lambda: defaultdict(dict))
+    for kpi_key, year, month, field, value in rows:
+        grouped[kpi_key][(year, month)][field] = value
+
+    result = {}
+    for kpi_key in kpi_keys:
+        ym_dict = grouped.get(kpi_key, {})
+        found = {}
+        for ym in sorted(ym_dict.keys(), reverse=True):
+            fields = ym_dict[ym]
+            if any(v.strip() for v in fields.values()):
+                found = fields
+                break
+        result[kpi_key] = found
+    return result
+
+def _get_all_monthly_data(engine, kpi_keys, year):
+    """Ambil semua data mentah untuk editor tabel (1 tahun)"""
+    if not engine or not kpi_keys: return {}
+    
+    placeholders = ", ".join([f"'{k}'" for k in kpi_keys])
+    sql = f"SELECT kpi_key, month, field, value FROM kpi_monthly_values WHERE kpi_key IN ({placeholders}) AND year = :y ORDER BY kpi_key, month"
+    
+    with engine.connect() as conn:
+        rows = conn.execute(text(sql), {"y": year}).fetchall()
+
+    from collections import defaultdict
+    result = defaultdict(dict)
+    for kpi_key, month, field, value in rows:
+        result[(kpi_key, month)][field] = value
+    return dict(result)
+
+def _save_kpi_monthly_bulk(engine, kpi_key, year, month, fields):
+    sql = """
+        INSERT INTO kpi_monthly_values (kpi_key, year, month, field, value, updated_at)
+        VALUES (:kpi_key, :year, :month, :field, :value, NOW())
+        ON CONFLICT (kpi_key, year, month, field)
+        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    """
+    with engine.begin() as conn:
+        for field, value in fields.items():
+            conn.execute(text(sql), {
+                "kpi_key": kpi_key, 
+                "year": year, 
+                "month": month, 
+                "field": field, 
+                "value": str(value)
+            })
+
+# =============================================================================
+# KOMPONEN EDITOR ADMIN
+# =============================================================================
+def render_admin_editor(engine, current_year):
+    with st.expander("Editor Nilai KPI Bulanan (Admin Area)", expanded=False, icon=":material/edit:"):
+        year_options = list(range(current_year - 2, current_year + 2))
+        col_year, col_refresh, _ = st.columns([1, 1, 4])
+        
+        with col_year:
+            selected_year = st.selectbox("Pilih Tahun Edit", options=year_options, index=year_options.index(current_year), key="editor_year")
+        with col_refresh:
+            st.button("Refresh Data", icon=":material/refresh:", key="btn_refresh_editor")
+
+        all_keys = [kpi["key"] for kpi in KPI_DEFS]
+        raw_data = _get_all_monthly_data(engine, all_keys, selected_year)
+
+        # Siapkan kolom dan baris untuk Data Editor
+        col_headers = ["Bulan"]
+        col_meta = []
+        for kpi in KPI_DEFS:
+            for field in kpi["fields"]:
+                # FORMAT BARU: Field | KPI Label
+                col_headers.append(f"{FIELD_LABELS.get(field, field)} | {kpi['label']}")
+                col_meta.append((kpi["key"], field))
+
+        rows = []
+        for m_idx, m_name in enumerate(MONTHS_ID, start=1):
+            row = {"Bulan": m_name}
+            for (kpi_key, field) in col_meta:
+                kpi_label = next(k['label'] for k in KPI_DEFS if k['key'] == kpi_key)
+                col_name = f"{FIELD_LABELS.get(field, field)} | {kpi_label}"
+                row[col_name] = raw_data.get((kpi_key, m_idx), {}).get(field, "")
+            rows.append(row)
+
+        df_edit = pd.DataFrame(rows)
+
+        col_config = {"Bulan": st.column_config.TextColumn("Bulan", disabled=True, width="small")}
+        for (kpi_key, field) in col_meta:
+            kpi_label = next(k['label'] for k in KPI_DEFS if k['key'] == kpi_key)
+            col_name = f"{FIELD_LABELS.get(field, field)} | {kpi_label}"
+            col_config[col_name] = st.column_config.TextColumn(col_name, width="medium")
+
+        st.caption("Klik langsung pada tabel untuk mengubah data. Tekan enter, lalu klik simpan di bawah.")
+        edited_df = st.data_editor(df_edit, column_config=col_config, use_container_width=True, hide_index=True, key=f"tbl_editor_{selected_year}")
+
+        st.write("**Kondisi Hijau (Arah Perbandingan)** - Berlaku untuk 1 tahun penuh")
+        arah_current = {}
+        for kpi in KPI_DEFS:
+            found_arah = DEFAULT_ARAH.get(kpi["key"], ">=")
+            for m in range(1, 13):
+                val = raw_data.get((kpi["key"], m), {}).get("arah", "")
+                if val:
+                    found_arah = val
+                    break
+            arah_current[kpi["key"]] = found_arah
+
+        arah_new = {}
+        kpi_has_arah = [kpi for kpi in KPI_DEFS if "target" in kpi["fields"] or kpi["key"] in DEFAULT_ARAH]
+        for i in range(0, len(kpi_has_arah), 3):
+            cols = st.columns(3)
+            for j, kpi in enumerate(kpi_has_arah[i:i + 3]):
+                with cols[j]:
+                    cur_arah = arah_current[kpi["key"]]
+                    cur_idx = ARAH_OPTIONS.index(cur_arah) if cur_arah in ARAH_OPTIONS else 1
+                    arah_new[kpi["key"]] = st.selectbox(kpi["label"], options=ARAH_OPTIONS, index=cur_idx, format_func=lambda x: ARAH_LABELS[x], key=f"arah_{kpi['key']}")
+
+        if st.button("Simpan Semua Perubahan", type="primary", icon=":material/save:", use_container_width=True):
+            _proses_simpan_editor(engine, edited_df, col_meta, selected_year, arah_new)
+
+def _proses_simpan_editor(engine, edited_df, col_meta, year, arah_new):
+    """Helper untuk memproses klik tombol simpan admin"""
+    saved_count = 0
+    for m_idx, m_name in enumerate(MONTHS_ID, start=1):
+        row = edited_df[edited_df["Bulan"] == m_name].iloc[0]
+        kpi_fields = {}
+        
+        for (kpi_key, field) in col_meta:
+            kpi_label = next(k['label'] for k in KPI_DEFS if k['key'] == kpi_key)
+            col_name = f"{FIELD_LABELS.get(field, field)} | {kpi_label}"
+            val = str(row.get(col_name, "") or "").strip()
+            if kpi_key not in kpi_fields: kpi_fields[kpi_key] = {}
+            kpi_fields[kpi_key][field] = val
+
+        for kpi_key, fields in kpi_fields.items():
+            if arah_new.get(kpi_key): fields["arah"] = arah_new[kpi_key]
+            if any(v for v in fields.values() if v and v != arah_new.get(kpi_key, "")):
+                _save_kpi_monthly_bulk(engine, kpi_key, year, m_idx, fields)
+                saved_count += 1
+    
+    st.success(f"✅ Berhasil menyimpan {saved_count} update data!")
+    st.rerun()
 
 # =============================================================================
 # CSS: tampilan kartu KPI yang bersih & print-friendly
@@ -82,7 +288,6 @@ div[data-testid="stPlotlyChart"] {
     font-weight: 500;
     color: var(--text-color) !important;
     opacity: 0.75;
-    /* Pastikan TIDAK ADA min-height atau display: flex di sini */
 }
 
 .sum-value {
@@ -132,23 +337,23 @@ div[data-testid="stPlotlyChart"] {
 /* == Kartu Pendukung OTOBOS (Ukuran Lebih Kecil & Pendek) == */
 .sum-card-small {
     padding: 16px 14px 14px 14px !important;
-    min-height: 90px !important; /* Memperpendek tinggi kotak */
-    height: auto !important; /* Mencegah kotak merenggang ke bawah */
+    min-height: 90px !important; 
+    height: auto !important; 
 }
 
 /* == Kartu Utama Total OTOBOS (Disesuaikan tingginya) == */
 .sum-card-otobos-total {
-    min-height: 110px !important; /* Sedikit lebih tinggi karena ada teks Target */
+    min-height: 110px !important; 
     height: auto !important;
     padding-bottom: 16px !important;
 }
 
 .sum-card-small .sum-label {
-    font-size: 11px !important; /* Asalnya 12.5px */
+    font-size: 11px !important; 
 }
 
 .sum-card-small .sum-value {
-    font-size: 1.5rem !important; /* Asalnya 2rem */
+    font-size: 1.5rem !important; 
     margin: 4px 0 0 0 !important;
 }
 
@@ -158,7 +363,7 @@ div[data-testid="stPlotlyChart"] {
 }
 
 .sum-card-small .sum-icon svg {
-    width: 24px !important; /* Ikon sedikit dikecilkan */
+    width: 24px !important; 
     height: 24px !important;
 }
 </style>
@@ -194,24 +399,14 @@ def _row_label(text: str) -> None:
     st.markdown(f'<div class="sum-row-label">{text}</div>', unsafe_allow_html=True)
 
 def _parse_label_to_num(label: str) -> float | None:
-    """
-    Ekstrak angka dari label teks KPI.
-    Format Indonesia: hapus titik (ribuan), ubah koma jadi titik desimal Python.
-    """
     import re
     s = str(label).strip()
     if not s or s == "-":
         return None
 
     has_rp  = bool(re.search(r'Rp', s, re.IGNORECASE))
-    has_pct = s.endswith("%")
-
-    # FIX: Bersihkan format Indonesia
-    # 1. Hapus titik pemisah ribuan
-    # 2. Ubah koma menjadi titik desimal
+    
     s_clean = s.replace(".", "").replace(",", ".")
-
-    # Ambil angka pertama yang ditemukan
     nums = re.findall(r'[\d]+(?:\.[\d]+)?', s_clean)
 
     if not nums:
@@ -222,7 +417,6 @@ def _parse_label_to_num(label: str) -> float | None:
     except ValueError:
         return None
 
-    # Kalikan suffix satuan (hanya untuk Rp)
     if has_rp:
         upper = s.upper()
         if re.search(r'\bT\b|TRILIUN', upper):
@@ -234,18 +428,7 @@ def _parse_label_to_num(label: str) -> float | None:
 
     return num
 
-
 def _eval_kpi_color(nilai_label: str, target_label: str, arah: str):
-    """
-    Bandingkan nilai dan target yang di-parse dari label teks.
-    arah: '>'  → hijau jika nilai >  target
-          '>=' → hijau jika nilai >= target
-          '<'  → hijau jika nilai <  target
-          '<=' → hijau jika nilai <= target
-          '='  → hijau jika nilai == target (toleransi 0.001%)
-    Kembalikan (delta_type, border_class).
-    Jika tidak bisa di-parse, kembalikan ("neutral", "").
-    """
     n = _parse_label_to_num(nilai_label)
     t = _parse_label_to_num(target_label)
     if n is None or t is None:
@@ -259,10 +442,6 @@ def _eval_kpi_color(nilai_label: str, target_label: str, arah: str):
     else:              return "neutral", ""
 
     return color, f"border-{color}"
-
-# =============================================================================
-# Icon path constants (Bootstrap Icons)
-# =============================================================================
 
 ICONS = {
     "file_text":   "M5 4a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm-.5 2.5A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5M5 8a.5.5 0 0 0 0 1h6a.5.5 0 0 0 0-1zm0 2a.5.5 0 0 0 0 1h3a.5.5 0 0 0 0-1zM3 0h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m0 1a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1z",
@@ -286,32 +465,40 @@ ICONS = {
 }
 
 # =============================================================================
-# RENDER
+# RENDER UTAMA
 # =============================================================================
 
 def render(load_data, **kwargs):
     st.markdown(SUMMARY_CSS, unsafe_allow_html=True)
 
     is_admin = kwargs.get("is_admin", False)
+    
+    engine = None
+    try:
+        engine = get_db_engine()
+    except Exception as e:
+        st.error(f"Gagal terhubung ke database: {e}")
+
     tz_wib = ZoneInfo("Asia/Jakarta")
     current_year = datetime.now(tz_wib).year
 
-    # Pengambilan tanggal update SAP
+    # == EDITOR KPI ADMIN AREA ================================================
+    if is_admin and engine:
+        render_admin_editor(engine, current_year)
+        st.markdown("---")
+
     sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-05-31")
     try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_SAP = datetime(2026, 5, 31).date()
 
-    # Pengambilan tanggal update Inklaring
     ink_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-05-31")
     try: DATA_UPDATE_INKLARING = datetime.strptime(ink_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_INKLARING = datetime(2026, 5, 31).date()
 
-    # Pengambilan tanggal update SIPS
     sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-05-31")
     try: DATA_UPDATE_SIPS = datetime.strptime(sips_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_SIPS = datetime(2026, 5, 31).date()
 
-    # == Header Utama =========================================================
     st.markdown("""
         <h1 style='display:flex; align-items:center; font-size:52px; margin-bottom:0;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" fill="currentColor"
@@ -329,22 +516,17 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # == Filter Periode (Bulan & Triwulan) ====================================
     st.markdown(
         f"<p style='font-size:13px; font-weight:600; margin-bottom:4px; display:flex; align-items:center; gap:6px;'>"
         f"{_svg(ICONS['calendar'], 14)} Filter Periode</p>", 
         unsafe_allow_html=True
     )
     
-    # Pilihan Tipe Filter
     tipe_filter = st.radio("Tipe Filter", ["Rentang Bulan", "Triwulanan"], horizontal=True, label_visibility="collapsed")
-
     months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
     if tipe_filter == "Rentang Bulan":
-        # Generate pilihan dropdown bulan
         options = [f"{m} {y}" for y in range(current_year - 2, current_year + 2) for m in months_id]
-
         default_start_month = f"Januari {current_year}"
         default_end_month = f"{months_id[DATA_UPDATE_SIPS.month - 1]} {DATA_UPDATE_SIPS.year}"
 
@@ -357,23 +539,18 @@ def render(load_data, **kwargs):
         with col_end:
             end_month = st.selectbox("Bulan Sampai", options=options, index=options.index(default_end_month), label_visibility="collapsed")
 
-        # Parsing Tanggal Mulai
         start_m_str, start_y_str = start_month.split(" ")
         start_m_idx = months_id.index(start_m_str) + 1
         date_from = datetime(int(start_y_str), start_m_idx, 1).date()
 
-        # Parsing Tanggal Akhir
         end_m_str, end_y_str = end_month.split(" ")
         end_m_idx = months_id.index(end_m_str) + 1
         last_day = calendar.monthrange(int(end_y_str), end_m_idx)[1]
         date_to = datetime(int(end_y_str), end_m_idx, last_day).date()
-
     else:
-        # Logika Filter Triwulanan
         opsi_triwulan = ["TW I (Jan - Mar)", "TW II (Apr - Jun)", "TW III (Jul - Sep)", "TW IV (Okt - Des)"]
         opsi_tahun = list(range(current_year - 2, current_year + 2))
         
-        # Menentukan Default Q berdasarkan Update Data SIPS
         m = DATA_UPDATE_SIPS.month
         if m <= 3: def_q = 0
         elif m <= 6: def_q = 1
@@ -386,7 +563,6 @@ def render(load_data, **kwargs):
         with col_tahun:
             pilihan_t = st.selectbox("Pilih Tahun", options=opsi_tahun, index=opsi_tahun.index(DATA_UPDATE_SIPS.year), label_visibility="collapsed")
 
-        # Penetapan Tanggal Berdasarkan Triwulan
         if pilihan_q == "TW I (Jan - Mar)":
             date_from = datetime(pilihan_t, 1, 1).date()
             date_to = datetime(pilihan_t, 3, 31).date()
@@ -400,7 +576,6 @@ def render(load_data, **kwargs):
             date_from = datetime(pilihan_t, 10, 1).date()
             date_to = datetime(pilihan_t, 12, 31).date()
 
-    # Info Teks Periode
     st.markdown(
         f"<p style='font-size:16px; margin-top:6px;'>"
         f"Data SIPS per {DATA_UPDATE_SIPS.strftime('%d %B %Y')} "
@@ -410,68 +585,52 @@ def render(load_data, **kwargs):
     st.markdown("---")
 
     dt_from_pd = pd.to_datetime(date_from).replace(day=1)
-    dt_to_pd   = pd.to_datetime(date_to).replace(day=1)  # DATE_TRUNC hasilkan awal bulan, jadi compare dengan awal bulan juga
+    dt_to_pd   = pd.to_datetime(date_to).replace(day=1) 
 
     # =========================================================================
-    # DEFINISI LOGIKA FILTER SIPS (Menyamakan dengan Dashboard SIPS)
+    # AMBIL DATA KPI BULANAN DARI DATABASE (Cache 1x Query)
     # =========================================================================
-    
+    all_kpi_keys = [k["key"] for k in KPI_DEFS]
+    kpi_monthly_cache = {}
+    if engine:
+        try:
+            kpi_monthly_cache = _get_all_kpi_for_range(engine, all_kpi_keys, date_from, date_to)
+        except Exception as e:
+            st.warning(f"⚠️ Gagal memuat data KPI bulanan: {e}")
+
+    # =========================================================================
+    # DEFINISI LOGIKA FILTER SIPS 
+    # =========================================================================
     where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
-    
     po_date_cond = f"""(
         (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
         OR tgl_po IS NULL
         OR tgl_po::text IN ('', '-')
     )"""
-
     where_gabungan = f"(({where_pr}) OR ({po_date_cond} AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')))"
 
     # == Eksekusi Kueri =======================================================
-    # Kueri Tren SIPS (Volume)
-    # PR dikelompokkan berdasarkan bulan tgl_disposisi_buyer.
-    # PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan tgl_disposisi_buyer
-    # (PR-nya) agar totalnya tetap sama persis dengan kotak KPI Total PO.
     trend_query = f"""
     WITH pr_bulanan AS (
-        SELECT
-            DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
-            COUNT(*) AS total_pr
-        FROM vw_sips
-        WHERE {where_pr}
-        GROUP BY 1
+        SELECT DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month, COUNT(*) AS total_pr
+        FROM vw_sips WHERE {where_pr} GROUP BY 1
     ),
     po_bulanan AS (
-        SELECT
-            DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month,
-            COUNT(*) AS total_po
-        FROM vw_sips
-        WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond}
-        GROUP BY 1
+        SELECT DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month, COUNT(*) AS total_po
+        FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} GROUP BY 1
     )
-    SELECT
-        TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
-        COALESCE(pr_bulanan.total_pr, 0) AS total_pr,
-        COALESCE(po_bulanan.total_po, 0) AS total_po
-    FROM pr_bulanan
-    FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month
-    ORDER BY 1
+    SELECT TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
+           COALESCE(pr_bulanan.total_pr, 0) AS total_pr, COALESCE(po_bulanan.total_po, 0) AS total_po
+    FROM pr_bulanan FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month ORDER BY 1
     """
 
-    # Kueri Tren SIPS (Nilai Rupiah)
-    # OE & Nilai PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan
-    # tgl_disposisi_buyer agar totalnya tetap sama persis dengan kotak KPI Total OE / Total Nilai PO.
     value_trend_query = f"""
-    SELECT
-        TO_CHAR(DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer)), 'YYYY-MM-01')::date AS month,
-        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN oe_pr ELSE 0 END) AS total_oe,
-        SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN nilai_item_po ELSE 0 END) AS total_po_val
-    FROM vw_sips
-    WHERE UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond}
-    GROUP BY 1
-    ORDER BY 1
+    SELECT TO_CHAR(DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer)), 'YYYY-MM-01')::date AS month,
+           SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN oe_pr ELSE 0 END) AS total_oe,
+           SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN nilai_item_po ELSE 0 END) AS total_po_val
+    FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} GROUP BY 1 ORDER BY 1
     """
 
-    # Kueri SIPS Diperluas
     sips_otobos_query = f"""
     SELECT
         SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
@@ -483,42 +642,28 @@ def render(load_data, **kwargs):
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_total,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na
-    FROM vw_sips
-    WHERE {where_gabungan}
+    FROM vw_sips WHERE {where_gabungan}
     """
 
-    # Kueri KPI dari SAP (untuk Sinergi, Pengiriman, Ketepatan)
     sap_kpi_query = f"""
     SELECT
-        COUNT(poi.nomor_po)                                           AS total_po,
+        COUNT(poi.nomor_po) AS total_po,
         COUNT(CASE WHEN poi.status_pengiriman = 'SELESAI' THEN 1 END) AS po_delivered,
         COUNT(CASE WHEN poi.on_time_delivery = 'TEPAT WAKTU' THEN 1 END) AS po_ontime,
         COUNT(CASE WHEN poi.on_time_delivery IN ('TEPAT WAKTU','TERLAMBAT') THEN 1 END) AS po_delivered_total,
-        COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') 
-                     THEN poi.total_amount_local_curr ELSE 0 END), 0) AS total_sinergi_pi
-    FROM po_items poi
-    JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
+        COALESCE(SUM(CASE WHEN poh.vendor_code IN ('4000000011', '4000000012') THEN poi.total_amount_local_curr ELSE 0 END), 0) AS total_sinergi_pi
+    FROM po_items poi JOIN purchase_orders poh ON poi.nomor_po = poh.nomor_po
     WHERE poh.date_ordered >= '{date_from}' AND poh.date_ordered <= '{date_to}'
     """
 
-    # Kueri Utilisasi EPROC (Overall) - Akan menyesuaikan bulan di Dashboard
     eproc_kpi_query = f"""
-    SELECT
-        COUNT(*) AS total_dokumen,
-        SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc
-    FROM data_eproc
-    WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
+    SELECT COUNT(*) AS total_dokumen, SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc
+    FROM data_eproc WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
     """
 
-    # Kueri Utilisasi EPROC (Per Karyawan / PIC)
     eproc_emp_query = f"""
-    SELECT
-        UPPER(TRIM(pic)) AS nama_join,
-        COUNT(*) AS total_dokumen_eproc,
-        SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc_method
-    FROM data_eproc
-    WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
-    GROUP BY UPPER(TRIM(pic))
+    SELECT UPPER(TRIM(pic)) AS nama_join, COUNT(*) AS total_dokumen_eproc, SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc_method
+    FROM data_eproc WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}' GROUP BY UPPER(TRIM(pic))
     """
 
     with st.spinner("Memuat data laporan..."):
@@ -538,43 +683,27 @@ def render(load_data, **kwargs):
     def resolve_month_date(month_ts):
         y, m = month_ts.year, month_ts.month
         cy, cm = today.year, today.month
-        if (y, m) == (cy, cm):
-            return pd.Timestamp(today)
-        elif (y, m) < (cy, cm):
-            last_day = calendar.monthrange(y, m)[1]
-            return pd.Timestamp(y, m, last_day)
-        else:
-            return month_ts
+        if (y, m) == (cy, cm): return pd.Timestamp(today)
+        elif (y, m) < (cy, cm): return pd.Timestamp(y, m, calendar.monthrange(y, m)[1])
+        else: return month_ts
 
-    def fmt_date(ts):
-        return f"{ts.day} {ts.strftime('%b')} {ts.year}"
+    def fmt_date(ts): return f"{ts.day} {ts.strftime('%b')} {ts.year}"
 
-    # Proses Data Pandas untuk Grafik
     if not trend_data.empty:
         trend_data['month'] = pd.to_datetime(trend_data['month']).dt.tz_localize(None)
         trend_data = trend_data.sort_values('month')
-        
-        # Hitung Cumsum (Akumulasi) sebelum data dipotong, agar ekor/backlog tahun 2025 ikut terbawa
         trend_data['cum_pr'] = trend_data['total_pr'].cumsum()
         trend_data['cum_po'] = trend_data['total_po'].cumsum()
-        
-        # Potong sumbu X (Slicing) agar grafik tetap rapi
         trend_data = trend_data[(trend_data['month'] >= dt_from_pd) & (trend_data['month'] <= dt_to_pd)]
-        
         trend_data['month_display'] = trend_data['month'].apply(resolve_month_date)
         trend_data['hover_label'] = trend_data['month_display'].apply(fmt_date)
 
     if not val_trend_data.empty:
         val_trend_data['month'] = pd.to_datetime(val_trend_data['month']).dt.tz_localize(None)
         val_trend_data = val_trend_data.sort_values('month')
-        
-        # Hitung Cumsum (Akumulasi) sebelum data dipotong
         val_trend_data['cum_oe'] = val_trend_data['total_oe'].cumsum()
         val_trend_data['cum_po'] = val_trend_data['total_po_val'].cumsum()
-        
-        # Potong sumbu X (Slicing)
         val_trend_data = val_trend_data[(val_trend_data['month'] >= dt_from_pd) & (val_trend_data['month'] <= dt_to_pd)]
-        
         val_trend_data['month_display'] = val_trend_data['month'].apply(resolve_month_date)
         val_trend_data['hover_label'] = val_trend_data['month_display'].apply(fmt_date)
         val_trend_data['oe_fmt'] = val_trend_data['total_oe'].apply(format_idr)
@@ -582,87 +711,241 @@ def render(load_data, **kwargs):
         val_trend_data['cum_oe_fmt'] = val_trend_data['cum_oe'].apply(format_idr)
         val_trend_data['cum_po_fmt'] = val_trend_data['cum_po'].apply(format_idr)
 
-    # Perhitungan Metrik SIPS
     if not sips_otobos_data.empty:
-        # Metrik OTOBOS
         s_po = int(sips_otobos_data['total_po'][0] or 0)
         s_ontime = float(sips_otobos_data['sla_ontime'][0] or 0)
         s_onbudget = int(sips_otobos_data['on_budget_count'][0] or 0)
-        
         sla_on_time_pct = (s_ontime / s_po * 100) if s_po > 0 else 0.0
         sla_on_budget_pct = (s_onbudget / s_po * 100) if s_po > 0 else 0.0
-        
-        # Metrik untuk Laporan Pengadaan SIPS (Bagian 2)
         sips_total_pr = int(sips_otobos_data['total_pr'][0] or 0)
         sips_total_po = s_po
         sips_pr_without = sips_total_pr - sips_total_po
         sips_pct_pr_po = (sips_total_po / sips_total_pr * 100) if sips_total_pr > 0 else 0.0
-        
-        # Rata-rata Lead Time
         sips_avg_lt = float(sips_otobos_data['avg_pr_po'][0] or 0)
-
         sips_oe_total = float(sips_otobos_data['sips_oe_total'][0] or 0)
         sips_po_total = float(sips_otobos_data['sips_po_total'][0] or 0)
-        
-        # Ekstraksi khusus Nilai Non Agreement
         sips_oe_na = float(sips_otobos_data['sips_oe_na'][0] or 0)
         sips_po_na = float(sips_otobos_data['sips_po_na'][0] or 0)
-        
-        # Efisiensi dihitung dengan data Non Agreement
         sips_savings = sips_oe_na - sips_po_na
         sips_savings_pct = (sips_savings / sips_oe_na * 100) if sips_oe_na > 0 else 0.0
     else:
-        sla_on_time_pct = 0.0
-        sla_on_budget_pct = 0.0
-        sips_total_pr = 0
-        sips_total_po = 0
-        sips_pr_without = 0
-        sips_pct_pr_po = 0.0
-        sips_avg_lt = 0.0
-        sips_oe_total = 0.0
-        sips_po_total = 0.0
-        sips_savings = 0.0
-        sips_savings_pct = 0.0
+        sla_on_time_pct = sla_on_budget_pct = sips_total_pr = sips_total_po = sips_pr_without = sips_pct_pr_po = sips_avg_lt = sips_oe_total = sips_po_total = sips_savings = sips_savings_pct = 0.0
 
-    # Perhitungan Metrik SAP
     if not sap_kpi_data.empty:
         sap_total_po = int(sap_kpi_data['total_po'][0] or 0)
         sap_po_delivered = int(sap_kpi_data['po_delivered'][0] or 0)
         sap_po_ontime = int(sap_kpi_data['po_ontime'][0] or 0)
         sap_po_del_tot = int(sap_kpi_data['po_delivered_total'][0] or 0)
         sap_sinergi_pi_val = float(sap_kpi_data['total_sinergi_pi'][0] or 0)
-
         sap_pct_pengiriman = (sap_po_delivered / sap_total_po * 100) if sap_total_po > 0 else 0.0
         sap_ketepatan_pct = (sap_po_ontime / sap_po_del_tot * 100) if sap_po_del_tot > 0 else 0.0
     else:
-        sap_pct_pengiriman = 0.0
-        sap_ketepatan_pct = 0.0
-        sap_sinergi_pi_val = 0.0
+        sap_pct_pengiriman = sap_ketepatan_pct = sap_sinergi_pi_val = 0.0
 
-    # Penetapan nilai On Spec
+    _ARAH_SYM = {">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "="}
+
+    # =========================================================================
+    # KONEKSI KPI KE DATABASE
+    # =========================================================================
+    
+    # Fungsi utama untuk menembak ke cache DB bulanan / fallback dengan AUTO FORMAT
+    def _load_kpi(prefix: str, default_arah: str = ">="):
+        monthly = kpi_monthly_cache.get(prefix, {})
+        
+        nilai     = (monthly.get("nilai", "") or get_setting(f"{prefix}_NILAI", "-")).strip() or "-"
+        target    = (monthly.get("target", "") or get_setting(f"{prefix}_TARGET", "-")).strip() or "-"
+        arah      = (monthly.get("arah", "") or get_setting(f"{prefix}_ARAH", default_arah)).strip() or default_arah
+        free_text = (monthly.get("free_text", "") or get_setting(f"{prefix}_FREE_TEXT", "")).strip()
+
+        # --- AUTO FORMATTER UNTUK ANGKA MENTAH ---
+        def auto_format(val, kpi_type):
+            if val == "-" or not val: return val
+            # Jika user sudah ngetik Rp, %, M, T, atau ada spasi/garis miring, biarkan (berarti sudah diformat manual)
+            if any(c.isalpha() or c in ['%', '/'] for c in val.replace(" ", "")): 
+                return val
+            
+            try:
+                # Ubah teks angka murni jadi float
+                num = float(val.replace(",", "."))
+                
+                # Format ke Rupiah Singkat (Miliar / Triliun)
+                if kpi_type == "KPI_NET_INCOME":
+                    if num >= 1_000_000_000_000:
+                        return f"Rp {num/1_000_000_000_000:,.2f} T".replace(",", "X").replace(".", ",").replace("X", ".")
+                    elif num >= 1_000_000_000:
+                        return f"Rp {num/1_000_000_000:,.2f} M".replace(",", "X").replace(".", ",").replace("X", ".")
+                    else:
+                        return f"Rp {num:,.0f}".replace(",", ".")
+                        
+                # Format ke Persentase
+                elif kpi_type in ["KPI_COST_OPT", "KPI_PENAGIHAN", "KPI_PDN", "KPI_TRADING_NPK", "KPI_ZSO_BB", "KPI_ZSO_KANTONG", "KPI_TALENT_DEV", "KPI_SLA_PEMBEBASAN", "KPI_PRODUKTIVITAS", "KPI_UTILISASI"]:
+                    return f"{num:,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+                else:
+                    return val
+            except ValueError:
+                return val
+
+        # Terapkan auto-format sebelum dilempar ke UI
+        nilai_tampil = auto_format(nilai, prefix)
+        target_tampil = auto_format(target, prefix)
+        # -----------------------------------------
+
+        color, border = _eval_kpi_color(nilai_tampil, target_tampil, arah)
+        sym   = _ARAH_SYM.get(arah, "")
+        delta = f"Target: {sym} {target_tampil}".strip() if target_tampil != "-" else "Target: -"
+        if free_text:
+            delta = f"{delta} | {free_text}"
+        return nilai_tampil, target_tampil, arah, color, border, delta
+
+    # 1. On Spec
+    _onspec_monthly = kpi_monthly_cache.get("KPI_ON_SPEC", {})
+    _on_spec_override = _onspec_monthly.get("nilai", "") or get_setting("KPI_ON_SPEC_NILAI", "")
     sla_on_spec_pct = 99.30
-    otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
+    if _on_spec_override:
+        try:
+            _clean_val = _on_spec_override.replace("%", "").strip().replace(",", ".")
+            sla_on_spec_pct = float(_clean_val)
+        except ValueError:
+            pass
 
-    # Dynamic color logic based on targets
-    _prod_target = get_setting("KPI_PRODUKTIVITAS_TARGET", "90%")
-    _prod_arah   = get_setting("KPI_PRODUKTIVITAS_ARAH",   ">")
-    _prod_color, _ = _eval_kpi_color(f"{sips_pct_pr_po:.2f}%", _prod_target, _prod_arah)
+    # 2. Total OTOBOS
+    otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
+    color_otobos = "green" if otobos_val >= 90 else "red"
+    _otobos_monthly   = kpi_monthly_cache.get("KPI_OTOBOS", {})
+    _otobos_ft = _otobos_monthly.get("free_text", "") or get_setting("KPI_OTOBOS_FREE_TEXT", "")
+    _otobos_tgt = _otobos_monthly.get("target", "") or get_setting("KPI_OTOBOS_TARGET", "90%")
+    _otobos_arah = _otobos_monthly.get("arah", "") or get_setting("KPI_OTOBOS_ARAH", ">=")
+    _otobos_sym  = _ARAH_SYM.get(_otobos_arah, "≥")
+    
+    # Format the target if it's raw
+    def auto_format_target(val):
+        if val == "-" or not val: return val
+        if any(c.isalpha() or c in ['%', '/'] for c in val.replace(" ", "")): return val
+        try: return f"{float(val.replace(',', '.')):,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
+        except: return val
+
+    otobos_delta = f"Target: {_otobos_sym} {auto_format_target(_otobos_tgt)}"
+    if _otobos_ft: otobos_delta = f"{otobos_delta} | {_otobos_ft}"
+
+    # 3. Produktivitas
+    _prod_monthly   = kpi_monthly_cache.get("KPI_PRODUKTIVITAS", {})
+    _prod_target    = _prod_monthly.get("target", "") or get_setting("KPI_PRODUKTIVITAS_TARGET", "90%")
+    _prod_arah      = _prod_monthly.get("arah", "") or get_setting("KPI_PRODUKTIVITAS_ARAH", ">")
+    _prod_free_text = _prod_monthly.get("free_text", "") or get_setting("KPI_PRODUKTIVITAS_FREE_TEXT", "")
+    _prod_color, _  = _eval_kpi_color(f"{sips_pct_pr_po:.2f}%", _prod_target, _prod_arah)
     color_produktivitas = _prod_color if _prod_color in ("green", "red") else ("green" if sips_pct_pr_po > 90 else "red")
+    _prod_sym = _ARAH_SYM.get(_prod_arah, ">")
+    
+    _prod_target_fmt = auto_format_target(_prod_target)
+    produktivitas_delta = f"Target: {_prod_sym} {_prod_target_fmt}".strip() if _prod_target_fmt and _prod_target_fmt != "-" else "Target: -"
+    if _prod_free_text: produktivitas_delta = f"{produktivitas_delta} | {_prod_free_text}"
+    st.session_state["_aktual_KPI_PRODUKTIVITAS"] = sips_pct_pr_po
+
+    # 4. Kecepatan Pembebasan
+    _pem_monthly   = kpi_monthly_cache.get("KPI_SLA_PEMBEBASAN", {})
+    _pem_target    = _pem_monthly.get("target", "") or get_setting("KPI_SLA_PEMBEBASAN_TARGET", "80%")
+    _pem_arah      = _pem_monthly.get("arah", "") or get_setting("KPI_SLA_PEMBEBASAN_ARAH", ">=")
+    _pem_free_text = _pem_monthly.get("free_text", "") or get_setting("KPI_SLA_PEMBEBASAN_FREE_TEXT", "")
+    _pem_color, _  = _eval_kpi_color(f"{sla_on_time_pct:.2f}%", _pem_target, _pem_arah)
+    pembebasan_color_db = _pem_color if _pem_color in ("green", "red") else ("green" if sla_on_time_pct >= 80 else "red")
+    _pem_sym = _ARAH_SYM.get(_pem_arah, "≥")
+    
+    _pem_target_fmt = auto_format_target(_pem_target)
+    sla_pembebasan_delta = f"Target: {_pem_sym} {_pem_target_fmt}".strip()
+    if _pem_free_text: sla_pembebasan_delta = f"{sla_pembebasan_delta} | {_pem_free_text}"
+    st.session_state["_aktual_KPI_SLA_PEMBEBASAN"] = sla_on_time_pct
+
+    # 5. Izin Impor
+    _izin_monthly    = kpi_monthly_cache.get("KPI_IZIN_IMPOR", {})
+    izin_impor_nilai = (_izin_monthly.get("nilai", "") or get_setting("KPI_IZIN_IMPOR_NILAI", "100%")).strip() or "100%"
+    _izin_tgt        = _izin_monthly.get("target", "") or get_setting("KPI_IZIN_IMPOR_TARGET", "2 / 2")
+    _izin_ft         = _izin_monthly.get("free_text", "") or get_setting("KPI_IZIN_IMPOR_FREE_TEXT", "")
+    _izin_legacy_delta = get_setting("KPI_IZIN_IMPOR_DELTA", "Target: 2 / 2")
+    izin_impor_delta = f"Target: {_izin_tgt}" if _izin_tgt and _izin_tgt != "-" else _izin_legacy_delta
+    if _izin_ft: izin_impor_delta = f"{izin_impor_delta} | {_izin_ft}"
+
+    # 6. Efisiensi Pengadaan Global (Tidak masuk tabel DB bulanan)
+    efisiensi_pengadaan_delta = get_setting("KPI_EFISIENSI_PENGADAAN_DELTA", "Target: > 2%")
+    _efisiensi_free_text = get_setting("KPI_EFISIENSI_PENGADAAN_FREE_TEXT", "")
+    if _efisiensi_free_text: efisiensi_pengadaan_delta = f"{efisiensi_pengadaan_delta} | {_efisiensi_free_text}"
+
+    # 7. Eksekusi standard _load_kpi
+    ni_nilai,   ni_target,   ni_arah,   ni_color,   ni_border,   ni_delta   = _load_kpi("KPI_NET_INCOME")
+    co_nilai,   co_target,   co_arah,   co_color,   co_border,   co_delta   = _load_kpi("KPI_COST_OPT")
+    pd_nilai,   pd_target,   pd_arah,   pd_color,   pd_border,   pd_delta   = _load_kpi("KPI_PENAGIHAN")
+    pdn_nilai,  pdn_target,  pdn_arah,  pdn_color,  pdn_border,  pdn_delta  = _load_kpi("KPI_PDN")
+    npk_nilai,  npk_target,  npk_arah,  npk_color,  npk_border,  npk_delta  = _load_kpi("KPI_TRADING_NPK")
+    zbb_nilai,  zbb_target,  zbb_arah,  zbb_color,  zbb_border,  zbb_delta  = _load_kpi("KPI_ZSO_BB", default_arah=">=")
+    zkn_nilai,  zkn_target,  zkn_arah,  zkn_color,  zkn_border,  zkn_delta  = _load_kpi("KPI_ZSO_KANTONG", default_arah=">=")
+    usp_nilai,  usp_target,  usp_arah,  usp_color,  usp_border,  usp_delta  = _load_kpi("KPI_UTILISASI")
+    saf_nilai,  saf_target,  saf_arah,  saf_color,  saf_border,  saf_delta  = _load_kpi("KPI_SAFETY", default_arah=">=")
+    tde_nilai,  tde_target,  tde_arah,  tde_color,  tde_border,  tde_delta  = _load_kpi("KPI_TALENT_DEV")
+    laporan_kinerja_nilai, laporan_kinerja_target, laporan_kinerja_arah, laporan_kinerja_color, laporan_kinerja_border, laporan_kinerja_delta = _load_kpi("KPI_LAPORAN_KINERJA", default_arah="<")
+
+    # Override Utilisasi Single Platform jika ada data DB asli EPROC
+    if not eproc_kpi_data.empty and pd.notna(eproc_kpi_data['total_dokumen'][0]) and eproc_kpi_data['total_dokumen'][0] > 0:
+        tot_dok = float(eproc_kpi_data['total_dokumen'][0])
+        tot_epr = float(eproc_kpi_data['total_eproc'][0])
+        util_pct = (tot_epr / tot_dok) * 100
+        usp_nilai = f"{format_number(util_pct, decimals=2)}%"
+        usp_color, usp_border = _eval_kpi_color(usp_nilai, usp_target, usp_arah)
+
+    # 8. Mappings Warna lainnya
     color_kecepatan = "green" if sips_avg_lt <= 55 else "red"
     color_efisiensi_pengadaan = "green" if sips_savings_pct > 2 else "red"
     color_pengiriman = "green" if sap_pct_pengiriman > 80 else "red"
     color_ketepatan = "green" if sap_ketepatan_pct > 90 else "red"
-    color_otobos = "green" if otobos_val > 90 else "red"
-    color_otobos = "green" if otobos_val >= 90 else "red"
+    border_class_map = {"green": "border-green", "red": "border-red"}
 
-    border_class_map = {
-        "green": "border-green",
-        "red":   "border-red",
-    }
+    # =========================================================================
+    # DIALOG EDIT (FALLBACK) - Dibiarkan fungsinya agar Laporan Bagian (Bagian 3) tidak error
+    # =========================================================================
+    def _dialog_full(title: str, prefix: str, default_arah: str = ">="):
+        @st.dialog(f"Edit Fallback KPI: {title}")
+        def _dlg():
+            st.markdown("<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>⚠️ Edit di sini hanya mengubah nilai <b>legacy (get_setting)</b>. Untuk mengubah per-bulan, gunakan halaman <b>Editor KPI Bulanan</b>.</p>", unsafe_allow_html=True)
+            inp_nilai = st.text_input("Nilai Pencapaian", value=get_setting(f"{prefix}_NILAI", "-"))
+            inp_target = st.text_input("Target", value=get_setting(f"{prefix}_TARGET", "-"))
+            _cur_arah = get_setting(f"{prefix}_ARAH", default_arah)
+            _cur_idx  = ARAH_OPTIONS.index(_cur_arah) if _cur_arah in ARAH_OPTIONS else 1
+            inp_arah = st.radio("Kondisi hijau", options=ARAH_OPTIONS, index=_cur_idx, format_func=lambda x: ARAH_LABELS[x])
+            inp_free_text = st.text_input("Free Text (opsional)", value=get_setting(f"{prefix}_FREE_TEXT", ""))
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", use_container_width=True):
+                    set_setting(f"{prefix}_NILAI",  inp_nilai.strip()  or "-")
+                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
+                    set_setting(f"{prefix}_ARAH",   inp_arah)
+                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True): st.rerun()
+        return _dlg
 
-    # ═════════════════════════════════════════════════════════════════════════
-    # BAGIAN 1: KPI PENGADAAN BARANG (SIPS)
-    # ═════════════════════════════════════════════════════════════════════════
+    def _dialog_efisiensi_bagian(bagian_label: str, prefix: str):
+        @st.dialog(f"Edit Target Efisiensi: {bagian_label}")
+        def _dlg():
+            inp_target = st.text_input("Target (%)", value=get_setting(f"{prefix}_TARGET", ""))
+            _cur_arah = get_setting(f"{prefix}_ARAH", ">")
+            _cur_idx  = ARAH_OPTIONS.index(_cur_arah) if _cur_arah in ARAH_OPTIONS else 0
+            inp_arah = st.radio("Kondisi hijau", options=ARAH_OPTIONS, index=_cur_idx, format_func=lambda x: ARAH_LABELS[x])
+            col_s, col_c = st.columns(2)
+            with col_s:
+                if st.button("Simpan", type="primary", use_container_width=True):
+                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
+                    set_setting(f"{prefix}_ARAH",   inp_arah)
+                    st.rerun()
+            with col_c:
+                if st.button("Batal", use_container_width=True): st.rerun()
+        return _dlg
+
+    dlg_utilisasi = _dialog_full("% Utilisasi Single Platform Pengadaan", "KPI_UTILISASI")
+
+    # =========================================================================
+    # RENDER BAGIAN 1: KPI PENGADAAN BARANG (SIPS)
+    # Catatan: Semua Tombol Edit telah dihapus dari antarmuka ini sesuai instruksi.
+    # =========================================================================
     st.markdown(
         f"<h2 style='display:flex; align-items:center; font-size:32px; margin: 0 0 4px 0; font-weight:700; color:var(--text-color);'>"
         f"<span style='margin-right:12px; transform: translateY(4px); display:inline-flex; align-items:center;'>{_svg(ICONS['graph_up'], 32)}</span>"
@@ -673,463 +956,70 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # ── Konstanta arah ────────────────────────────────────────────────────
-    _ARAH_SYM    = {">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "="}
-    _ARAH_OPTIONS = [">", ">=", "<", "<=", "="]
-    _ARAH_LABELS  = {
-        ">":  "Lebih besar dari  ( nilai > target )",
-        ">=": "Lebih besar atau sama dengan  ( nilai ≥ target )",
-        "<":  "Lebih kecil dari  ( nilai < target )",
-        "<=": "Lebih kecil atau sama dengan  ( nilai ≤ target )",
-        "=":  "Sama dengan  ( nilai = target )",
-    }
-
-    # ── Helper: baca satu KPI dari DB dan kembalikan (nilai, target, arah, color, border, delta_label) ──
-    def _load_kpi(prefix: str, default_arah: str = ">="):
-        nilai     = get_setting(f"{prefix}_NILAI",     "-")
-        target    = get_setting(f"{prefix}_TARGET",    "-")
-        arah      = get_setting(f"{prefix}_ARAH",      default_arah)
-        free_text = get_setting(f"{prefix}_FREE_TEXT", "")
-        color, border = _eval_kpi_color(nilai, target, arah)
-        sym   = _ARAH_SYM.get(arah, "")
-        delta = f"Target: {sym} {target}".strip() if target != "-" else "Target: -"
-        if free_text:
-            delta = f"{delta} | {free_text}"
-        return nilai, target, arah, color, border, delta
-
-    # ── Helper: render dialog edit nilai+target+arah (full) ───────────────
-    def _dialog_full(title: str, prefix: str, default_arah: str = ">="):
-        @st.dialog(f"Edit KPI: {title}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Angka diekstrak otomatis dari label untuk menentukan warna kartu.</p>",
-                unsafe_allow_html=True
-            )
-            inp_nilai = st.text_input(
-                "Nilai Pencapaian",
-                value=get_setting(f"{prefix}_NILAI", "-"),
-                placeholder="Contoh: Rp 12.5 M  |  87,5%  |  95"
-            )
-            inp_target = st.text_input(
-                "Target",
-                value=get_setting(f"{prefix}_TARGET", "-"),
-                placeholder="Contoh: Rp 10 M  |  90%  |  100"
-            )
-            _cur_arah = get_setting(f"{prefix}_ARAH", default_arah)
-            _cur_idx  = _ARAH_OPTIONS.index(_cur_arah) if _cur_arah in _ARAH_OPTIONS else 1
-            inp_arah = st.radio(
-                "Kondisi hijau (kapan nilai dianggap baik?)",
-                options=_ARAH_OPTIONS,
-                index=_cur_idx,
-                format_func=lambda x: _ARAH_LABELS[x],
-            )
-            n_parsed = _parse_label_to_num(inp_nilai)
-            t_parsed = _parse_label_to_num(inp_target)
-            if n_parsed is not None and t_parsed is not None:
-                prev_color, _ = _eval_kpi_color(inp_nilai, inp_target, inp_arah)
-                st.caption(f"Preview: **{n_parsed:,.4g}** vs **{t_parsed:,.4g}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
-            else:
-                st.caption("Angka belum terdeteksi - kartu tetap netral.")
-            inp_free_text = st.text_input(
-                "Free Text (opsional)",
-                value=get_setting(f"{prefix}_FREE_TEXT", ""),
-                placeholder="Contoh: per tanggal 24 Maret 2026",
-                help="Teks ini akan ditambahkan ke delta: Target: ≥ X% | <free text>"
-            )
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_NILAI",  inp_nilai.strip()  or "-")
-                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
-                    set_setting(f"{prefix}_ARAH",   inp_arah)
-                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True):
-                    st.rerun()
-        return _dlg
-
-    # ── Helper: dialog edit delta saja (untuk OTOBOS & Produktivitas) ─────
-    def _dialog_delta_only(title: str, prefix: str):
-        @st.dialog(f"Edit Delta: {title}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Ubah teks keterangan (baris bawah) pada kartu KPI ini.</p>",
-                unsafe_allow_html=True
-            )
-            inp_delta = st.text_input(
-                "Teks Keterangan (delta)",
-                value=get_setting(f"{prefix}_DELTA", ""),
-                placeholder="Contoh: Target: > 90%"
-            )
-            inp_free_text = st.text_input(
-                "Free Text (opsional)",
-                value=get_setting(f"{prefix}_FREE_TEXT", ""),
-                placeholder="Contoh: per tanggal 24 Maret 2026",
-                help="Teks ini akan ditambahkan ke delta: <delta> | <free text>"
-            )
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_DELTA", inp_delta.strip())
-                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True):
-                    st.rerun()
-        return _dlg
-
-    # ── Helper: dialog edit nilai saja (SLA On Spec) ─────────────────────
-    def _dialog_nilai_only(title: str, prefix: str):
-        @st.dialog(f"Edit Nilai: {title}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Ubah nilai On Spec. Nilai ini juga mempengaruhi perhitungan Total OTOBOS.</p>",
-                unsafe_allow_html=True
-            )
-            inp_val = st.text_input(
-                "Nilai On Spec (%)",
-                value=get_setting(f"{prefix}_NILAI", ""),
-                placeholder="Contoh: 99,30"
-            )
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_NILAI", inp_val.strip())
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True):
-                    st.rerun()
-        return _dlg
-        
-    # ── Helper: dialog edit nilai dan delta (full) ───────────────
-    def _dialog_nilai_delta(title: str, prefix: str):
-        @st.dialog(f"Edit KPI: {title}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Ubah nilai dan teks keterangan (delta) pada kartu KPI ini.</p>",
-                unsafe_allow_html=True
-            )
-            inp_nilai = st.text_input("Nilai Pencapaian", value=get_setting(f"{prefix}_NILAI", "-"), placeholder="Contoh: 100% | 2 / 2")
-            inp_delta = st.text_input("Teks Keterangan (delta)", value=get_setting(f"{prefix}_DELTA", ""), placeholder="Contoh: Target: 2 / 2")
-            inp_free_text = st.text_input(
-                "Free Text (opsional)",
-                value=get_setting(f"{prefix}_FREE_TEXT", ""),
-                placeholder="Contoh: per tanggal 24 Maret 2026",
-                help="Teks ini akan ditambahkan ke delta: <delta> | <free text>"
-            )
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_NILAI", inp_nilai.strip() or "-")
-                    set_setting(f"{prefix}_DELTA", inp_delta.strip())
-                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True): st.rerun()
-        return _dlg
-
-    # ── Helper: dialog edit target+arah saja (nilai dari data, untuk Produktivitas PR-PO) ──
-    def _dialog_target_arah(title: str, prefix: str, default_arah: str = ">"):
-        @st.dialog(f"Edit KPI: {title}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Nilai pencapaian diambil otomatis dari data. Cukup isi target dan kondisi hijaunya.</p>",
-                unsafe_allow_html=True
-            )
-            inp_target = st.text_input(
-                "Target",
-                value=get_setting(f"{prefix}_TARGET", "-"),
-                placeholder="Contoh: 90%  |  80%"
-            )
-            _cur_arah = get_setting(f"{prefix}_ARAH", default_arah)
-            _cur_idx  = _ARAH_OPTIONS.index(_cur_arah) if _cur_arah in _ARAH_OPTIONS else 0
-            inp_arah = st.radio(
-                "Kondisi hijau (kapan nilai dianggap baik?)",
-                options=_ARAH_OPTIONS,
-                index=_cur_idx,
-                format_func=lambda x: _ARAH_LABELS[x],
-            )
-            # Preview warna berdasarkan nilai aktual dari session state (dikirim via kwarg)
-            _nilai_aktual = st.session_state.get(f"_aktual_{prefix}", None)
-            if _nilai_aktual is not None:
-                t_parsed = _parse_label_to_num(inp_target)
-                if t_parsed is not None:
-                    prev_color, _ = _eval_kpi_color(str(_nilai_aktual), inp_target, inp_arah)
-                    sym = _ARAH_SYM.get(inp_arah, "")
-                    st.caption(f"Preview: **{_nilai_aktual:.2f}%** vs Target {sym} **{inp_target}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
-                else:
-                    st.caption("Masukkan angka target untuk melihat preview warna.")
-            inp_free_text = st.text_input(
-                "Free Text (opsional)",
-                value=get_setting(f"{prefix}_FREE_TEXT", ""),
-                placeholder="Contoh: per tanggal 24 Maret 2026",
-                help="Teks ini akan ditambahkan ke delta: Target: ≥ X% | <free text>"
-            )
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
-                    set_setting(f"{prefix}_ARAH",   inp_arah)
-                    set_setting(f"{prefix}_FREE_TEXT", inp_free_text.strip())
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True):
-                    st.rerun()
-        return _dlg
-
-    # ── Helper: dialog edit target efisiensi per bagian (Laporan Bagian) ────
-    def _dialog_efisiensi_bagian(bagian_label: str, prefix: str):
-        @st.dialog(f"Edit Target Efisiensi: {bagian_label}")
-        def _dlg():
-            st.markdown(
-                "<p style='font-size:13px; opacity:0.6; margin-bottom:16px;'>"
-                "Atur target efisiensi untuk bagian ini. Nilai Rp aktual dari data akan "
-                "ditambahkan otomatis sebagai keterangan di belakang target.</p>",
-                unsafe_allow_html=True
-            )
-            inp_target = st.text_input(
-                "Target (%)",
-                value=get_setting(f"{prefix}_TARGET", ""),
-                placeholder="Contoh: 5%  |  0,05%"
-            )
-            _cur_arah = get_setting(f"{prefix}_ARAH", ">")
-            _cur_idx  = _ARAH_OPTIONS.index(_cur_arah) if _cur_arah in _ARAH_OPTIONS else 0
-            inp_arah = st.radio(
-                "Kondisi hijau (kapan nilai dianggap baik?)",
-                options=_ARAH_OPTIONS,
-                index=_cur_idx,
-                format_func=lambda x: _ARAH_LABELS[x],
-            )
-            # Preview warna
-            _nilai_aktual_pct = st.session_state.get(f"_aktual_{prefix}", None)
-            if _nilai_aktual_pct is not None and inp_target.strip():
-                t_parsed = _parse_label_to_num(inp_target)
-                if t_parsed is not None:
-                    prev_color, _ = _eval_kpi_color(str(_nilai_aktual_pct), inp_target, inp_arah)
-                    sym = _ARAH_SYM.get(inp_arah, ">")
-                    st.caption(f"Preview: **{_nilai_aktual_pct:.2f}%** vs Target {sym} **{inp_target}** → {'🟢 Hijau' if prev_color == 'green' else '🔴 Merah'}")
-                else:
-                    st.caption("Masukkan angka target untuk melihat preview warna.")
-            col_s, col_c = st.columns(2)
-            with col_s:
-                if st.button("Simpan", type="primary", icon=":material/save:", use_container_width=True):
-                    set_setting(f"{prefix}_TARGET", inp_target.strip() or "-")
-                    set_setting(f"{prefix}_ARAH",   inp_arah)
-                    st.success("Tersimpan!")
-                    st.rerun()
-            with col_c:
-                if st.button("Batal", use_container_width=True):
-                    st.rerun()
-        return _dlg
-
-    # ── Baca semua KPI dari DB ─────────────────────────────────────────────
-    ni_nilai,   ni_target,   ni_arah,   ni_color,   ni_border,   ni_delta   = _load_kpi("KPI_NET_INCOME")
-    co_nilai,   co_target,   co_arah,   co_color,   co_border,   co_delta   = _load_kpi("KPI_COST_OPT")
-    pd_nilai,   pd_target,   pd_arah,   pd_color,   pd_border,   pd_delta   = _load_kpi("KPI_PENAGIHAN")
-    pdn_nilai,  pdn_target,  pdn_arah,  pdn_color,  pdn_border,  pdn_delta  = _load_kpi("KPI_PDN")
-    npk_nilai,  npk_target,  npk_arah,  npk_color,  npk_border,  npk_delta  = _load_kpi("KPI_TRADING_NPK")
-    imp_nilai,  imp_target,  imp_arah,  imp_color,  imp_border,  imp_delta  = _load_kpi("KPI_BARANG_IMPOR")
-    zbb_nilai,  zbb_target,  zbb_arah,  zbb_color,  zbb_border,  zbb_delta  = _load_kpi("KPI_ZSO_BB")
-    zkn_nilai,  zkn_target,  zkn_arah,  zkn_color,  zkn_border,  zkn_delta  = _load_kpi("KPI_ZSO_KANTONG")
-    usp_nilai,  usp_target,  usp_arah,  usp_color,  usp_border,  usp_delta  = _load_kpi("KPI_UTILISASI")
-    saf_nilai,  saf_target,  saf_arah,  saf_color,  saf_border,  saf_delta  = _load_kpi("KPI_SAFETY",      default_arah=">=")
-    tde_nilai,  tde_target,  tde_arah,  tde_color,  tde_border,  tde_delta  = _load_kpi("KPI_TALENT_DEV")
-    efisiensi_pengadaan_delta = get_setting("KPI_EFISIENSI_PENGADAAN_DELTA", "Target: > 2%")
-    _efisiensi_free_text = get_setting("KPI_EFISIENSI_PENGADAAN_FREE_TEXT", "")
-    if _efisiensi_free_text:
-        efisiensi_pengadaan_delta = f"{efisiensi_pengadaan_delta} | {_efisiensi_free_text}"
-    laporan_kinerja_nilai,  laporan_kinerja_target,  laporan_kinerja_arah,  laporan_kinerja_color,  laporan_kinerja_border,  laporan_kinerja_delta  = _load_kpi("KPI_LAPORAN_KINERJA", default_arah="<")
-    izin_impor_nilai, izin_impor_delta = get_setting("KPI_IZIN_IMPOR_NILAI", "100%"), get_setting("KPI_IZIN_IMPOR_DELTA", "Target: 2 / 2")
-    _izin_impor_free_text = get_setting("KPI_IZIN_IMPOR_FREE_TEXT", "")
-    if _izin_impor_free_text:
-        izin_impor_delta = f"{izin_impor_delta} | {_izin_impor_free_text}"
-
-    # --- OVERRIDE NILAI UTILISASI DARI DATABASE EPROC ---
-    if not eproc_kpi_data.empty and pd.notna(eproc_kpi_data['total_dokumen'][0]) and eproc_kpi_data['total_dokumen'][0] > 0:
-        tot_dok = float(eproc_kpi_data['total_dokumen'][0])
-        tot_epr = float(eproc_kpi_data['total_eproc'][0])
-        util_pct = (tot_epr / tot_dok) * 100
-        
-        # Format ke string persentase
-        usp_nilai = f"{format_number(util_pct, decimals=2)}%"
-        
-        # Update warna secara dinamis berdasarkan target yang ada di konfigurasi
-        usp_color, usp_border = _eval_kpi_color(usp_nilai, usp_target, usp_arah)
-
-    # Khusus: On Spec bisa di-override dari DB, fallback ke nilai hardcode
-    _on_spec_override = get_setting("KPI_ON_SPEC_NILAI", "")
-    if _on_spec_override:
-        try:
-            # Bersihkan simbol % dan spasi (jika ada), lalu ganti koma dengan titik
-            _clean_val = _on_spec_override.replace("%", "").strip().replace(",", ".")
-            sla_on_spec_pct = float(_clean_val)
-            
-            otobos_val = (sla_on_time_pct + sla_on_budget_pct + sla_on_spec_pct) / 3
-            color_otobos = "green" if otobos_val >= 90 else "red"
-        except ValueError:
-            pass  # tetap pakai nilai hardcode jika parsing gagal
-
-    # Delta OTOBOS & Produktivitas dari DB
-    otobos_delta     = get_setting("KPI_OTOBOS_DELTA",      "Target: > 90%")
-    _prod_sym = _ARAH_SYM.get(_prod_arah, ">")
-    produktivitas_delta = f"Target: {_prod_sym} {_prod_target}".strip() if _prod_target and _prod_target != "-" else "Target: -"
-    # Simpan nilai aktual ke session_state untuk preview dialog
-    st.session_state["_aktual_KPI_PRODUKTIVITAS"] = sips_pct_pr_po
-
-    # Delta & warna Kecepatan Pembebasan Barang Impor dari DB
-    _pem_target = get_setting("KPI_SLA_PEMBEBASAN_TARGET", "80%")
-    _pem_arah   = get_setting("KPI_SLA_PEMBEBASAN_ARAH",   ">=")
-    _pem_color, _ = _eval_kpi_color(f"{sla_on_time_pct:.2f}%", _pem_target, _pem_arah)
-    pembebasan_color_db  = _pem_color if _pem_color in ("green", "red") else ("green" if sla_on_time_pct >= 80 else "red")
-    _pem_sym = _ARAH_SYM.get(_pem_arah, ">=")
-    sla_pembebasan_delta = f"Target: {_pem_sym} {_pem_target}".strip() if _pem_target and _pem_target != "-" else "Target: -"
-    st.session_state["_aktual_KPI_SLA_PEMBEBASAN"] = sla_on_time_pct
-
-    # ── Buat semua dialog ─────────────────────────────────────────────────
-    dlg_net_income  = _dialog_full("Net Income",                            "KPI_NET_INCOME")
-    dlg_cost_opt    = _dialog_full("% Cost Optimization",                   "KPI_COST_OPT")
-    dlg_penagihan   = _dialog_full("% Penagihan Despatch",                  "KPI_PENAGIHAN")
-    dlg_pdn         = _dialog_full("% Pembelian PDN",                       "KPI_PDN")
-    dlg_npk         = _dialog_full("% Pelaksanaan Trading Pupuk NPK",       "KPI_TRADING_NPK")
-    dlg_zso_bb      = _dialog_full("% Zero Stock Out Bahan Baku",           "KPI_ZSO_BB",      default_arah=">=")
-    dlg_zso_kantong = _dialog_full("% Zero Stock Out Kantong",              "KPI_ZSO_KANTONG", default_arah=">=")
-    dlg_utilisasi   = _dialog_full("% Utilisasi Single Platform Pengadaan", "KPI_UTILISASI")
-    dlg_safety      = _dialog_full("# Safety Score Pengadaan Barang",       "KPI_SAFETY",      default_arah=">=")
-    dlg_talent      = _dialog_full("% Talent Development Effectiveness",    "KPI_TALENT_DEV")
-    dlg_sla_pembebasan_delta = _dialog_target_arah("% Kecepatan Pembebasan Barang Impor", "KPI_SLA_PEMBEBASAN", default_arah=">=")
-    dlg_laporan_kinerja = _dialog_full("Penyusunan Laporan Kinerja", "KPI_LAPORAN_KINERJA", default_arah="<")
-    dlg_izin_impor = _dialog_nilai_delta("Pemenuhan Izin Impor", "KPI_IZIN_IMPOR")
-    dlg_otobos_delta      = _dialog_delta_only("Total OTOBOS",   "KPI_OTOBOS")
-    dlg_on_spec_nilai     = _dialog_nilai_only("SLA - On Spec",       "KPI_ON_SPEC")
-    dlg_produktivitas_delta = _dialog_target_arah("Produktivitas PR-PO", "KPI_PRODUKTIVITAS", default_arah=">")
-
     # ── Baris 1: Financial ────────────────────────────────────────────────
     _row_label("Financial")
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(_card(ICONS["currency"], "Net Income",          ni_nilai,  ni_delta,  ni_color,  border_class=ni_border),  unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_net_income",  icon=":material/edit:", use_container_width=True): dlg_net_income()
-    with c2:
-        st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai,  co_delta,  co_color,  border_class=co_border),  unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_cost_opt",    icon=":material/edit:", use_container_width=True): dlg_cost_opt()
-    with c3:
-        st.markdown(_card(ICONS["truck"], "% Penagihan Despatch",   pd_nilai,  pd_delta,  pd_color,  border_class=pd_border),  unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_penagihan",   icon=":material/edit:", use_container_width=True): dlg_penagihan()
+    with c1: st.markdown(_card(ICONS["currency"], "Net Income", ni_nilai, ni_delta, ni_color, border_class=ni_border), unsafe_allow_html=True)
+    with c2: st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai, co_delta, co_color, border_class=co_border), unsafe_allow_html=True)
+    with c3: st.markdown(_card(ICONS["truck"], "% Penagihan Despatch", pd_nilai, pd_delta, pd_color, border_class=pd_border), unsafe_allow_html=True)
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 2: Customer ─────────────────────────────────────────────────
     _row_label("Customer")
     c4, c5, c6 = st.columns(3)
-    with c4:
-        st.markdown(_card(ICONS["house"],   "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_pdn",   icon=":material/edit:", use_container_width=True): dlg_pdn()
-    with c5:
-        st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK",          npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_npk",   icon=":material/edit:", use_container_width=True): dlg_npk()
+    with c4: st.markdown(_card(ICONS["house"], "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
+    with c5: st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK", npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
     with c6:
         pembebasan_val = f"{format_number(sla_on_time_pct, decimals=2)}%"
         pembebasan_border = border_class_map.get(pembebasan_color_db, "")
         st.markdown(_card(ICONS["clock"], "% Kecepatan Pembebasan Barang Impor", pembebasan_val, sla_pembebasan_delta, pembebasan_color_db, border_class=pembebasan_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_impor", icon=":material/edit:", use_container_width=True): dlg_sla_pembebasan_delta()
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # ── Baris 3: % OTOBOS Barang (4 kolom, perlakuan khusus) ─────────────
+    # ── Baris 3: % OTOBOS Barang ──────────────────────────────────────────
     _row_label("% OTOBOS Barang")
     c7, c8, c9, c10 = st.columns([2, 1, 1, 1])
-    
     with c7:
-        # Menambahkan class "sum-card-otobos-total" ke dalam argumen border_class
         border_cls = border_class_map.get(color_otobos, "")
         st.markdown(_card(ICONS["search"], "Total OTOBOS", f"{format_number(otobos_val, decimals=2)}%", otobos_delta, color_otobos, border_class=f"{border_cls} sum-card-otobos-total"), unsafe_allow_html=True)
-        
-        if is_admin:
-            if st.button("Edit", key="btn_otobos_delta", icon=":material/edit:", use_container_width=True): dlg_otobos_delta()
-            
     with c8:
-        # Tambahkan border_class="sum-card-small"
         st.markdown(_card(ICONS["clock"], "On Time", f"{format_number(sla_on_time_pct, decimals=2)}%", border_class="sum-card-small"), unsafe_allow_html=True)
-        
     with c9:
-        # Tambahkan border_class="sum-card-small"
         st.markdown(_card(ICONS["currency"], "On Budget", f"{format_number(sla_on_budget_pct, decimals=2)}%", border_class="sum-card-small"), unsafe_allow_html=True)
-        
     with c10:
-        # Tambahkan border_class="sum-card-small"
         st.markdown(_card(ICONS["check_all"], "On Spec", f"{format_number(sla_on_spec_pct, decimals=2)}%", border_class="sum-card-small"), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_on_spec", icon=":material/edit:", use_container_width=True): dlg_on_spec_nilai()
-            
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # ── Baris 4 & 5: Learning & Growth + Internal Business Process ───────────
+    # ── Baris 4 & 5: Learning & Growth + Internal Business Process ────────
     main_c1, main_c2 = st.columns([1, 2], gap="medium")
 
     with main_c1:
         _row_label("Learning & Growth")
         st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_talent", icon=":material/edit:", use_container_width=True): dlg_talent()
-        
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        
         st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_produktivitas_delta", icon=":material/edit:", use_container_width=True): dlg_produktivitas_delta()
 
     with main_c2:
         _row_label("Internal Business Process")
         sub_c1, sub_c2 = st.columns(2)
         with sub_c1:
             st.markdown(_card(ICONS["box"], "% Zero Stock Out Bahan Baku", zbb_nilai, zbb_delta, zbb_color, border_class=zbb_border), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key="btn_zso_bb",      icon=":material/edit:", use_container_width=True): dlg_zso_bb()
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            st.markdown(_card(ICONS["building"],     "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key="btn_utilisasi", icon=":material/edit:", use_container_width=True): dlg_utilisasi()
+            st.markdown(_card(ICONS["building"], "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
         with sub_c2:
-            st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong",    zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key="btn_zso_kantong", icon=":material/edit:", use_container_width=True): dlg_zso_kantong()
+            st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong", zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
             st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang",       saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key="btn_safety",    icon=":material/edit:", use_container_width=True): dlg_safety()
-    
+            st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang", saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # ── Baris 6: Efficiency ──────────────────────────────────────────────
-    # Menambahkan jarak vertikal untuk menggantikan label "Efficiency" yang dihapus
+    # ── Baris 6 ──────────────────────────────────────────────────────────
     st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
-
     c17, c18 = st.columns(2)
     with c17:
         st.markdown(_card(ICONS["file_text"], "Penyusunan Laporan Kinerja", laporan_kinerja_nilai, laporan_kinerja_delta, laporan_kinerja_color, border_class=laporan_kinerja_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_laporan_kinerja", icon=":material/edit:", use_container_width=True): dlg_laporan_kinerja()
     with c18:
-        izin_impor_color = "green" # Untuk saat ini selalu green
+        izin_impor_color = "green"
         izin_impor_border = border_class_map.get(izin_impor_color, "")
         st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", izin_impor_nilai, izin_impor_delta, izin_impor_color, border_class=izin_impor_border), unsafe_allow_html=True)
-        if is_admin:
-            if st.button("Edit", key="btn_izin_impor", icon=":material/edit:", use_container_width=True): dlg_izin_impor()
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1138,7 +1028,6 @@ def render(load_data, **kwargs):
     # BAGIAN 2: LAPORAN PENGADAAN BARANG (Kiri: Volume | Kanan: Nilai)
     # ═════════════════════════════════════════════════════════════════════════
     
-    # --- PEMBATAS HALAMAN 2 ---
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
     
     st.markdown(
@@ -1153,7 +1042,6 @@ def render(load_data, **kwargs):
 
     col_kiri, col_kanan = st.columns(2, gap="large")
 
-    # == SISI KIRI: VOLUME PENGADAAN ==========================================
     with col_kiri:
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
@@ -1165,78 +1053,37 @@ def render(load_data, **kwargs):
 
         c11, c12 = st.columns(2)
         with c11:
-            st.markdown(_card(
-                ICONS["file_text"], "Total PR", format_number(sips_total_pr), 
-                f"{format_number(sips_total_po)} sudah memiliki PO"
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["file_text"], "Total PR", format_number(sips_total_pr), f"{format_number(sips_total_po)} sudah memiliki PO"), unsafe_allow_html=True)
         with c12:
-            st.markdown(_card(
-                ICONS["bag"], "Total PO", format_number(sips_total_po), 
-                "Status Closed & Proses PO"
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["bag"], "Total PO", format_number(sips_total_po), "Status Closed & Proses PO"), unsafe_allow_html=True)
         
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         c13, c14 = st.columns(2)
         with c13:
-            st.markdown(_card(
-                ICONS["clock"], "PR On Progress", format_number(sips_pr_without), ""
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["clock"], "PR On Progress", format_number(sips_pr_without), ""), unsafe_allow_html=True)
         with c14:
-            st.markdown(_card(
-                ICONS["percent"], "% PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", ""
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["percent"], "% PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", ""), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
         
         if not trend_data.empty:
-            chart_type = st.pills(
-                "Tampilan:", 
-                options=["Per Bulan (Stacked Bar)", "Kumulatif (Line)"], 
-                default="Per Bulan (Stacked Bar)",
-                key="pills_trend_summary_count"
-            )
-        
+            chart_type = st.pills("Tampilan:", options=["Per Bulan (Stacked Bar)", "Kumulatif (Line)"], default="Per Bulan (Stacked Bar)", key="pills_trend_summary_count")
             tick_vals = trend_data['month_display'].tolist()
             tick_text = trend_data['hover_label'].tolist()
-
             fig1 = go.Figure()
 
             if chart_type == "Kumulatif (Line)":
-                fig1.add_trace(go.Scatter(
-                    x=trend_data['month_display'], y=trend_data['cum_pr'],
-                    mode='lines+markers', name='PR Created', line=dict(color='#1f77b4', width=2),
-                    customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PR: %{y}<extra></extra>'
-                ))
-                fig1.add_trace(go.Scatter(
-                    x=trend_data['month_display'], y=trend_data['cum_po'],
-                    mode='lines+markers', name='PO Created', line=dict(color='#2ca02c', width=2),
-                    customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PO: %{y}<extra></extra>'
-                ))
+                fig1.add_trace(go.Scatter(x=trend_data['month_display'], y=trend_data['cum_pr'], mode='lines+markers', name='PR Created', line=dict(color='#1f77b4', width=2), customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PR: %{y}<extra></extra>'))
+                fig1.add_trace(go.Scatter(x=trend_data['month_display'], y=trend_data['cum_po'], mode='lines+markers', name='PO Created', line=dict(color='#2ca02c', width=2), customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif PO: %{y}<extra></extra>'))
                 y_axis_title = 'Cumulative Count'
             else:
-                fig1.add_trace(go.Bar(
-                    x=trend_data['month_display'], y=trend_data['total_pr'],
-                    name='PR Created', marker_color='#1f77b4',
-                    customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'
-                ))
-                fig1.add_trace(go.Bar(
-                    x=trend_data['month_display'], y=trend_data['total_po'],
-                    name='PO Created', marker_color='#2ca02c',
-                    customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'
-                ))
+                fig1.add_trace(go.Bar(x=trend_data['month_display'], y=trend_data['total_pr'], name='PR Created', marker_color='#1f77b4', customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'))
+                fig1.add_trace(go.Bar(x=trend_data['month_display'], y=trend_data['total_po'], name='PO Created', marker_color='#2ca02c', customdata=trend_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'))
                 fig1.update_layout(barmode='group') 
                 y_axis_title = 'Count per Month'
         
-            fig1.update_layout(
-                height=350,
-                xaxis_title='', yaxis_title=y_axis_title,
-                xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_text, tickangle=-30),
-                margin=dict(t=60, b=10, l=10, r=30), 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+            fig1.update_layout(height=350, xaxis_title='', yaxis_title=y_axis_title, xaxis=dict(tickmode='array', tickvals=tick_vals, ticktext=tick_text, tickangle=-30), margin=dict(t=60, b=10, l=10, r=30), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig1, use_container_width=True)
         else:
             st.info("Tidak ada data tren.")
@@ -1253,107 +1100,46 @@ def render(load_data, **kwargs):
 
         c15, c16 = st.columns(2)
         with c15:
-            st.markdown(_card(
-                ICONS["currency"], "Total OE", format_idr(sips_oe_total), 
-                "OE dari PR (Closed/Proses PO)"
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["currency"], "Total OE", format_idr(sips_oe_total), "OE dari PR (Closed/Proses PO)"), unsafe_allow_html=True)
         with c16:
-            st.markdown(_card(
-                ICONS["bag"], "Total Nilai PO", format_idr(sips_po_total), 
-                "Seluruh realisasi PO"
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["bag"], "Total Nilai PO", format_idr(sips_po_total), "Seluruh realisasi PO"), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         c17, c18 = st.columns(2)
         with c17:
-            st.markdown(_card(
-                ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)), unsafe_allow_html=True)
         with c18:
-            st.markdown(_card(
-                ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"
-            ), unsafe_allow_html=True)
+            st.markdown(_card(ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
         if not val_trend_data.empty:
-            chart_type_val = st.pills(
-                "Tampilan:", 
-                options=["Per Bulan (Bar)", "Kumulatif (Line)"], 
-                default="Per Bulan (Bar)",
-                key="pills_trend_summary_val"
-            )
-
+            chart_type_val = st.pills("Tampilan:", options=["Per Bulan (Bar)", "Kumulatif (Line)"], default="Per Bulan (Bar)", key="pills_trend_summary_val")
             fig2 = go.Figure()
 
             if chart_type_val == "Kumulatif (Line)":
-                fig2.add_trace(go.Scatter(
-                    x=val_trend_data['month_display'], y=val_trend_data['cum_oe'],
-                    mode='lines+markers', name='Estimasi PR (OE)',
-                    line=dict(color='#1f77b4', width=3, shape='spline'),
-                    fill='tozeroy', fillcolor='rgba(31,119,180,0.1)',
-                    customdata=val_trend_data[['hover_label', 'cum_oe_fmt']],
-                    hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Estimasi PR: %{customdata[1]}<extra></extra>'
-                ))
-                fig2.add_trace(go.Scatter(
-                    x=val_trend_data['month_display'], y=val_trend_data['cum_po'],
-                    mode='lines+markers', name='Nilai PO',
-                    line=dict(color='#2ca02c', width=3, shape='spline'),
-                    fill='tozeroy', fillcolor='rgba(44,160,44,0.1)',
-                    customdata=val_trend_data[['hover_label', 'cum_po_fmt']],
-                    hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Nilai PO: %{customdata[1]}<extra></extra>'
-                ))
-                
+                fig2.add_trace(go.Scatter(x=val_trend_data['month_display'], y=val_trend_data['cum_oe'], mode='lines+markers', name='Estimasi PR (OE)', line=dict(color='#1f77b4', width=3, shape='spline'), fill='tozeroy', fillcolor='rgba(31,119,180,0.1)', customdata=val_trend_data[['hover_label', 'cum_oe_fmt']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Estimasi PR: %{customdata[1]}<extra></extra>'))
+                fig2.add_trace(go.Scatter(x=val_trend_data['month_display'], y=val_trend_data['cum_po'], mode='lines+markers', name='Nilai PO', line=dict(color='#2ca02c', width=3, shape='spline'), fill='tozeroy', fillcolor='rgba(44,160,44,0.1)', customdata=val_trend_data[['hover_label', 'cum_po_fmt']], hovertemplate='<b>%{customdata[0]}</b><br>Kumulatif Nilai PO: %{customdata[1]}<extra></extra>'))
                 max_val = max(val_trend_data['cum_oe'].max(), val_trend_data['cum_po'].max())
-                
             else:
-                fig2.add_trace(go.Bar(
-                    x=val_trend_data['month_display'], y=val_trend_data['total_oe'],
-                    name='Estimasi PR (OE)',
-                    marker_color='#1f77b4',
-                    customdata=val_trend_data[['hover_label', 'oe_fmt']],
-                    hovertemplate='<b>%{customdata[0]}</b><br>Estimasi PR: %{customdata[1]}<extra></extra>'
-                ))
-                fig2.add_trace(go.Bar(
-                    x=val_trend_data['month_display'], y=val_trend_data['total_po_val'],
-                    name='Nilai PO',
-                    marker_color='#2ca02c',
-                    customdata=val_trend_data[['hover_label', 'po_fmt']],
-                    hovertemplate='<b>%{customdata[0]}</b><br>Nilai PO: %{customdata[1]}<extra></extra>'
-                ))
-                
+                fig2.add_trace(go.Bar(x=val_trend_data['month_display'], y=val_trend_data['total_oe'], name='Estimasi PR (OE)', marker_color='#1f77b4', customdata=val_trend_data[['hover_label', 'oe_fmt']], hovertemplate='<b>%{customdata[0]}</b><br>Estimasi PR: %{customdata[1]}<extra></extra>'))
+                fig2.add_trace(go.Bar(x=val_trend_data['month_display'], y=val_trend_data['total_po_val'], name='Nilai PO', marker_color='#2ca02c', customdata=val_trend_data[['hover_label', 'po_fmt']], hovertemplate='<b>%{customdata[0]}</b><br>Nilai PO: %{customdata[1]}<extra></extra>'))
                 fig2.update_layout(barmode='group')
                 max_val = max(val_trend_data['total_oe'].max(), val_trend_data['total_po_val'].max())
 
-            fig2.update_layout(
-                height=350,
-                xaxis_title='',
-                yaxis_title='Total Value (IDR)',
-                yaxis={**idr_axis(max_val), 'gridcolor': 'rgba(128,128,128,0.1)'},
-                xaxis=dict(
-                    tickmode='array', tickvals=val_trend_data['month_display'].tolist(),
-                    ticktext=val_trend_data['hover_label'].tolist(), tickangle=-30, showgrid=False
-                ),
-                margin=dict(t=60, b=10, l=10, r=30),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+            fig2.update_layout(height=350, xaxis_title='', yaxis_title='Total Value (IDR)', yaxis={**idr_axis(max_val), 'gridcolor': 'rgba(128,128,128,0.1)'}, xaxis=dict(tickmode='array', tickvals=val_trend_data['month_display'].tolist(), ticktext=val_trend_data['hover_label'].tolist(), tickangle=-30, showgrid=False), margin=dict(t=60, b=10, l=10, r=30), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Tidak ada data tren nilai.")
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-    # Garis pemisah besar sebelum masuk Laporan Bagian
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
     # ═════════════════════════════════════════════════════════════════════════
     # BAGIAN 3: LAPORAN BAGIAN
     # ═════════════════════════════════════════════════════════════════════════
     
-    # --- PEMBATAS HALAMAN 3 ---
     st.markdown('<div class="pagebreak"></div>', unsafe_allow_html=True)
 
     st.markdown(
@@ -1366,19 +1152,9 @@ def render(load_data, **kwargs):
         unsafe_allow_html=True
     )
 
-    # Tombol Pills untuk memilih bagian
-    pilihan_bagian = st.pills(
-        "Pilih Bagian:", 
-        options=["ALPATA", "BARUM", "BB/BD/BP"], 
-        default="ALPATA",
-        key="pills_laporan_bagian",
-        label_visibility="collapsed"
-    )
-
+    pilihan_bagian = st.pills("Pilih Bagian:", options=["ALPATA", "BARUM", "BB/BD/BP"], default="ALPATA", key="pills_laporan_bagian", label_visibility="collapsed")
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Kueri khusus untuk mengambil metrik performa dan Efisiensi NA per Bagian dari SIPS
-    # Filter bagian menggunakan build_sips_bagian_cond agar mutasi karyawan berefek pada date_to
     _bagian_filter_cond = build_sips_bagian_cond([pilihan_bagian], date_to=date_to)
     bagian_query = f"""
     SELECT
@@ -1391,9 +1167,7 @@ def render(load_data, **kwargs):
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
         COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
         SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
-    FROM vw_sips
-    WHERE {where_gabungan}
-      AND {_bagian_filter_cond}
+    FROM vw_sips WHERE {where_gabungan} AND {_bagian_filter_cond}
     """
 
     with st.spinner(f"Memuat performa bagian {pilihan_bagian}..."):
@@ -1404,49 +1178,43 @@ def render(load_data, **kwargs):
             b_data = pd.DataFrame()
 
     if not b_data.empty:
-        # Ekstraksi dan Kalkulasi Data
         b_total_pr  = int(b_data['total_pr'][0] or 0)
         b_total_po  = int(b_data['total_po'][0] or 0)
         b_ontime    = float(b_data['sla_ontime'][0] or 0)
         b_lt        = float(b_data['avg_pr_po'][0] or 0)
         b_onbudget  = int(b_data['on_budget_count'][0] or 0)
-
         pct_ontime   = (b_ontime / b_total_po * 100) if b_total_po > 0 else 0.0
         pct_onbudget = (b_onbudget / b_total_po * 100) if b_total_po > 0 else 0.0
-        
         b_sips_oe_na = float(b_data['sips_oe_na'][0] or 0)
         b_sips_po_na = float(b_data['sips_po_na'][0] or 0)
-            
         b_efis_val   = b_sips_oe_na - b_sips_po_na
         b_efis_pct   = (b_efis_val / b_sips_oe_na * 100) if b_sips_oe_na > 0 else 0.0
 
-        # ── Key DB per bagian (BB/BD/BP pakai key aman tanpa '/') ───────────
         _bagian_key_map = {"ALPATA": "ALPATA", "BARUM": "BARUM", "BB/BD/BP": "BBBD"}
         _bagian_key     = _bagian_key_map.get(pilihan_bagian, pilihan_bagian)
         _efis_prefix    = f"KPI_EFISIENSI_BAGIAN_{_bagian_key}"
 
-        # ── Tulis nilai aktual ke session_state untuk preview di dialog ─────
         st.session_state[f"_aktual_{_efis_prefix}"] = b_efis_pct
+        # Membaca dari Tabel Bulanan (Cache) terlebih dahulu
+        _efis_monthly = kpi_monthly_cache.get(_efis_prefix, {})
+        _efis_target = (_efis_monthly.get("target", "") or get_setting(f"{_efis_prefix}_TARGET", "")).strip() or "-"
+        _efis_arah   = (_efis_monthly.get("arah", "") or get_setting(f"{_efis_prefix}_ARAH", ">")).strip() or ">"
+        
+        # Otomatis konversi angka mentah (misal: 5 -> 5.00%)
+        _efis_target_fmt = auto_format_target(_efis_target)
 
-        # ── Baca target & arah dari DB ───────────────────────────────────────
-        _efis_target = get_setting(f"{_efis_prefix}_TARGET", "")
-        _efis_arah   = get_setting(f"{_efis_prefix}_ARAH",   ">")
-
-        # ── Tentukan warna: pakai target DB jika ada, fallback b_efis_val ≥ 0
-        if _efis_target and _efis_target != "-":
-            _efis_color_key, _ = _eval_kpi_color(f"{b_efis_pct:.4f}%", _efis_target, _efis_arah)
+        if _efis_target_fmt and _efis_target_fmt != "-":
+            _efis_color_key, _ = _eval_kpi_color(f"{b_efis_pct:.4f}%", _efis_target_fmt, _efis_arah)
             tipe_efis_tampil = _efis_color_key if _efis_color_key in ("green", "red") else ("green" if b_efis_val >= 0 else "red")
         else:
             tipe_efis_tampil = "green" if b_efis_val >= 0 else "red"
 
-        # ── Susun teks delta: Hapus nilai Rp dari delta ────────────────────
         _efis_sym = _ARAH_SYM.get(_efis_arah, ">")
-        if _efis_target and _efis_target != "-":
-            str_efis_delta = f"Target: {_efis_sym} {_efis_target}"
-        else:
+        if _efis_target_fmt and _efis_target_fmt != "-": 
+            str_efis_delta = f"Target: {_efis_sym} {_efis_target_fmt}"
+        else: 
             str_efis_delta = ""
 
-        # Logika Warna lainnya
         col_onbudget = "#09ab3b" if pct_onbudget >= 80 else "#f0a500"
         col_ontime   = "#09ab3b" if pct_ontime >= 80 else "#f0a500"
         col_efis     = "#09ab3b" if b_efis_val >= 0 else "#e03c3c"
@@ -1457,8 +1225,6 @@ def render(load_data, **kwargs):
 
         str_onbudget_tampil = str_onbudget
         tipe_budget_tampil  = "green" if pct_onbudget >= 80 else "red"
-        
-        # ── Gabungkan dengan hierarki ukuran (Persentase utama, Rupiah pendukung) ──
         str_efis_pct_tampil = f"{str_efis_pct} <span style='font-size: 0.7em; font-weight: 500; opacity: 0.85;'>({format_idr(b_efis_val)})</span>"
 
         b_otobos_val = (pct_ontime + pct_onbudget + sla_on_spec_pct) / 3
@@ -1470,7 +1236,6 @@ def render(load_data, **kwargs):
         tipe_prod_bagian = b_prod_color if b_prod_color in ("green", "red") else ("green" if b_pct_pr_po > 90 else "red")
         str_prod_bagian = f"{format_number(b_pct_pr_po, decimals=2)}%"
 
-        # ── Load data karyawan lebih awal untuk kalkulasi utilisasi bagian ──
         karyawan_query_early = f"""
         SELECT
             nama,
@@ -1483,19 +1248,15 @@ def render(load_data, **kwargs):
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
             SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
-        FROM vw_sips
-        WHERE {where_gabungan}
-          AND {_bagian_filter_cond}
-        GROUP BY nama
-        ORDER BY total_pr DESC
+        FROM vw_sips WHERE {where_gabungan} AND {_bagian_filter_cond}
+        GROUP BY nama ORDER BY total_pr DESC
         """
         with st.spinner(f"Memuat data bagian {pilihan_bagian}..."):
             karyawan_data = load_data(karyawan_query_early)
 
-        # ── Kalkulasi % Single Platform (Utilisasi) per bagian dari eproc_emp_data ────
         b_eproc_pct   = 0.0
         b_eproc_nilai = "-"
-        b_eproc_delta = usp_delta   # warisi target & delta dari KPI_UTILISASI global
+        b_eproc_delta = usp_delta  
         b_eproc_color = "neutral"
         b_eproc_border = ""
         if not karyawan_data.empty and not eproc_emp_data.empty:
@@ -1510,46 +1271,31 @@ def render(load_data, **kwargs):
                 b_eproc_pct   = (_tot_epr / _tot_dok) * 100
                 b_eproc_nilai = f"{format_number(b_eproc_pct, decimals=2)}%"
                 b_eproc_color, b_eproc_border = _eval_kpi_color(b_eproc_nilai, usp_target, usp_arah)
-                b_eproc_delta = usp_delta  # "Target: ≥ X%" sudah disusun oleh _load_kpi
+                b_eproc_delta = usp_delta 
 
-        # ── Dialog edit efisiensi (dibuat di dalam blok agar tahu pilihan_bagian) ──
-        if is_admin:
-            dlg_efisiensi_bagian = _dialog_efisiensi_bagian(pilihan_bagian, _efis_prefix)
+        if is_admin: dlg_efisiensi_bagian = _dialog_efisiensi_bagian(pilihan_bagian, _efis_prefix)
 
-        # == KARTU KPI LAPORAN BAGIAN: BARIS 1 (3 kartu) ==
         r1c1, r1c2, r1c3 = st.columns(3)
-        with r1c1:
+        with r1c1: 
             st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
-        with r1c2:
+        with r1c2: 
             tipe_time = "green" if pct_ontime >= 80 else "red"
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
-        with r1c3:
+        with r1c3: 
             st.markdown(_card(ICONS["search"], "Total OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-        # == KARTU KPI LAPORAN BAGIAN: BARIS 2 (2 kartu + kolom kosong tengah) ==
         r2c1, r2c2, r2c3 = st.columns(3)
-        
         with r2c1:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil, border_class=border_class_map.get(tipe_efis_tampil, "")), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key=f"btn_efisiensi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
-                    dlg_efisiensi_bagian()
-                    
         with r2c2:
             st.markdown(_card(ICONS["building"], "% Single Platform", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
-            if is_admin:
-                if st.button("Edit", key=f"btn_utilisasi_bagian_{_bagian_key}", icon=":material/edit:", use_container_width=True):
-                    dlg_utilisasi()
-                    
         with r2c3:
-            # Menambahkan kartu Produktivitas PR-PO Bagian
             st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", str_prod_bagian, produktivitas_delta, tipe_prod_bagian, border_class=border_class_map.get(tipe_prod_bagian, "")), unsafe_allow_html=True)
 
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
-        # == TABEL KINERJA KARYAWAN PER BAGIAN ==
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
             f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['people'], 26)}</span>"
@@ -1558,48 +1304,36 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
-        # karyawan_data sudah di-load sebelumnya (digunakan juga untuk kalkulasi % Single Platform)
         if not karyawan_data.empty:
             df_karyawan = karyawan_data.copy()
-            
-            # --- MERGE DATA EPROC PER KARYAWAN ---
             if not eproc_emp_data.empty:
-                # 1. UPPERCASE dan potong gelar (pisahkan berdasarkan koma)
                 df_karyawan['nama_join'] = df_karyawan['nama'].astype(str).str.upper().str.split(',').str[0].str.strip()
                 eproc_emp_data['nama_join'] = eproc_emp_data['nama_join'].astype(str).str.split(',').str[0].str.strip()
-                
-                # 2. Gabungkan berdasarkan kolom 'nama_join' (Left Join)
                 df_karyawan = pd.merge(df_karyawan, eproc_emp_data, on='nama_join', how='left')
                 df_karyawan['total_dokumen_eproc'] = df_karyawan['total_dokumen_eproc'].fillna(0)
                 df_karyawan['total_eproc_method'] = df_karyawan['total_eproc_method'].fillna(0)
-                
-                # 3. Kalkulasi Utilisasi Per Karyawan
                 df_karyawan['% Single Platform'] = (df_karyawan['total_eproc_method'] / df_karyawan['total_dokumen_eproc'].replace(0, float('nan')) * 100).fillna(0)
             else:
                 df_karyawan['% Single Platform'] = 0.0
-            # ---------------------------------------
 
             df_karyawan['Total PR'] = df_karyawan['total_pr']
             df_karyawan['Total PO'] = df_karyawan['total_po']
             df_karyawan['PO/PR'] = (df_karyawan['total_po'] / df_karyawan['total_pr'].replace(0, float('nan')) * 100).fillna(0).apply(lambda x: f"{x:.1f}%")
             df_karyawan['PR-PO (Hari)'] = df_karyawan['avg_pr_po'].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "0.0")
             df_karyawan['% On Time'] = (df_karyawan['sla_ontime'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
-            
             df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_na'] - df_karyawan['sips_po_na']
             df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_na'].replace(0, float('nan')) * 100).fillna(0)
-            
             df_karyawan['% On Budget'] = (df_karyawan['on_budget_count'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
             df_karyawan['% On Spec'] = 99.30
             df_karyawan['OTOBOS'] = ((df_karyawan['% On Time'] + df_karyawan['% On Budget'] + df_karyawan['% On Spec']) / 3).fillna(0)
             
-            # Formatting ke String
             df_karyawan['% On Time'] = df_karyawan['% On Time'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi %'] = df_karyawan['Efisiensi %'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['Efisiensi Rp'] = df_karyawan['Efisiensi Rp_val'].apply(lambda x: format_idr_short(x) if pd.notna(x) else "0")
             df_karyawan['% On Budget'] = df_karyawan['% On Budget'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['% On Spec'] = df_karyawan['% On Spec'].apply(lambda x: f"{x:.2f}%")
             df_karyawan['OTOBOS'] = df_karyawan['OTOBOS'].apply(lambda x: f"{x:.2f}%")
-            df_karyawan['% Single Platform'] = df_karyawan['% Single Platform'].apply(lambda x: f"{x:.2f}%") # Format Utilisasi
+            df_karyawan['% Single Platform'] = df_karyawan['% Single Platform'].apply(lambda x: f"{x:.2f}%") 
             
             df_table = df_karyawan[['nama', 'Total PR', 'Total PO', 'PO/PR', 'PR-PO (Hari)', '% On Time', 'Efisiensi %', 'Efisiensi Rp', '% On Budget', '% On Spec', 'OTOBOS', '% Single Platform']].rename(columns={'nama': 'Nama'})
             df_table.index = df_table.index + 1
@@ -1647,7 +1381,6 @@ def render(load_data, **kwargs):
             
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
-        # == CHART TREN REALISASI ITEM PR-PO BAGIAN ==
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
             f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['box'], 26)}</span>"
@@ -1656,76 +1389,39 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
-        # Kueri Tren Realisasi Item per Bagian
-        # PR dikelompokkan berdasarkan bulan tgl_disposisi_buyer.
-        # PO dikelompokkan berdasarkan bulan tgl_po; jika tgl_po kosong, fallback ke bulan tgl_disposisi_buyer
-        # (PR-nya) agar totalnya tetap sama persis dengan kotak KPI Total PO per Bagian.
         trend_bagian_query = f"""
         WITH pr_bulanan AS (
-            SELECT
-                DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
-                COUNT(*) AS total_pr
-            FROM vw_sips
-            WHERE {where_pr} AND {_bagian_filter_cond}
-            GROUP BY 1
+            SELECT DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month, COUNT(*) AS total_pr
+            FROM vw_sips WHERE {where_pr} AND {_bagian_filter_cond} GROUP BY 1
         ),
         po_bulanan AS (
-            SELECT
-                DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month,
-                COUNT(*) AS total_po
-            FROM vw_sips
-            WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond}
-              AND {_bagian_filter_cond}
-            GROUP BY 1
+            SELECT DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month, COUNT(*) AS total_po
+            FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} AND {_bagian_filter_cond} GROUP BY 1
         )
-        SELECT
-            TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
-            COALESCE(pr_bulanan.total_pr, 0) AS total_pr,
-            COALESCE(po_bulanan.total_po, 0) AS total_po
-        FROM pr_bulanan
-        FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month
-        ORDER BY 1
+        SELECT TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
+               COALESCE(pr_bulanan.total_pr, 0) AS total_pr, COALESCE(po_bulanan.total_po, 0) AS total_po
+        FROM pr_bulanan FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month ORDER BY 1
         """
 
         with st.spinner(f"Memuat tren bagian {pilihan_bagian}..."):
             trend_bagian_data = load_data(trend_bagian_query)
 
         if not trend_bagian_data.empty:
-            # Format Data
             trend_bagian_data['month'] = pd.to_datetime(trend_bagian_data['month']).dt.tz_localize(None)
             trend_bagian_data = trend_bagian_data.sort_values('month')
-            
-            # Potong sumbu X (Slicing) karena chart ini bukan tipe kumulatif
             trend_bagian_data = trend_bagian_data[(trend_bagian_data['month'] >= dt_from_pd) & (trend_bagian_data['month'] <= dt_to_pd)]
-            
             trend_bagian_data['month_display'] = trend_bagian_data['month'].apply(resolve_month_date)
             trend_bagian_data['hover_label'] = trend_bagian_data['month_display'].apply(fmt_date)
 
-            # Gambar Chart Bar (Barmode = Group agar bersebelahan)
             fig_trend_bagian = go.Figure()
-            fig_trend_bagian.add_trace(go.Bar(
-                x=trend_bagian_data['month_display'], y=trend_bagian_data['total_pr'],
-                name='PR Created', marker_color='#1f77b4',
-                customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'
-            ))
-            fig_trend_bagian.add_trace(go.Bar(
-                x=trend_bagian_data['month_display'], y=trend_bagian_data['total_po'],
-                name='PO Created', marker_color='#2ca02c',
-                customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'
-            ))
+            fig_trend_bagian.add_trace(go.Bar(x=trend_bagian_data['month_display'], y=trend_bagian_data['total_pr'], name='PR Created', marker_color='#1f77b4', customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'))
+            fig_trend_bagian.add_trace(go.Bar(x=trend_bagian_data['month_display'], y=trend_bagian_data['total_po'], name='PO Created', marker_color='#2ca02c', customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'))
             
-            fig_trend_bagian.update_layout(
-                barmode='group', height=360, xaxis_title='', yaxis_title='Jumlah Item',
-                xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30),
-                margin=dict(t=60, b=10, l=10, r=30), 
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
-            )
+            fig_trend_bagian.update_layout(barmode='group', height=360, xaxis_title='', yaxis_title='Jumlah Item', xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30), margin=dict(t=60, b=10, l=10, r=30), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_trend_bagian, use_container_width=True)
         else:
             st.info(f"Tidak ada data tren untuk bagian **{pilihan_bagian}**.")
             
-        st.markdown("<br><br>", unsafe_allow_html=True) # Jarak aman di paling bawah halaman
+        st.markdown("<br><br>", unsafe_allow_html=True)
     else:
         st.info(f"Tidak ada transaksi PO untuk bagian **{pilihan_bagian}** pada periode ini.")
