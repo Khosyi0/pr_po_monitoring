@@ -311,7 +311,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')
                 AND {po_date_cond}
             THEN 1 ELSE 0 END        AS is_po,
-            CASE WHEN {where_pr} THEN 1 ELSE 0 END AS is_pr,  -- <--- TAMBAHKAN BARIS INI
+            CASE WHEN {where_pr} THEN 1 ELSE 0 END AS is_pr,
             COALESCE(oe_pr, 0)       AS oe_pr,
             COALESCE(nilai_item_po, 0) AS nilai_item_po,
             b.bulan,
@@ -345,21 +345,21 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         avg_pr_po     = float(r['avg_pr_po']    or 0)
         sla_ontime    = float(r['sla_ontime']   or 0)
         
-        # Variabel General
-        oe_proses     = float(r['oe_proses']    or 0)
-        oe_closed     = float(r['oe_closed']    or 0)
-        po_proses     = float(r['po_proses']    or 0)
-        po_closed     = float(r['po_closed']    or 0)
+        # Mapping Variabel Finansial agar selaras menggunakan Non Agreement
+        oe_proses     = float(r['oe_proses_na'] or 0)
+        oe_closed     = float(r['oe_closed_na'] or 0)
+        po_proses     = float(r['po_proses_na'] or 0)
+        po_closed     = float(r['po_closed_na'] or 0)
         oe_total      = oe_proses + oe_closed
         po_total      = po_proses + po_closed
 
         # Variabel khusus Efisiensi (Non Agreement)
-        oe_proses_na  = float(r['oe_proses_na'] or 0)
-        oe_closed_na  = float(r['oe_closed_na'] or 0)
-        po_proses_na  = float(r['po_proses_na'] or 0)
-        po_closed_na  = float(r['po_closed_na'] or 0)
-        oe_total_na   = oe_proses_na + oe_closed_na
-        po_total_na   = po_proses_na + po_closed_na
+        oe_proses_na  = oe_proses
+        oe_closed_na  = oe_closed
+        po_proses_na  = po_proses
+        po_closed_na  = po_closed
+        oe_total_na   = oe_total
+        po_total_na   = po_total
 
         on_budget_cnt = int(r['on_budget_count']or 0)
         sla_miss      = int(r['sla_miss']       or 0)
@@ -499,13 +499,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Nilai OE status Proses PO",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO*.
+    **OE Proses PO**: Total nilai Owner's Estimate (anggaran) untuk PR yang sudah berstatus *Proses PO* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(oe_proses)}**
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
+    - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **OE PR**
 
     **Target:** -""",
@@ -518,13 +519,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Nilai OE status Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed*.
+    **OE Closed**: Total nilai Owner's Estimate untuk PR yang sudah berstatus *Closed* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(oe_closed)}**
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed`
+    - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **OE PR**
 
     **Target:** -""",
@@ -537,7 +539,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "OE Proses PO + OE Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Total OE**: Gabungan OE untuk status *Proses PO* dan *Closed*.
+    **Total OE**: Gabungan OE untuk status *Proses PO* dan *Closed* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(oe_total)}**
 
@@ -559,13 +561,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Nilai PO status Proses PO",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO*.
+    **PO Proses PO**: Total nilai realisasi PO untuk yang berstatus *Proses PO* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(po_proses)}**
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
+    - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **Nilai Item PO**
 
     **Target:** -""",
@@ -578,13 +581,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Nilai PO status Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed*.
+    **PO Closed**: Total nilai realisasi PO untuk yang berstatus *Closed* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(po_closed)}**
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed`
+    - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **Nilai Item PO**
 
     **Target:** -""",
@@ -597,7 +601,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "PO Proses PO + PO Closed",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Total PO (Nilai)**: Gabungan realisasi nilai PO untuk status *Proses PO* dan *Closed*.
+    **Total PO (Nilai)**: Gabungan realisasi nilai PO untuk status *Proses PO* dan *Closed* (Khusus Non Agreement).
 
     **Nilai saat ini: {format_currency(po_total)}**
 
