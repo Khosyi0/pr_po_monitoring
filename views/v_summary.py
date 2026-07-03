@@ -526,27 +526,32 @@ def render(load_data, **kwargs):
     months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
     if tipe_filter == "Rentang Bulan":
-        options = [f"{m} {y}" for y in range(current_year - 2, current_year + 2) for m in months_id]
-        default_start_month = f"Januari {current_year}"
-        default_end_month = f"{months_id[DATA_UPDATE_SIPS.month - 1]} {DATA_UPDATE_SIPS.year}"
-
-        if default_start_month not in options: options.append(default_start_month)
-        if default_end_month not in options: options.append(default_end_month)
+        # 1. Definisikan opsi tahun dan opsi 12 bulan murni
+        year_options = list(range(current_year - 2, current_year + 2))
+        months_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
         
-        col_start, col_end, _ = st.columns([1, 1, 3])
+        # Opsi default berdasarkan tanggal update data SAP/SIPS
+        default_year_idx = year_options.index(DATA_UPDATE_SIPS.year) if DATA_UPDATE_SIPS.year in year_options else len(year_options) - 1
+        default_start_month_idx = 0  # Januari
+        default_end_month_idx = DATA_UPDATE_SIPS.month - 1  # Bulan dari DATA_UPDATE_SIPS
+        
+        # 2. Bagi menjadi 3 kolom: Tahun, Pilihan Bulan Dari, Pilihan Bulan Sampai
+        col_year_select, col_start, col_end, _ = st.columns([1, 1.2, 1.2, 1.6])
+        
+        with col_year_select:
+            selected_year = st.selectbox("Tahun", options=year_options, index=default_year_idx, key="summary_select_year")
         with col_start:
-            start_month = st.selectbox("Bulan Start", options=options, index=options.index(default_start_month), label_visibility="collapsed")
+            start_month_pure = st.selectbox("Bulan Dari", options=months_id, index=default_start_month_idx, key="summary_select_start_m")
         with col_end:
-            end_month = st.selectbox("Bulan Sampai", options=options, index=options.index(default_end_month), label_visibility="collapsed")
+            end_month_pure = st.selectbox("Bulan Sampai", options=months_id, index=default_end_month_idx, key="summary_select_end_m")
 
-        start_m_str, start_y_str = start_month.split(" ")
-        start_m_idx = months_id.index(start_m_str) + 1
-        date_from = datetime(int(start_y_str), start_m_idx, 1).date()
+        # 3. Konversi pilihan ke objek date untuk query database
+        start_m_idx = months_id.index(start_month_pure) + 1
+        date_from = datetime(selected_year, start_m_idx, 1).date()
 
-        end_m_str, end_y_str = end_month.split(" ")
-        end_m_idx = months_id.index(end_m_str) + 1
-        last_day = calendar.monthrange(int(end_y_str), end_m_idx)[1]
-        date_to = datetime(int(end_y_str), end_m_idx, last_day).date()
+        end_m_idx = months_id.index(end_month_pure) + 1
+        last_day = calendar.monthrange(selected_year, end_m_idx)[1]
+        date_to = datetime(selected_year, end_m_idx, last_day).date()
     else:
         opsi_triwulan = ["TW I (Jan - Mar)", "TW II (Apr - Jun)", "TW III (Jul - Sep)", "TW IV (Okt - Des)"]
         opsi_tahun = list(range(current_year - 2, current_year + 2))
@@ -666,6 +671,12 @@ def render(load_data, **kwargs):
     FROM data_eproc WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}' GROUP BY UPPER(TRIM(pic))
     """
 
+    inklaring_query = f"""
+    SELECT komoditi, start_bongkar, selesai_bongkar, spjm, tgl_sppb
+    FROM inklaring_impor
+    WHERE tgl_eta >= '{date_from}' AND tgl_eta <= '{date_to}'
+    """
+
     with st.spinner("Memuat data laporan..."):
         try:
             trend_data = load_data(trend_query)
@@ -674,6 +685,7 @@ def render(load_data, **kwargs):
             sap_kpi_data = load_data(sap_kpi_query)
             eproc_kpi_data = load_data(eproc_kpi_query)
             eproc_emp_data = load_data(eproc_emp_query)
+            inklaring_data = load_data(inklaring_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -741,6 +753,32 @@ def render(load_data, **kwargs):
         sap_ketepatan_pct = (sap_po_ontime / sap_po_del_tot * 100) if sap_po_del_tot > 0 else 0.0
     else:
         sap_pct_pengiriman = sap_ketepatan_pct = sap_sinergi_pi_val = 0.0
+
+    # =========================================================================
+    # KALKULASI KPI INKLARING / PEMBEBASAN IMPOR (SLA EPP)
+    # =========================================================================
+    persen_sla_epp = 0.0
+    if 'inklaring_data' in locals() and not inklaring_data.empty:
+        df_ink = inklaring_data.copy()
+        df_ink['selesai_bongkar'] = pd.to_datetime(df_ink['selesai_bongkar'], errors='coerce')
+        df_ink['tgl_sppb'] = pd.to_datetime(df_ink['tgl_sppb'], errors='coerce')
+
+        df_ink['Bebas_Hari'] = (df_ink['tgl_sppb'] - df_ink['selesai_bongkar'].dt.normalize()).dt.days
+        is_hijau_mask = df_ink['spjm'].fillna('').astype(str).str.strip().isin(['', '0', '0.0'])
+        df_ink['Keterangan_Jalur'] = np.where(is_hijau_mask, 'HIJAU', 'MERAH')
+
+        df_ink['SLA_Target'] = np.where(df_ink['komoditi'] == 'SA', 15, 
+                                      np.where(df_ink['Keterangan_Jalur'] == 'MERAH', 8, 0))
+
+        df_ink['Score_SLA'] = np.where(
+            df_ink['Bebas_Hari'].isna() | (df_ink['Bebas_Hari'] == 0), 
+            0, 
+            np.where(df_ink['SLA_Target'] >= df_ink['Bebas_Hari'], 1, 0)
+        )
+
+        total_data_ink = len(df_ink)
+        total_score_1_ink = (df_ink['Score_SLA'] == 1).sum()
+        persen_sla_epp = (total_score_1_ink / total_data_ink) * 100 if total_data_ink > 0 else 0.0
 
     _ARAH_SYM = {">": ">", ">=": "≥", "<": "<", "<=": "≤", "=": "="}
 
@@ -847,8 +885,8 @@ def render(load_data, **kwargs):
     _pem_target    = _pem_monthly.get("target", "") or get_setting("KPI_SLA_PEMBEBASAN_TARGET", "80%")
     _pem_arah      = _pem_monthly.get("arah", "") or get_setting("KPI_SLA_PEMBEBASAN_ARAH", ">=")
     _pem_free_text = _pem_monthly.get("free_text", "") or get_setting("KPI_SLA_PEMBEBASAN_FREE_TEXT", "")
-    _pem_color, _  = _eval_kpi_color(f"{sla_on_time_pct:.2f}%", _pem_target, _pem_arah)
-    pembebasan_color_db = _pem_color if _pem_color in ("green", "red") else ("green" if sla_on_time_pct >= 80 else "red")
+    _pem_color, _  = _eval_kpi_color(f"{persen_sla_epp:.2f}%", _pem_target, _pem_arah)
+    pembebasan_color_db = _pem_color if _pem_color in ("green", "red") else ("green" if persen_sla_epp >= 80 else "red")
     _pem_sym = _ARAH_SYM.get(_pem_arah, "≥")
     
     _pem_target_fmt = auto_format_target(_pem_target)
@@ -970,7 +1008,7 @@ def render(load_data, **kwargs):
     with c4: st.markdown(_card(ICONS["house"], "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
     with c5: st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK", npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
     with c6:
-        pembebasan_val = f"{format_number(sla_on_time_pct, decimals=2)}%"
+        pembebasan_val = f"{format_number(persen_sla_epp, decimals=2)}%"
         pembebasan_border = border_class_map.get(pembebasan_color_db, "")
         st.markdown(_card(ICONS["clock"], "% Kecepatan Pembebasan Barang Impor", pembebasan_val, sla_pembebasan_delta, pembebasan_color_db, border_class=pembebasan_border), unsafe_allow_html=True)
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
