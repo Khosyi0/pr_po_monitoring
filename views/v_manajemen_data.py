@@ -24,17 +24,17 @@ class StreamlitCapture:
     def write(self, text):
         # Abaikan output dari tqdm yang menggunakan \r (carriage return)
         if '\r' in text:
-            return  # Langsung skip, tidak usah ditangkap ke UI
+            return  
             
         self.buffer += text
         
         # Jika ada baris baru, pisahkan dan masukkan ke daftar baris
         if '\n' in self.buffer:
             parts = self.buffer.split('\n')
-            self.lines.extend(parts[:-1])  # Masukkan semua baris yang sudah lengkap
-            self.buffer = parts[-1]        # Sisakan teks yang belum pindah baris
+            self.lines.extend(parts[:-1])  
+            self.buffer = parts[-1]        
             
-        # Refresh UI max 1 detik sekali (jangan terlalu cepat di cloud)
+        # Refresh UI max 1 detik sekali
         if time.time() - self.last_update > 1.0:
             self.flush()
             
@@ -65,7 +65,7 @@ def render(**kwargs):
     
     st.markdown(
         "<p style='font-size:15px; opacity:0.6; margin-top:4px; margin-bottom:24px;'>"
-        "Pusat kendali sinkronisasi data SAP, SIPS, Inklaring, dan manajemen backup sistem."
+        "Pusat kendali sinkronisasi data SAP, SIPS, Inklaring, Harga Bahan Baku, dan manajemen backup sistem."
         "</p>", 
         unsafe_allow_html=True
     )
@@ -75,6 +75,7 @@ def render(**kwargs):
     sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
     sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
     inklaring_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
+    bahan_baku_date_str = get_setting("DATA_UPDATE_BAHAN_BAKU", "2026-03-31")
 
     try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
@@ -84,6 +85,9 @@ def render(**kwargs):
 
     try: DATA_UPDATE_INKLARING = datetime.strptime(inklaring_date_str, "%Y-%m-%d").date()
     except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
+    
+    try: DATA_UPDATE_BAHAN_BAKU = datetime.strptime(bahan_baku_date_str, "%Y-%m-%d").date()
+    except: DATA_UPDATE_BAHAN_BAKU = datetime(2026, 3, 31).date()
 
     # == Bagian 1: Informasi Status Data =======================================
     st.markdown("""
@@ -96,46 +100,53 @@ def render(**kwargs):
         </h3>
     """, unsafe_allow_html=True)
     
-    col_sap, col_sips, col_inklaring = st.columns(3)
+    col_sap, col_sips, col_inklaring, col_bb = st.columns(4)
     
     with col_sap:
         st.markdown(f"""
             <div style='background: var(--secondary-background-color); border: 1px solid rgba(31, 119, 180, 0.3); border-radius: 10px; padding: 16px; border-left: 5px solid #1f77b4;'>
-                <p style='margin: 0; font-size: 14px; opacity: 0.7; font-weight: 600;'>Database PR-PO SAP</p>
-                <h4 style='margin: 4px 0 0 0; font-size: 24px;'>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</h4>
+                <p style='margin: 0; font-size: 13px; opacity: 0.7; font-weight: 600;'>Database PR-PO SAP</p>
+                <h4 style='margin: 4px 0 0 0; font-size: 20px;'>{DATA_UPDATE_SAP.strftime('%d %b %Y')}</h4>
             </div>
         """, unsafe_allow_html=True)
 
     with col_sips:
         st.markdown(f"""
             <div style='background: var(--secondary-background-color); border: 1px solid rgba(255, 75, 75, 0.3); border-radius: 10px; padding: 16px; border-left: 5px solid #ff4b4b;'>
-                <p style='margin: 0; font-size: 14px; opacity: 0.7; font-weight: 600;'>Database SIPS</p>
-                <h4 style='margin: 4px 0 0 0; font-size: 24px;'>{DATA_UPDATE_SIPS.strftime('%d %B %Y')}</h4>
+                <p style='margin: 0; font-size: 13px; opacity: 0.7; font-weight: 600;'>Database SIPS</p>
+                <h4 style='margin: 4px 0 0 0; font-size: 20px;'>{DATA_UPDATE_SIPS.strftime('%d %b %Y')}</h4>
             </div>
         """, unsafe_allow_html=True)
 
     with col_inklaring:
         st.markdown(f"""
             <div style='background: var(--secondary-background-color); border: 1px solid rgba(44, 160, 44, 0.3); border-radius: 10px; padding: 16px; border-left: 5px solid #2ca02c;'>
-                <p style='margin: 0; font-size: 14px; opacity: 0.7; font-weight: 600;'>Database Inklaring Impor</p>
-                <h4 style='margin: 4px 0 0 0; font-size: 24px;'>{DATA_UPDATE_INKLARING.strftime('%d %B %Y')}</h4>
+                <p style='margin: 0; font-size: 13px; opacity: 0.7; font-weight: 600;'>Database Inklaring</p>
+                <h4 style='margin: 4px 0 0 0; font-size: 20px;'>{DATA_UPDATE_INKLARING.strftime('%d %b %Y')}</h4>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with col_bb:
+        st.markdown(f"""
+            <div style='background: var(--secondary-background-color); border: 1px solid rgba(148, 103, 189, 0.3); border-radius: 10px; padding: 16px; border-left: 5px solid #9467bd;'>
+                <p style='margin: 0; font-size: 13px; opacity: 0.7; font-weight: 600;'>Harga Bahan Baku</p>
+                <h4 style='margin: 4px 0 0 0; font-size: 20px;'>{DATA_UPDATE_BAHAN_BAKU.strftime('%d %b %Y')}</h4>
             </div>
         """, unsafe_allow_html=True)
 
     with st.expander("Edit Manual Tanggal Pembaruan", icon=":material/edit:"):
         with st.form("form_edit_tanggal"):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                new_sap_date = st.date_input("Tanggal Update SAP", DATA_UPDATE_SAP)
-            with c2:
-                new_sips_date = st.date_input("Tanggal Update SIPS", DATA_UPDATE_SIPS)
-            with c3:
-                new_inklaring_date = st.date_input("Tanggal Update Inklaring", DATA_UPDATE_INKLARING)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: new_sap_date = st.date_input("Update SAP", DATA_UPDATE_SAP)
+            with c2: new_sips_date = st.date_input("Update SIPS", DATA_UPDATE_SIPS)
+            with c3: new_inklaring_date = st.date_input("Update Inklaring", DATA_UPDATE_INKLARING)
+            with c4: new_bb_date = st.date_input("Update Harga BB", DATA_UPDATE_BAHAN_BAKU)
             
             if st.form_submit_button("Simpan Perubahan"):
                 set_setting("DATA_UPDATE_SAP", new_sap_date.strftime("%Y-%m-%d"))
                 set_setting("DATA_UPDATE_SIPS", new_sips_date.strftime("%Y-%m-%d"))
                 set_setting("DATA_UPDATE_INKLARING", new_inklaring_date.strftime("%Y-%m-%d"))
+                set_setting("DATA_UPDATE_BAHAN_BAKU", new_bb_date.strftime("%Y-%m-%d"))
                 st.success("Berhasil mengubah tanggal!")
                 time.sleep(1)
                 st.rerun()
@@ -157,7 +168,7 @@ def render(**kwargs):
         """, unsafe_allow_html=True)
         
         with st.form("form_backup"):
-            jenis_data = st.selectbox("Jenis Data", ["PR SAP", "PO SAP", "SIPS", "Inklaring Barang Impor"])
+            jenis_data = st.selectbox("Jenis Data", ["PR SAP", "PO SAP", "SIPS", "Inklaring Barang Impor", "Harga Bahan Baku"])
             c_from, c_to = st.columns(2)
             with c_from:
                 start_date = st.date_input("Dari Tanggal", datetime(2026, 1, 1))
@@ -381,6 +392,12 @@ def render(**kwargs):
                 WHERE tgl_eta >= '{start_str}' AND tgl_eta <= '{end_str}'
                 ORDER BY tgl_eta DESC
                 """
+            elif jenis_data == "Harga Bahan Baku":
+                query = f"""
+                SELECT * FROM master_harga_bahan_baku 
+                WHERE tanggal_terbit >= '{start_str}' AND tanggal_terbit <= '{end_str}'
+                ORDER BY tanggal_terbit DESC, bahan_baku ASC, nama_majalah ASC
+                """
             
             with st.spinner(f"Mengambil dan menyusun data {jenis_data}..."):
                 try:
@@ -423,7 +440,10 @@ def render(**kwargs):
             </h3>
         """, unsafe_allow_html=True)
         
-        tipe_etl = st.selectbox("Pilih Modul ETL", ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)"])
+        tipe_etl = st.selectbox(
+            "Pilih Modul ETL", 
+            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)", "Harga Bahan Baku"]
+        )
 
         if tipe_etl == "SAP (PR & PO)":
             file_sap = st.file_uploader("Upload File SAP (.xlsx) — harus ada sheet 'PR SAP' dan 'PO SAP'", type=["xlsx"])
@@ -461,7 +481,6 @@ def render(**kwargs):
             update_tgl_sips = st.checkbox("Update Tanggal SIPS Menjadi Hari Ini", value=False, key="chk_sips2")
 
             if file_gabung:
-                # Validasi sheet sebelum proses
                 try:
                     xl = pd.ExcelFile(file_gabung)
                     sheets_ada = xl.sheet_names
@@ -524,7 +543,7 @@ def render(**kwargs):
                     import etl_sips  # type: ignore
                     
                     etl_sips.Config.SIPS_FILE = sips_path
-                    etl_sips.Config.PERIODE_IMPORT = []  # Bypass filter bulan di config asli agar semua data di file masuk
+                    etl_sips.Config.PERIODE_IMPORT = [] 
                     etl_sips.db_get_engine = _get_engine
                     
                     terminal = st.empty()
@@ -544,7 +563,6 @@ def render(**kwargs):
             update_tgl_inklaring = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_inklaring")
             if file_inklaring:
                 if st.button("Jalankan ETL Inklaring", type="primary", icon=":material/cloud_upload:"):
-                    # Simpan file sementara agar bisa dibaca oleh modul ETL
                     ext = ".csv" if file_inklaring.name.endswith(".csv") else ".xlsx"
                     inklaring_path = f"temp_inklaring_upload{ext}"
                     with open(inklaring_path, "wb") as f:
@@ -580,19 +598,16 @@ def render(**kwargs):
             file_eproc = st.file_uploader("Upload File EPROC (.xlsx) — harus ada sheet 'EPROC'", type=["xlsx"])
             if file_eproc:
                 if st.button("Jalankan ETL EPROC", type="primary", icon=":material/cloud_upload:"):
-                    # 1. Simpan file buffer sementara
                     eproc_path = "temp_eproc.xlsx"
                     with open(eproc_path, "wb") as f: 
                         f.write(file_eproc.getbuffer())
 
-                    # 2. Panggil ETL Script
                     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
                     import etl_eproc # type: ignore
 
                     etl_eproc.Config.EPROC_FILE = eproc_path
                     etl_eproc.db_get_engine = _get_engine
 
-                    # 3. Jalankan dengan StreamlitCapture
                     terminal = st.empty()
                     capture_eproc = StreamlitCapture(terminal)
                     with redirect_stdout(capture_eproc), redirect_stderr(capture_eproc):
@@ -604,9 +619,41 @@ def render(**kwargs):
                         else:
                             st.error("❌ Proses gagal, silakan periksa log terminal di atas.")
 
-                    # 4. Hapus file temp
                     if os.path.exists(eproc_path):
                         os.remove(eproc_path)
+                        
+        elif tipe_etl == "Harga Bahan Baku":
+            file_bahan_baku = st.file_uploader("Upload File Rekapan Majalah (.xlsx)", type=["xlsx"])
+            update_tgl_bahan_baku = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_bahan_baku")
+            if file_bahan_baku:
+                if st.button("Jalankan ETL Harga Bahan Baku", type="primary", icon=":material/cloud_upload:"):
+                    bb_path = "temp_bahan_baku.xlsx"
+                    with open(bb_path, "wb") as f: 
+                        f.write(file_bahan_baku.getbuffer())
+
+                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                    import etl_harga_bahan_baku as etl_bb # type: ignore
+
+                    etl_bb.Config.EXCEL_FILE = bb_path
+                    etl_bb.db_get_engine = _get_engine
+
+                    terminal = st.empty()
+                    capture_bb = StreamlitCapture(terminal)
+                    with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
+                        try:
+                            etl_bb.run_etl()
+                            capture_bb.flush()
+                            
+                            if update_tgl_bahan_baku:
+                                set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
+                            
+                            st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
+                            st.cache_data.clear()
+                        except Exception as e:
+                            st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
+                        finally:
+                            if os.path.exists(bb_path):
+                                os.remove(bb_path)
 
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -623,11 +670,11 @@ def render(**kwargs):
     
     st.warning("Fitur ini akan menghapus seluruh data transaksi dari database secara permanen. Gunakan hanya jika Anda perlu mengulang proses upload (ETL) dari awal atau membersihkan data yang salah.")
     
-    col_del1, col_del2, col_del3 = st.columns(3)
+    col_del1, col_del2, col_del3, col_del4 = st.columns(4)
     
     with col_del1:
         with st.expander("🗑️ Hapus Data SAP"):
-            st.write("Tindakan ini akan menghapus semua data Purchase Requisition, Purchase Order, Goods Receipt, dan riwayat status rilis. (Data Master seperti Vendor dan Material akan tetap aman).")
+            st.write("Menghapus semua data Purchase Requisition, Purchase Order, Goods Receipt, dan riwayat status rilis. (Data Master tetap aman).")
             confirm_sap = st.checkbox("Saya yakin (SAP)", key="confirm_sap")
             if st.button("Hapus Data SAP", type="primary", disabled=not confirm_sap, use_container_width=True):
                 with st.spinner("Menghapus data SAP..."):
@@ -635,7 +682,7 @@ def render(**kwargs):
                         engine = _get_engine()
                         with engine.begin() as conn:
                             conn.execute(text("TRUNCATE TABLE purchase_requisitions, purchase_orders CASCADE;"))
-                        st.success("Data SAP berhasil dikosongkan! Halaman akan dimuat ulang...")
+                        st.success("Data SAP berhasil dikosongkan!")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:
@@ -643,7 +690,7 @@ def render(**kwargs):
 
     with col_del2:
         with st.expander("🗑️ Hapus Data SIPS"):
-            st.write("Tindakan ini akan menghapus semua riwayat transaksi SIPS dan data karyawan SIPS dari database.")
+            st.write("Menghapus semua riwayat transaksi SIPS dan data karyawan SIPS dari database.")
             confirm_sips = st.checkbox("Saya yakin (SIPS)", key="confirm_sips")
             if st.button("Hapus Data SIPS", type="primary", disabled=not confirm_sips, use_container_width=True):
                 with st.spinner("Menghapus data SIPS..."):
@@ -651,23 +698,39 @@ def render(**kwargs):
                         engine = _get_engine()
                         with engine.begin() as conn:
                             conn.execute(text("TRUNCATE TABLE sips_data, sips_employees CASCADE;"))
-                        st.success("Data SIPS berhasil dikosongkan! Halaman akan dimuat ulang...")
+                        st.success("Data SIPS berhasil dikosongkan!")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:
                         st.error(f"Gagal menghapus data: {e}")
 
     with col_del3:
-        with st.expander("🗑️ Hapus Data Inklaring"):
-            st.write("Tindakan ini akan mengosongkan seluruh tabel Inklaring Barang Impor.")
-            confirm_inklaring = st.checkbox("Saya yakin (Inklaring)", key="confirm_inklaring")
+        with st.expander("🗑️ Hapus Inklaring"):
+            st.write("Mengosongkan seluruh tabel Inklaring Barang Impor dari database secara permanen.")
+            confirm_inklaring = st.checkbox("Saya yakin", key="confirm_inklaring")
             if st.button("Hapus Inklaring", type="primary", disabled=not confirm_inklaring, use_container_width=True):
                 with st.spinner("Menghapus data Inklaring..."):
                     try:
                         engine = _get_engine()
                         with engine.begin() as conn:
                             conn.execute(text("TRUNCATE TABLE inklaring_impor RESTART IDENTITY CASCADE;"))
-                        st.success("Data Inklaring berhasil dikosongkan! Halaman akan dimuat ulang...")
+                        st.success("Data Inklaring berhasil dikosongkan!")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus data: {e}")
+                        
+    with col_del4:
+        with st.expander("🗑️ Hapus Harga BB"):
+            st.write("Mengosongkan seluruh riwayat rekapan majalah Harga Bahan Baku dari database.")
+            confirm_bb = st.checkbox("Saya yakin", key="confirm_bb")
+            if st.button("Hapus Harga BB", type="primary", disabled=not confirm_bb, use_container_width=True):
+                with st.spinner("Menghapus data Harga Bahan Baku..."):
+                    try:
+                        engine = _get_engine()
+                        with engine.begin() as conn:
+                            conn.execute(text("TRUNCATE TABLE master_harga_bahan_baku RESTART IDENTITY CASCADE;"))
+                        st.success("Data Harga Bahan Baku berhasil dikosongkan!")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:

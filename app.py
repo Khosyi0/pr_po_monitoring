@@ -4,7 +4,7 @@ Jalankan dengan: streamlit run app.py
 
 Navigasi: st.navigation() dengan grouped dict
   → Back/Forward browser berfungsi penuh
-  → Section headers SAP / SIPS distyle menjadi toggle pill
+  → Section headers distyle menjadi toggle pill
   → Filter sidebar berbeda per sistem
 """
 
@@ -51,8 +51,11 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 # Views - Inklaring Barang Impor
 from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
+# Views - Harga Bahan Baku
+from views import v_bb_za, v_bb_ammonia
+
 # Views - Lainnya
-from views import v_tren_harga_bb, v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
+from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
 
 # =============================================================================
 # PAGE CONFIGURATION
@@ -100,19 +103,19 @@ init_state('show_search_dialog',   False)
 init_state('show_changelog',       False)
 init_state('filter_mode',          'sidebar')
 # SAP filters
-init_state('filter_bagian',       ['All'])
-init_state('prev_filter_bagian',  ['All'])
-init_state('filter_dept',         ['All'])
-init_state('prev_filter_dept',    ['All'])
-init_state('filter_pgroup',       ['All'])
-init_state('prev_filter_pgroup',  ['All'])
+init_state('filter_bagian',        ['All'])
+init_state('prev_filter_bagian',   ['All'])
+init_state('filter_dept',          ['All'])
+init_state('prev_filter_dept',     ['All'])
+init_state('filter_pgroup',        ['All'])
+init_state('prev_filter_pgroup',   ['All'])
 # SIPS filters
-init_state('sips_filter_nama',    ['All'])
-init_state('sips_prev_nama',      ['All'])
-init_state('sips_filter_bagian',  ['All'])
-init_state('sips_prev_bagian',    ['All'])
-init_state('sips_filter_pgroup',  ['All'])
-init_state('sips_prev_pgroup',    ['All'])
+init_state('sips_filter_nama',     ['All'])
+init_state('sips_prev_nama',       ['All'])
+init_state('sips_filter_bagian',   ['All'])
+init_state('sips_prev_bagian',     ['All'])
+init_state('sips_filter_pgroup',   ['All'])
+init_state('sips_prev_pgroup',     ['All'])
 
 # =============================================================================
 # DIALOG KONFIRMASI LOGOUT
@@ -159,14 +162,11 @@ def dialog_search():
     
     col_cari, col_tutup = st.columns(2)
     with col_cari:
-        # Tombol ini sekarang hanya untuk kosmetik/memicu efek enter tambahan
         st.button("Cari Fitur", use_container_width=True, type="primary")
     with col_tutup:
         if st.button("Tutup", use_container_width=True):
             st.rerun()
             
-    # PERUBAHAN UTAMA: Hapus 'btn_cari and'
-    # Sekarang, selama kotak pencarian ada isinya, hasil akan selalu ditahan dan ditampilkan
     if query.strip():
         query_lower = query.lower()
         results = []
@@ -211,7 +211,6 @@ def dialog_search():
                         st.caption(f"💡 {res['description']}")
                         
                     with col_btn:
-                        # Karena tidak lagi di dalam logika btn_cari, klik tombol ini akan tereksekusi dengan sempurna!
                         if st.button("Buka", key=f"btn_jump_{i}", use_container_width=True):
                             st.session_state.scroll_target = res['section']
                             
@@ -224,7 +223,6 @@ def dialog_search():
                                 if target_page_obj: break
                             
                             if target_page_obj:
-                                # Pindah halaman secara langsung
                                 st.switch_page(target_page_obj)
                             else:
                                 st.error("Halaman tidak ditemukan di navigasi.")
@@ -253,14 +251,15 @@ def _render_sips_dashboard():           v_sips_dashboard.render(**st.session_sta
 def _render_sips_detail():              v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_waktu():               v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_alert():               v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
-def _render_tren_harga_bb():            v_tren_harga_bb.render(**st.session_state.get('_summary_view_args', {}))
+def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_bb_za():                    v_bb_za.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_ammonia():               v_bb_ammonia.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
-def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
-def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
-def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 
 # =============================================================================
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
@@ -325,16 +324,22 @@ inklaring_pages = [
 if is_admin():
     inklaring_pages.insert(1, st.Page(_render_inklaring_detail, title="Detailed Inklaring Data", icon=":material/unknown_document:"))
 
+# Halaman Harga Bahan Baku
+bb_pages = [
+    st.Page(_render_bb_za, title="Harga Bahan Baku ZA", icon=":material/science:"),
+    st.Page(_render_bb_ammonia, title="Harga Bahan Baku Ammonia", icon=":material/science:"),
+]
+
 nav_dict.update({
     "SIPS": sips_pages,
     "Inklaring Barang Impor": inklaring_pages,
+    "Harga Bahan Baku": bb_pages,
     "SAP": sap_pages
 })
 
 # Tambahkan navigasi khusus admin untuk modul yang masih under maintenance
 if is_admin():
     nav_dict["Lainnya"] = [
-        st.Page(_render_tren_harga_bb,          title="Tren Harga Bahan Baku",          icon=":material/trending_up:"),
         st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
         st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
         st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
@@ -365,7 +370,8 @@ ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
-LAINNYA_TITLES   = {"Tren Harga Bahan Baku", "Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
+BB_TITLES        = {"Harga Bahan Baku ZA", "Harga Bahan Baku Ammonia"}
+LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
@@ -373,6 +379,7 @@ is_admin_pg  = current_page in ADMIN_TITLES
 is_ai        = current_page in AI_TITLES
 is_sips      = current_page in SIPS_TITLES
 is_inklaring = current_page in INKLARING_TITLES
+is_bb        = current_page in BB_TITLES
 is_lainnya   = current_page in LAINNYA_TITLES
 
 # Tutup changelog otomatis saat navigasi
@@ -393,13 +400,15 @@ if is_admin():
     elif is_ai:           active_div = "3"
     elif is_sips:         active_div = "4"
     elif is_inklaring:    active_div = "5"
-    elif is_lainnya:      active_div = "7"
-    else:                 active_div = "6" # SAP
+    elif is_bb:           active_div = "6"
+    elif is_lainnya:      active_div = "8"
+    else:                 active_div = "7" # SAP
 else:
     if is_summary:        active_div = "1"
     elif is_sips:         active_div = "2"
     elif is_inklaring:    active_div = "3"
-    else:                 active_div = "4" # SAP
+    elif is_bb:           active_div = "4"
+    else:                 active_div = "5" # SAP
 
 st.markdown(f"""
 <style>
@@ -564,6 +573,7 @@ default_start_date = datetime(current_year, 1, 1).date()
 sap_date_str = get_setting("DATA_UPDATE_SAP", "2026-03-31")
 sips_date_str = get_setting("DATA_UPDATE_SIPS", "2026-03-31")
 inklaring_date_str = get_setting("DATA_UPDATE_INKLARING", "2026-03-31")
+bahan_baku_date_str = get_setting("DATA_UPDATE_BAHAN_BAKU", "2026-03-31")
 
 try: DATA_UPDATE_SAP = datetime.strptime(sap_date_str, "%Y-%m-%d").date()
 except: DATA_UPDATE_SAP = datetime(2026, 3, 31).date()
@@ -573,6 +583,9 @@ except: DATA_UPDATE_SIPS = datetime(2026, 3, 31).date()
 
 try: DATA_UPDATE_INKLARING = datetime.strptime(inklaring_date_str, "%Y-%m-%d").date()
 except: DATA_UPDATE_INKLARING = datetime(2026, 3, 31).date()
+
+try: DATA_UPDATE_BAHAN_BAKU = datetime.strptime(bahan_baku_date_str, "%Y-%m-%d").date()
+except: DATA_UPDATE_BAHAN_BAKU = datetime(2026, 3, 31).date()
 
 date_from                = default_start_date
 date_to                  = DATA_UPDATE_SAP
@@ -621,6 +634,9 @@ st.sidebar.markdown(f"""
         </p>
         <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
             Inkl. &nbsp;→&nbsp; {DATA_UPDATE_INKLARING.strftime('%d %B %Y')}
+        </p>
+        <p style='font-size:12px; font-weight:600; color:var(--text-color); margin:3px 0 0 0;'>
+            H.BB &nbsp;→&nbsp; {DATA_UPDATE_BAHAN_BAKU.strftime('%d %B %Y')}
         </p>
     </div>
 """, unsafe_allow_html=True)
@@ -674,11 +690,15 @@ if not is_summary and not is_admin_pg:
                         unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS SAP / SIPS / INKLARING: hanya tampil jika mode sidebar
+# FILTERS SAP / SIPS / INKLARING / BB: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 
 if st.session_state.filter_mode == 'sidebar' and is_lainnya:
     st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi visualisasi selesai.")
+    st.sidebar.markdown("<br>", unsafe_allow_html=True)
+
+elif st.session_state.filter_mode == 'sidebar' and is_bb:
+    st.sidebar.info("📌 Filter majalah, incoterm, dan durasi waktu tersedia di dalam expander pada bagian atas masing-masing halaman.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 elif st.session_state.filter_mode == 'sidebar' and is_inklaring:
@@ -852,7 +872,7 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
         # == Date Range ========================================================
         st.sidebar.markdown("""
         <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered'
-           style='font-size:14px; font-weight:600; color:var(--text-color);
+            style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
@@ -1029,7 +1049,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_sips:
 
         st.sidebar.markdown("""
         <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer'
-           style='font-size:14px; font-weight:600; color:var(--text-color);
+            style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
@@ -1189,12 +1209,17 @@ st.session_state['_inklaring_view_args'] = dict(
     global_context    = global_context,
 )
 
+# Harga BB view args
+st.session_state['_bb_view_args'] = dict(
+    load_data         = load_data,
+    global_context    = global_context,
+)
 
 # =============================================================================
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # =============================================================================
 
-if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_lainnya:
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_lainnya and not is_bb:
     if is_sips:
         render_filter_bar('sips', load_data)
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
@@ -1324,7 +1349,7 @@ _logo_path_footer = "assets/logo_pg.png"
 _logo_b64_footer  = _load_icon_b64(_logo_path_footer)
 
 with col_foot1:
-    system_label = "Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP"))
+    system_label = "Harga Bahan Baku" if is_bb else ("Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP")))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.9 | "
