@@ -2,10 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
-import os
-import tempfile
-
-os.environ['KALEIDO_TMPDIR'] = tempfile.gettempdir()
 
 def render(load_data, global_context):
     st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: ZA")
