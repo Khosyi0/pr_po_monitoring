@@ -25,33 +25,31 @@ def run_etl():
         print(f"ERROR: Gagal membaca file Excel. {e}")
         return False
 
-    print("Membersihkan data...")
+    print("Membersihkan dan transformasi data...")
     df.columns = df.columns.str.strip()
     
-    # Konversi tanggal (Dari kolom 'Tanggal Buat')
-    if 'Tanggal Buat' in df.columns:
-        df['Tanggal Buat'] = pd.to_datetime(df['Tanggal Buat'], errors='coerce')
-        
-    df = df.where(pd.notnull(df), None)
-    
+    # Menyiapkan list untuk menampung data bersih
     records = []
     for _, row in df.iterrows():
         records.append({
-            "metode": str(row.get('Metode', '')).lower().strip(),
-            "status": str(row.get('Status Tender', '')),
-            "no_dokumen": str(row.get('Nomer Tender', '')),
-            "tgl_dokumen": row.get('Tanggal Buat'), 
-            "kategori": str(row.get('Jenis', '')),
+            "metode": str(row.get('Metode', '')).lower().strip() if pd.notna(row.get('Metode')) else "",
+            "status": str(row.get('Status Tender', '')) if pd.notna(row.get('Status Tender')) else "",
+            "no_dokumen": str(row.get('Nomer Tender', '')) if pd.notna(row.get('Nomer Tender')) else "",
+            "tgl_dokumen": pd.to_datetime(row.get('Tanggal Buat'), errors='coerce') if pd.notna(row.get('Tanggal Buat')) else None, 
+            "kategori": str(row.get('Jenis', '')) if pd.notna(row.get('Jenis')) else "",
             "no_pr": "",
             "vendor": "",
             "nilai": 0.0,
-            "keterangan": str(row.get('Type', '')),
-            "pic": str(row.get('Buyer', '')) # SEKARANG MENGAMBIL DARI KOLOM 'Buyer'
+            "keterangan": str(row.get('Type', '')) if pd.notna(row.get('Type')) else "",
+            "pic": str(row.get('Buyer', '')) if pd.notna(row.get('Buyer')) else ""
         })
 
     if not records:
         print("WARNING: Tidak ada data yang ditemukan di sheet EPROC.")
         return False
+
+    # Konversi kembali ke DataFrame agar bisa menggunakan to_sql yang super cepat
+    df_clean = pd.DataFrame(records)
 
     print("Menghubungkan ke database...")
     engine = get_engine()
@@ -61,13 +59,11 @@ def run_etl():
             print("Mengosongkan tabel data_eproc (TRUNCATE)...")
             conn.execute(text("TRUNCATE TABLE data_eproc RESTART IDENTITY"))
             
-            print(f"Memasukkan {len(records)} baris data baru...")
-            insert_query = text("""
-                INSERT INTO data_eproc 
-                (metode, status, no_dokumen, tgl_dokumen, kategori, no_pr, vendor, nilai, keterangan, pic)
-                VALUES (:metode, :status, :no_dokumen, :tgl_dokumen, :kategori, :no_pr, :vendor, :nilai, :keterangan, :pic)
-            """)
-            conn.execute(insert_query, records)
+            print(f"Memasukkan {len(df_clean)} baris data baru dengan Pandas to_sql...")
+            # Menggunakan to_sql seperti di SIPS dengan mekanisme chunking
+            for i in range(0, len(df_clean), 1000):
+                chunk = df_clean.iloc[i:i+1000]
+                chunk.to_sql('data_eproc', conn, if_exists='append', index=False)
             
         print("✅ PROSES ETL EPROC SELESAI DENGAN SUKSES!")
         return True
