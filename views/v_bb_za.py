@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+import os
+import tempfile
+
+os.environ['KALEIDO_TMPDIR'] = tempfile.gettempdir()
 
 def render(load_data, global_context):
     st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: ZA")
@@ -213,7 +217,8 @@ def render(load_data, global_context):
             
             try:
                 fig.update_layout(margin=dict(b=250, t=80, l=60, r=40), legend=dict(y=-0.4)) 
-                chart_image_bytes = fig.to_image(format="png", width=1200, height=700)
+                temp_image_path = os.path.join(tempfile.gettempdir(), "temp_chart.png")
+                chart_image_bytes = fig.to_image(format="png", width=1200, height=700, engine="kaleido")
                 fig.update_layout(margin=dict(b=300, t=80, l=60, r=40), legend=dict(y=-0.6))
                 
                 excel_buffer = io.BytesIO()
