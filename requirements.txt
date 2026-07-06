@@ -11,4 +11,3 @@ joblib
 scikit-learn==1.3.2
 tqdm
 xlsxwriter
-kaleido==0.1.0.post1
