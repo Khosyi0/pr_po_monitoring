@@ -11,3 +11,4 @@ joblib
 scikit-learn==1.3.2
 tqdm
 xlsxwriter
+psutil
