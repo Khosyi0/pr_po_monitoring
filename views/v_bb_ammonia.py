@@ -207,52 +207,6 @@ def render(load_data, global_context):
 </div>
 """
             st.markdown(styled_html, unsafe_allow_html=True)
-            
-            # --- SEKSI EKSPOR LAPORAN DENGAN IKON MATERIAL SAVE & DOWNLOAD ---
-            # --- EKSPOR LAPORAN (VERSI SERVER-FRIENDLY) ---
-            st.markdown("#### :material/save: Ekspor Laporan")
-            
-            try:
-                # 1. Konversi grafik ke format gambar (byte array) menggunakan 'png'
-                # Tanpa menggunakan engine='kaleido' jika masih error, 
-                # secara default Plotly akan mencoba metode paling ringan.
-                chart_image_bytes = fig.to_image(format="png", width=1200, height=700)
-                
-                excel_buffer = io.BytesIO()
-                
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    df_export = df_pivot.copy()
-                    df_export.columns = kolom_tanggal
-                    df_export.to_excel(writer, sheet_name='Ringkasan', startrow=5, header=False)
-                    
-                    workbook  = writer.book
-                    worksheet = writer.sheets['Ringkasan']
-                    
-                    # Tambahkan format, tulis header dan judul (seperti kode sebelumnya)
-                    # ... (gunakan kode penulisan format yang sudah kita buat sebelumnya)
-                    
-                    # 2. MASUKKAN GAMBAR KE EXCEL LANGSUNG DARI MEMORY
-                    # XlsxWriter bisa membaca BytesIO langsung tanpa perlu simpan ke file!
-                    image_stream = io.BytesIO(chart_image_bytes)
-                    
-                    start_row_image = 5 + len(df_export) + 3 
-                    worksheet.insert_image(
-                        f'A{start_row_image}', 
-                        'trend_chart.png', 
-                        {'image_data': image_stream, 'x_scale': 0.85, 'y_scale': 0.85}
-                    )
-                
-                st.download_button(
-                    label=":material/download: Download Laporan Lengkap (Excel)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"Laporan_Tren_{jenis_harga}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel_final"
-                )
-                
-            except Exception as e:
-                st.error("Gagal melakukan ekspor grafik. Pastikan pustaka pendukung terinstal.")
-                st.write(f"Detail error: {e}")
                 
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")
