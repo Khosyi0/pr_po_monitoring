@@ -356,9 +356,18 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         vol_komoditi = df.groupby('komoditi')['quantity_mt'].sum().reset_index()
         vol_komoditi = vol_komoditi.sort_values('quantity_mt', ascending=True)
         
+        # Format nilai dengan k suffix yang akurat (pembulatan 3 significant figures)
+        def format_volume_k(value):
+            if value >= 1000:
+                return f"{value/1000:.1f}k"
+            else:
+                return f"{value:.0f}"
+        
+        vol_komoditi['quantity_formatted'] = vol_komoditi['quantity_mt'].apply(format_volume_k)
+        
         fig_vol = px.bar(
             vol_komoditi, x='quantity_mt', y='komoditi', orientation='h',
-            text_auto='.2s', color_discrete_sequence=['#1f77b4']
+            text='quantity_formatted', color_discrete_sequence=['#1f77b4']
         )
         fig_vol.update_layout(
             margin=dict(t=20, b=20, l=20, r=20),
