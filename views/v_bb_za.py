@@ -3,9 +3,198 @@ import pandas as pd
 import plotly.express as px
 import io
 
+from openpyxl import Workbook
+from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.axis import ChartLines
+from openpyxl.chart.text import RichText
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.chart.layout import Layout, ManualLayout
+from openpyxl.drawing.text import RichTextProperties, Paragraph, ParagraphProperties, CharacterProperties
+from openpyxl.drawing.line import LineProperties
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
+
+
+def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Komparasi Harga ZA"
+    ws_data = wb.create_sheet("_DataChart")
+
+    # ============ DATA UNTUK CHART (sheet terpisah) ============
+    df_chart = df_plot.pivot_table(
+        index='tanggal_terbit',
+        columns='label_komparasi',
+        values=y_col,
+        aggfunc='mean'
+    ).sort_index()
+
+    df_chart_reset = df_chart.reset_index()
+    df_chart_reset['tanggal_terbit'] = df_chart_reset['tanggal_terbit'].dt.strftime('%d %b %Y')
+
+    headers = ['Tanggal Terbit'] + list(df_chart.columns)
+
+    for col_idx, header in enumerate(headers, start=1):
+        ws_data.cell(row=1, column=col_idx, value=header)
+
+    for row_idx, row in enumerate(df_chart_reset.itertuples(index=False), start=2):
+        for col_idx, value in enumerate(row, start=1):
+            ws_data.cell(row=row_idx, column=col_idx, value=value)
+
+    n_rows = len(df_chart_reset)
+    n_cols = len(headers)
+
+    # ============ CHART ============
+    chart = LineChart()
+    chart.title = f"Komparasi Tren Harga ZA ({jenis_harga})"
+    chart.height = 14  # diperbesar supaya title sumbu & label -90 tidak terpotong
+    chart.width = 32
+    chart.style = None
+    chart.title.overlay = False
+
+    data_ref = Reference(ws_data, min_col=2, max_col=n_cols, min_row=1, max_row=n_rows + 1)
+    cats_ref = Reference(ws_data, min_col=1, max_col=1, min_row=2, max_row=n_rows + 1)
+
+    chart.add_data(data_ref, titles_from_data=True)
+    chart.set_categories(cats_ref)
+
+    label_columns = list(df_chart.columns)
+    for series, label in zip(chart.series, label_columns):
+        series.marker.symbol = "circle"
+        series.marker.size = 5
+        series.smooth = False
+        hex_color = warna_map.get(label, "#1f77b4").lstrip('#').upper()
+        series.graphicalProperties.line.width = 18000
+        series.graphicalProperties.line.solidFill = hex_color
+        series.marker.graphicalProperties.solidFill = hex_color
+        series.marker.graphicalProperties.line.solidFill = hex_color
+
+    # Sumbu Y
+    chart.y_axis.title = y_label
+    chart.y_axis.majorGridlines = ChartLines()
+    chart.y_axis.majorGridlines.graphicalProperties = GraphicalProperties()
+    chart.y_axis.majorGridlines.graphicalProperties.line = LineProperties(solidFill="E0E0E0", w=9525)
+    chart.y_axis.delete = False
+
+    # Sumbu X: TAMPILKAN SEMUA label tanggal (tickLblSkip=1), rotasi -90 seperti plotly asli
+    chart.x_axis.title = "Tanggal Publikasi"
+    chart.x_axis.delete = False
+    chart.x_axis.majorGridlines = None
+    chart.x_axis.tickLblSkip = 1
+    chart.x_axis.tickMarkSkip = 1
+    chart.x_axis.txPr = RichText(
+        bodyPr=RichTextProperties(rot=-5400000, vert="horz"),  # -90 derajat
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=700)),
+                      endParaRPr=CharacterProperties(sz=700))]
+    )
+
+    # Legend
+    chart.legend.position = 'b'
+    chart.legend.overlay = False
+
+    # Manual layout plot area -- beri ruang kiri utk title sumbu-y, ruang bawah utk title sumbu-x + label rotasi
+    # PENTING: set ke chart.layout, BUKAN chart.plot_area.layout (openpyxl menimpa saat _write())
+    chart.layout = Layout(
+        manualLayout=ManualLayout(
+            x=0.02, y=0.18, h=0.64, w=0.90,
+            xMode="edge", yMode="edge"
+        )
+    )
+
+    ws.add_chart(chart, "A1")
+
+    # ============ TABEL DETAIL HISTORI (desain: header biru 2-baris, merged cell) ============
+    HEADER_BLUE = "BDD7EE"
+    thin = Side(style='thin', color='000000')
+
+    TABLE_START_ROW = 34  # sesuaikan dengan posisi di bawah chart-mu
+
+    n_date_cols = len(kolom_tanggal)
+    last_col = 1 + n_date_cols
+
+    ws.cell(row=TABLE_START_ROW, column=1,
+            value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
+
+    header_row1 = TABLE_START_ROW + 1
+    header_row2 = header_row1 + 1
+    first_data_row = header_row2 + 1
+    last_data_row = first_data_row + len(df_pivot) - 1
+
+    # --- Isi & fill SEMUA sel dulu (termasuk yang akan di-merge), SEBELUM memanggil merge_cells ---
+    for col_idx in range(1, last_col + 1):
+        cell = ws.cell(row=header_row1, column=col_idx)
+        cell.fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+        cell.font = Font(bold=True, size=12)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.cell(row=header_row1, column=1, value="Referensi")
+    ws.cell(row=header_row1, column=2, value="Harga USD/MT")
+
+    ws.cell(row=header_row2, column=1).fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+    for col_idx, tgl_label in enumerate(kolom_tanggal, start=2):
+        cell = ws.cell(row=header_row2, column=col_idx, value=tgl_label)
+        cell.font = Font(bold=True, size=11)
+        cell.fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row_offset, (index_label, row) in enumerate(df_pivot.iterrows()):
+        r = first_data_row + row_offset
+        cell = ws.cell(row=r, column=1, value=index_label)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        for col_idx, col in enumerate(df_pivot.columns, start=2):
+            val = row[col]
+            val_str = "" if pd.isna(val) else str(val)
+            c = ws.cell(row=r, column=col_idx, value=val_str)
+            c.alignment = Alignment(horizontal="center", vertical="center")
+
+    # --- Border: SEMUA sisi thin, diterapkan ke semua sel ---
+    border_thin_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for r in range(header_row1, last_data_row + 1):
+        for c in range(1, last_col + 1):
+            ws.cell(row=r, column=c).border = border_thin_all
+
+    # --- Merge PALING TERAKHIR, setelah semua value/fill/border di-set ---
+    ws.merge_cells(start_row=header_row1, start_column=1, end_row=header_row2, end_column=1)
+    ws.merge_cells(start_row=header_row1, start_column=2, end_row=header_row1, end_column=last_col)
+
+    ws.column_dimensions['A'].width = 26
+    for col_idx in range(2, last_col + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 20
+
+    ws.row_dimensions[header_row1].height = 22
+    ws.row_dimensions[header_row2].height = 20
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
 def render(load_data, global_context):
     st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: ZA")
-    
+
+    # === Tampilkan info tanggal terakhir update data Harga Bahan Baku ===
+    from config_db import get_setting
+    from datetime import datetime
+
+    bahan_baku_date_str = get_setting("DATA_UPDATE_BAHAN_BAKU", "2026-03-31")
+    try:
+        tgl_update_bb = datetime.strptime(bahan_baku_date_str, "%Y-%m-%d").date()
+    except:
+        tgl_update_bb = datetime(2026, 3, 31).date()
+
+    bulan_indo = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+        7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
+    tgl_update_str = f"{tgl_update_bb.day:02d} {bulan_indo[tgl_update_bb.month]} {tgl_update_bb.year}"
+
+    st.markdown(
+        f"<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
+        f"Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
+        f"</p>",
+        unsafe_allow_html=True
+    )
+
     # 1. Ambil data ZA dari database
     query = """
         SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
@@ -207,6 +396,24 @@ def render(load_data, global_context):
 </div>
 """
             st.markdown(styled_html, unsafe_allow_html=True)
+
+            # ============ TOMBOL DOWNLOAD EXCEL ============
+            excel_buffer = generate_excel_export(
+                df_plot=df_plot,
+                df_pivot=df_pivot,
+                kolom_tanggal=kolom_tanggal,
+                y_col=y_col,
+                y_label=y_label,
+                jenis_harga=jenis_harga,
+                warna_map=warna_map
+            )
+
+            st.download_button(
+                label=":material/download: Download Excel (Chart + Tabel)",
+                data=excel_buffer,
+                file_name=f"komparasi_harga_ZA_{jenis_harga}_{start_date}_{end_date}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
                 
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")
