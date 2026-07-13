@@ -1394,16 +1394,16 @@ def render(load_data, **kwargs):
         r1c1, r1c2, r1c3 = st.columns(3)
         with r1c1: 
             st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**On Budget**\n\nPersentase PO di bagian ini yang realisasi nilainya tidak melebihi estimasi/SR awal (≤ 100%).")
         with r1c2: 
             tipe_time = "green" if pct_ontime >= 80 else "red"
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**On Time**\n\nPersentase PO di bagian ini yang berhasil diselesaikan tepat waktu sesuai target SLA yang ditetapkan.")
         with r1c3: 
             st.markdown(_card(ICONS["search"], "Total OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**Total OTOBOS (Bagian)**\n\nRata-rata skor performa On Time, On Budget, dan On Spec spesifik untuk dokumen yang ditangani oleh bagian ini.")
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -1411,15 +1411,15 @@ def render(load_data, **kwargs):
         r2c1, r2c2, r2c3 = st.columns(3)
         with r2c1:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil, border_class=border_class_map.get(tipe_efis_tampil, "")), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**Efisiensi (Non-Agreement)**\n\nPersentase dan nominal penghematan realisasi PO terhadap anggaran awal (OE), dihitung secara spesifik untuk item **Non-Agreement** pada bagian ini.")
         with r2c2:
             st.markdown(_card(ICONS["building"], "% Single Platform", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**% Single Platform**\n\nPersentase dokumen pengadaan pada bagian ini yang diproses secara digital melalui sistem EPROC.")
         with r2c3:
             st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", str_prod_bagian, produktivitas_delta, tipe_prod_bagian, border_class=border_class_map.get(tipe_prod_bagian, "")), unsafe_allow_html=True)
-            with st.popover(":material/visibility:", help="Lihat Formula"):
+            with st.popover(":material/visibility:", help="Keterangan"):
                 st.info("**Produktivitas PR-PO**\n\nRasio konversi penyelesaian dokumen Purchase Requisition (PR) menjadi Purchase Order (PO) oleh tim di bagian ini.")
 
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
