@@ -366,6 +366,24 @@ div[data-testid="stPlotlyChart"] {
     width: 24px !important; 
     height: 24px !important;
 }
+
+/* == Posisi tombol popover di dalam kartu KPI == */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative; /* Membuat setiap kolom menjadi container relatif */
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
+/* Menyembunyikan tombol popover saat di-print */
+@media print {
+    div[data-testid="stPopover"] {
+        display: none !important;
+    }
+}
 </style>
 """
 
@@ -997,20 +1015,37 @@ def render(load_data, **kwargs):
     # ── Baris 1: Financial ────────────────────────────────────────────────
     _row_label("Financial")
     c1, c2, c3 = st.columns(3)
-    with c1: st.markdown(_card(ICONS["currency"], "Net Income", ni_nilai, ni_delta, ni_color, border_class=ni_border), unsafe_allow_html=True)
-    with c2: st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai, co_delta, co_color, border_class=co_border), unsafe_allow_html=True)
-    with c3: st.markdown(_card(ICONS["truck"], "% Penagihan Despatch", pd_nilai, pd_delta, pd_color, border_class=pd_border), unsafe_allow_html=True)
+    with c1: 
+        st.markdown(_card(ICONS["currency"], "Net Income", ni_nilai, ni_delta, ni_color, border_class=ni_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Net Income**\n\Surat dari SDM")
+    with c2: 
+        st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai, co_delta, co_color, border_class=co_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**% Cost Optimization**\n\nSurat dari SDM")
+    with c3: 
+        st.markdown(_card(ICONS["truck"], "% Penagihan Despatch", pd_nilai, pd_delta, pd_color, border_class=pd_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**% Penagihan Despatch**\n\nKonfirmasi BB")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 2: Customer ─────────────────────────────────────────────────
     _row_label("Customer")
     c4, c5, c6 = st.columns(3)
-    with c4: st.markdown(_card(ICONS["house"], "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
-    with c5: st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK", npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
+    with c4: 
+        st.markdown(_card(ICONS["house"], "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**% Pembelian PDN**\n\nLaporan Kompartemen ManLog")
+    with c5: 
+        st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK", npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**% Trading NPK**\n\n-")
     with c6:
         pembebasan_val = f"{format_number(persen_sla_epp, decimals=2)}%"
         pembebasan_border = border_class_map.get(pembebasan_color_db, "")
         st.markdown(_card(ICONS["clock"], "% Kecepatan Pembebasan Barang Impor", pembebasan_val, sla_pembebasan_delta, pembebasan_color_db, border_class=pembebasan_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**% Kecepatan Pembebasan Impor**\n\nPersentase barang impor yang berhasil dibebaskan (SPPB) sesuai target SLA.")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 3: % OTOBOS Barang ──────────────────────────────────────────
@@ -1019,6 +1054,8 @@ def render(load_data, **kwargs):
     with c7:
         border_cls = border_class_map.get(color_otobos, "")
         st.markdown(_card(ICONS["search"], "Total OTOBOS", f"{format_number(otobos_val, decimals=2)}%", otobos_delta, color_otobos, border_class=f"{border_cls} sum-card-otobos-total"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Total OTOBOS**\n\nKalkulasi rata-rata dari skor On Time, On Budget, dan On Spec.\n\n`= (On Time + On Budget + On Spec) / 3`")
     with c8:
         st.markdown(_card(ICONS["clock"], "On Time", f"{format_number(sla_on_time_pct, decimals=2)}%", border_class="sum-card-small"), unsafe_allow_html=True)
     with c9:
@@ -1028,25 +1065,46 @@ def render(load_data, **kwargs):
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 4 & 5: Learning & Growth + Internal Business Process ────────
-    main_c1, main_c2 = st.columns([1, 2], gap="medium")
-
-    with main_c1:
+    
+    # 1. Pisahkan Label/Header menggunakan rasio kolom 1 banding 2
+    lbl_c1, lbl_c2 = st.columns([1, 2])
+    with lbl_c1:
         _row_label("Learning & Growth")
-        st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
-        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
-
-    with main_c2:
+    with lbl_c2:
         _row_label("Internal Business Process")
-        sub_c1, sub_c2 = st.columns(2)
-        with sub_c1:
-            st.markdown(_card(ICONS["box"], "% Zero Stock Out Bahan Baku", zbb_nilai, zbb_delta, zbb_color, border_class=zbb_border), unsafe_allow_html=True)
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            st.markdown(_card(ICONS["building"], "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
-        with sub_c2:
-            st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong", zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
-            st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-            st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang", saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
+
+    # 2. Baris Atas (Card 1, 3, dan 5)
+    r1_c1, r1_c2, r1_c3 = st.columns(3)
+    with r1_c1:
+        st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Talent Development**\n\nSurat dari SDM")
+    with r1_c2:
+        st.markdown(_card(ICONS["box"], "% Zero Stock Out Bahan Baku", zbb_nilai, zbb_delta, zbb_color, border_class=zbb_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Zero Stock Out Bahan Baku**\n\nLaporan Kompartemen ManLog")
+    with r1_c3:
+        st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong", zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Zero Stock Out Kantong**\n\nLaporan Kompartemen ManLog")
+            
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+    # 3. Baris Bawah (Card 2, 4, dan 6)
+    r2_c1, r2_c2, r2_c3 = st.columns(3)
+    with r2_c1:
+        st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Produktivitas PR-PO**\n\nRasio Purchase Requisition (PR) yang berhasil dikonversi menjadi Purchase Order (PO).\n\n`= (Total PO / Total PR) x 100%`")
+    with r2_c2:
+        st.markdown(_card(ICONS["building"], "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Utilisasi Single Platform**\n\nSIPS (Metode Tender)")
+    with r2_c3:
+        st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang", saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Safety Score**\n\nEposh V2")
+            
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     # ── Baris 6 ──────────────────────────────────────────────────────────
@@ -1054,10 +1112,14 @@ def render(load_data, **kwargs):
     c17, c18 = st.columns(2)
     with c17:
         st.markdown(_card(ICONS["file_text"], "Penyusunan Laporan Kinerja", laporan_kinerja_nilai, laporan_kinerja_delta, laporan_kinerja_color, border_class=laporan_kinerja_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Laporan Kinerja**\n\n-")
     with c18:
         izin_impor_color = "green"
         izin_impor_border = border_class_map.get(izin_impor_color, "")
         st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", izin_impor_nilai, izin_impor_delta, izin_impor_color, border_class=izin_impor_border), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("**Pemenuhan Izin Impor**\n\n-")
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
