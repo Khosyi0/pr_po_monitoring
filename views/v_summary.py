@@ -1017,15 +1017,15 @@ def render(load_data, **kwargs):
     c1, c2, c3 = st.columns(3)
     with c1: 
         st.markdown(_card(ICONS["currency"], "Net Income", ni_nilai, ni_delta, ni_color, border_class=ni_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Net Income**\n\Surat dari SDM")
     with c2: 
         st.markdown(_card(ICONS["graph_up"], "% Cost Optimization", co_nilai, co_delta, co_color, border_class=co_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**% Cost Optimization**\n\nSurat dari SDM")
     with c3: 
         st.markdown(_card(ICONS["truck"], "% Penagihan Despatch", pd_nilai, pd_delta, pd_color, border_class=pd_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**% Penagihan Despatch**\n\nKonfirmasi BB")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
@@ -1034,17 +1034,17 @@ def render(load_data, **kwargs):
     c4, c5, c6 = st.columns(3)
     with c4: 
         st.markdown(_card(ICONS["house"], "% Pembelian PDN terhadap Total Pengadaan", pdn_nilai, pdn_delta, pdn_color, border_class=pdn_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**% Pembelian PDN**\n\nLaporan Kompartemen ManLog")
     with c5: 
         st.markdown(_card(ICONS["refresh"], "% Pelaksanaan Trading Pupuk NPK", npk_nilai, npk_delta, npk_color, border_class=npk_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**% Trading NPK**\n\n-")
     with c6:
         pembebasan_val = f"{format_number(persen_sla_epp, decimals=2)}%"
         pembebasan_border = border_class_map.get(pembebasan_color_db, "")
         st.markdown(_card(ICONS["clock"], "% Kecepatan Pembebasan Barang Impor", pembebasan_val, sla_pembebasan_delta, pembebasan_color_db, border_class=pembebasan_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**% Kecepatan Pembebasan Impor**\n\nPersentase barang impor yang berhasil dibebaskan (SPPB) sesuai target SLA.")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
@@ -1054,7 +1054,7 @@ def render(load_data, **kwargs):
     with c7:
         border_cls = border_class_map.get(color_otobos, "")
         st.markdown(_card(ICONS["search"], "Total OTOBOS", f"{format_number(otobos_val, decimals=2)}%", otobos_delta, color_otobos, border_class=f"{border_cls} sum-card-otobos-total"), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Total OTOBOS**\n\nKalkulasi rata-rata dari skor On Time, On Budget, dan On Spec.\n\n`= (On Time + On Budget + On Spec) / 3`")
     with c8:
         st.markdown(_card(ICONS["clock"], "On Time", f"{format_number(sla_on_time_pct, decimals=2)}%", border_class="sum-card-small"), unsafe_allow_html=True)
@@ -1077,15 +1077,15 @@ def render(load_data, **kwargs):
     r1_c1, r1_c2, r1_c3 = st.columns(3)
     with r1_c1:
         st.markdown(_card(ICONS["people"],  "% Talent Development Effectiveness", tde_nilai, tde_delta, tde_color, border_class=tde_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Talent Development**\n\nSurat dari SDM")
     with r1_c2:
         st.markdown(_card(ICONS["box"], "% Zero Stock Out Bahan Baku", zbb_nilai, zbb_delta, zbb_color, border_class=zbb_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Zero Stock Out Bahan Baku**\n\nLaporan Kompartemen ManLog")
     with r1_c3:
         st.markdown(_card(ICONS["bag"], "% Zero Stock Out Kantong", zkn_nilai, zkn_delta, zkn_color, border_class=zkn_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Zero Stock Out Kantong**\n\nLaporan Kompartemen ManLog")
             
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
@@ -1094,15 +1094,15 @@ def render(load_data, **kwargs):
     r2_c1, r2_c2, r2_c3 = st.columns(3)
     with r2_c1:
         st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", produktivitas_delta, color_produktivitas, border_class=border_class_map.get(color_produktivitas, "")), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Produktivitas PR-PO**\n\nRasio Purchase Requisition (PR) yang berhasil dikonversi menjadi Purchase Order (PO).\n\n`= (Total PO / Total PR) x 100%`")
     with r2_c2:
         st.markdown(_card(ICONS["building"], "% Utilisasi Single Platform Pengadaan", usp_nilai, usp_delta, usp_color, border_class=usp_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Utilisasi Single Platform**\n\nSIPS (Metode Tender)")
     with r2_c3:
         st.markdown(_card(ICONS["check_circle"], "# Safety Score Pengadaan Barang", saf_nilai, saf_delta, saf_color, border_class=saf_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Safety Score**\n\nEposh V2")
             
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
@@ -1112,13 +1112,13 @@ def render(load_data, **kwargs):
     c17, c18 = st.columns(2)
     with c17:
         st.markdown(_card(ICONS["file_text"], "Penyusunan Laporan Kinerja", laporan_kinerja_nilai, laporan_kinerja_delta, laporan_kinerja_color, border_class=laporan_kinerja_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Laporan Kinerja**\n\n-")
     with c18:
         izin_impor_color = "green"
         izin_impor_border = border_class_map.get(izin_impor_color, "")
         st.markdown(_card(ICONS["lock"], "Pemenuhan Izin Impor", izin_impor_nilai, izin_impor_delta, izin_impor_color, border_class=izin_impor_border), unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
+        with st.popover(":material/visibility:", help="Keterangan"):
             st.info("**Pemenuhan Izin Impor**\n\n-")
 
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -1154,16 +1154,24 @@ def render(load_data, **kwargs):
         c11, c12 = st.columns(2)
         with c11:
             st.markdown(_card(ICONS["file_text"], "Total PR", format_number(sips_total_pr), f"{format_number(sips_total_po)} sudah memiliki PO"), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**Total PR**\n\nJumlah keseluruhan dokumen Purchase Requisition pada periode yang dipilih.")
         with c12:
             st.markdown(_card(ICONS["bag"], "Total PO", format_number(sips_total_po), "Status Closed & Proses PO"), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**Total PO**\n\nJumlah Purchase Order yang berhasil diterbitkan (khusus dokumen berstatus *Closed* atau *Proses PO*).")
         
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         c13, c14 = st.columns(2)
         with c13:
             st.markdown(_card(ICONS["clock"], "PR On Progress", format_number(sips_pr_without), ""), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**PR On Progress**\n\nJumlah dokumen PR yang masih diproses oleh tim pengadaan dan belum dikonversi menjadi PO.\n\n`= Total PR - Total PO`")
         with c14:
             st.markdown(_card(ICONS["percent"], "% PR-PO", f"{format_number(sips_pct_pr_po, decimals=2)}%", ""), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**% PR-PO**\n\nPersentase tingkat konversi penyelesaian dari dokumen PR menjadi PO.\n\n`= (Total PO / Total PR) x 100%`")
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
         
@@ -1201,16 +1209,24 @@ def render(load_data, **kwargs):
         c15, c16 = st.columns(2)
         with c15:
             st.markdown(_card(ICONS["currency"], "Total OE", format_idr(sips_oe_total), "OE dari PR (Closed/Proses PO)"), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**Total OE**\n\nTotal nilai anggaran/Owner's Estimate (OE) dari dokumen PR yang sudah diproses menjadi PO (khusus Non-Agreement).")
         with c16:
             st.markdown(_card(ICONS["bag"], "Total Nilai PO", format_idr(sips_po_total), "Seluruh realisasi PO"), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**Total Nilai PO**\n\nTotal nilai akhir/realisasi dari dokumen PO yang diterbitkan (khusus Non-Agreement).")
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         c17, c18 = st.columns(2)
         with c17:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", format_idr(sips_savings)), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**Efisiensi (Rp)**\n\nTotal nominal Rupiah penghematan yang berhasil dilakukan dalam pengadaan.\n\n`= Total OE - Total Nilai PO`")
         with c18:
             st.markdown(_card(ICONS["percent"], "% Efisiensi", f"{format_number(sips_savings_pct, decimals=2)}%"), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Keterangan"):
+                st.info("**% Efisiensi**\n\nPersentase penghematan pengadaan terhadap nilai anggaran/OE awal.\n\n`= (Efisiensi Rp / Total OE) x 100%`")
 
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
@@ -1378,21 +1394,33 @@ def render(load_data, **kwargs):
         r1c1, r1c2, r1c3 = st.columns(3)
         with r1c1: 
             st.markdown(_card(ICONS["currency"], "On Budget", str_onbudget_tampil, "", tipe_budget_tampil), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**On Budget**\n\nPersentase PO di bagian ini yang realisasi nilainya tidak melebihi estimasi/SR awal (≤ 100%).")
         with r1c2: 
             tipe_time = "green" if pct_ontime >= 80 else "red"
             st.markdown(_card(ICONS["check_circle"], "On Time", str_ontime, "", tipe_time), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**On Time**\n\nPersentase PO di bagian ini yang berhasil diselesaikan tepat waktu sesuai target SLA yang ditetapkan.")
         with r1c3: 
             st.markdown(_card(ICONS["search"], "Total OTOBOS", str_otobos_bagian, otobos_delta, tipe_otobos_bagian, border_class=border_class_map.get(tipe_otobos_bagian, "")), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**Total OTOBOS (Bagian)**\n\nRata-rata skor performa On Time, On Budget, dan On Spec spesifik untuk dokumen yang ditangani oleh bagian ini.")
 
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
         r2c1, r2c2, r2c3 = st.columns(3)
         with r2c1:
             st.markdown(_card(ICONS["graph_up"], "Efisiensi", str_efis_pct_tampil, str_efis_delta, tipe_efis_tampil, border_class=border_class_map.get(tipe_efis_tampil, "")), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**Efisiensi (Non-Agreement)**\n\nPersentase dan nominal penghematan realisasi PO terhadap anggaran awal (OE), dihitung secara spesifik untuk item **Non-Agreement** pada bagian ini.")
         with r2c2:
             st.markdown(_card(ICONS["building"], "% Single Platform", b_eproc_nilai if b_eproc_nilai != "-" else "-", b_eproc_delta, b_eproc_color, border_class=b_eproc_border), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**% Single Platform**\n\nPersentase dokumen pengadaan pada bagian ini yang diproses secara digital melalui sistem EPROC.")
         with r2c3:
             st.markdown(_card(ICONS["percent"], "Produktivitas PR-PO", str_prod_bagian, produktivitas_delta, tipe_prod_bagian, border_class=border_class_map.get(tipe_prod_bagian, "")), unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("**Produktivitas PR-PO**\n\nRasio konversi penyelesaian dokumen Purchase Requisition (PR) menjadi Purchase Order (PO) oleh tim di bagian ini.")
 
         st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
