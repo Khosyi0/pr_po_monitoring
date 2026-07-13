@@ -179,7 +179,7 @@ def render(load_data, global_context):
 
     st.markdown(
         f"<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
-        f":material/update: Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
+        f" Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
         f"</p>",
         unsafe_allow_html=True
     )
