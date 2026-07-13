@@ -27,7 +27,8 @@ class Config:
     
     SHEET_MAPPING = {
         'Ammonia': 'Ammonia',
-        'ZA': 'ZA'
+        'ZA': 'ZA',
+        'Phos Rock': 'Phosphate Rock'
     }
 
 # =====================================================================

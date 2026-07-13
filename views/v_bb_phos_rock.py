@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Komparasi Harga ZA"
+    ws.title = "Komparasi Harga Phosphate Rock"
     ws_data = wb.create_sheet("_DataChart")
 
     df_chart = df_plot.pivot_table(
@@ -38,7 +38,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_cols = len(headers)
 
     chart = LineChart()
-    chart.title = f"Komparasi Tren Harga ZA ({jenis_harga})"
+    chart.title = f"Komparasi Tren Harga Phosphate Rock ({jenis_harga})"
     chart.height = 14
     chart.width = 32
     chart.style = None
@@ -148,8 +148,6 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
 
 def variasikan_warna(hex_color, index, total):
-    """Kalau cuma 1 incoterm dalam satu baris komparasi, pakai warna asli.
-    Kalau lebih dari 1, buat gradasi terang-gelap dari warna dasar tsb."""
     if total <= 1:
         return hex_color
     hex_color = hex_color.lstrip('#')
@@ -162,7 +160,7 @@ def variasikan_warna(hex_color, index, total):
 
 
 def render(load_data, global_context):
-    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: ZA")
+    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: Phosphate Rock")
 
     from config_db import get_setting
     from datetime import datetime
@@ -189,13 +187,13 @@ def render(load_data, global_context):
     query = """
         SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
         FROM master_harga_bahan_baku 
-        WHERE bahan_baku = 'ZA'
+        WHERE lower(trim(bahan_baku)) IN ('phosphate rock', 'phos rock', 'phosrock')
         ORDER BY tanggal_terbit ASC
     """
     df = load_data(query)
 
     if df.empty:
-        st.warning("Data harga ZA belum tersedia di database.")
+        st.warning("Data harga Phosphate Rock belum tersedia di database.")
         return
 
     list_majalah = df['nama_majalah'].unique()
@@ -224,8 +222,6 @@ def render(load_data, global_context):
 
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
-        # --- Struktur data komparasi: LIST, bukan dict, supaya majalah yang sama
-        # boleh muncul di lebih dari satu baris komparasi tanpa saling menimpa ---
         komparasi_data = []
         warna_map = {}
         default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
@@ -234,14 +230,14 @@ def render(load_data, global_context):
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
                 majalah_pilihan = st.selectbox(f"Majalah ke-{i+1}", list_majalah,
-                                                index=i if i < len(list_majalah) else 0, key=f"majalah_za_{i}")
+                                                index=i if i < len(list_majalah) else 0, key=f"majalah_phosrock_{i}")
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
                 incoterm_pilihan = st.multiselect(f"Metode Incoterm ke-{i+1}", list_incoterm,
                                                    default=list_incoterm[:1] if len(list_incoterm) > 0 else [],
-                                                   key=f"incoterm_za_{i}")
+                                                   key=f"incoterm_phosrock_{i}")
             with c3:
-                warna_pilihan = st.color_picker("Warna", default_colors[i % len(default_colors)], key=f"color_za_{i}")
+                warna_pilihan = st.color_picker("Warna", default_colors[i % len(default_colors)], key=f"color_phosrock_{i}")
 
             if incoterm_pilihan:
                 komparasi_data.append({
@@ -250,7 +246,6 @@ def render(load_data, global_context):
                     "warna_dasar": warna_pilihan
                 })
 
-        # --- Bangun warna_map dengan variasi otomatis kalau 1 baris punya >1 incoterm ---
         for item in komparasi_data:
             for idx, incoterm in enumerate(item["incoterms"]):
                 label = f"{item['majalah']} - {incoterm}"
@@ -282,7 +277,7 @@ def render(load_data, global_context):
             fig = px.line(
                 df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
                 color_discrete_map=warna_map, markers=True,
-                title=f"Komparasi Tren Harga ZA ({jenis_harga})",
+                title=f"Komparasi Tren Harga Phosphate Rock ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
 
@@ -385,7 +380,7 @@ def render(load_data, global_context):
             st.download_button(
                 label=":material/download: Download Excel (Chart + Tabel)",
                 data=excel_buffer,
-                file_name=f"komparasi_harga_ZA_{jenis_harga}_{start_date}_{end_date}.xlsx",
+                file_name=f"komparasi_harga_PhosphateRock_{jenis_harga}_{start_date}_{end_date}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 

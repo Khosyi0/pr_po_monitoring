@@ -52,7 +52,7 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
 # Views - Harga Bahan Baku
-from views import v_bb_za, v_bb_ammonia
+from views import v_bb_za, v_bb_ammonia, v_bb_phos_rock
 
 # Views - Lainnya
 from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
@@ -256,6 +256,7 @@ def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_s
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_bb_za():                    v_bb_za.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_ammonia():               v_bb_ammonia.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_phos_rock():             v_bb_phos_rock.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
@@ -326,8 +327,9 @@ if is_admin():
 
 # Halaman Harga Bahan Baku
 bb_pages = [
-    st.Page(_render_bb_za, title="Harga Bahan Baku ZA", icon=":material/science:"),
-    st.Page(_render_bb_ammonia, title="Harga Bahan Baku Ammonia", icon=":material/science:"),
+    st.Page(_render_bb_za, title="Harga BB ZA", icon=":material/science:"),
+    st.Page(_render_bb_ammonia, title="Harga BB Ammonia", icon=":material/science:"),
+    st.Page(_render_bb_phos_rock, title="Harga BB Phosphate Rock", icon=":material/science:")
 ]
 
 nav_dict.update({

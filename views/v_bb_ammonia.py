@@ -2,11 +2,188 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+from openpyxl import Workbook
+from openpyxl.chart import LineChart, Reference
+from openpyxl.chart.axis import ChartLines
+from openpyxl.chart.text import RichText
+from openpyxl.chart.shapes import GraphicalProperties
+from openpyxl.chart.layout import Layout, ManualLayout
+from openpyxl.drawing.text import RichTextProperties, Paragraph, ParagraphProperties, CharacterProperties
+from openpyxl.drawing.line import LineProperties
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+from openpyxl.utils import get_column_letter
+
+
+def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Komparasi Harga Ammonia"
+    ws_data = wb.create_sheet("_DataChart")
+
+    df_chart = df_plot.pivot_table(
+        index='tanggal_terbit', columns='label_komparasi', values=y_col, aggfunc='mean'
+    ).sort_index()
+
+    df_chart_reset = df_chart.reset_index()
+    df_chart_reset['tanggal_terbit'] = df_chart_reset['tanggal_terbit'].dt.strftime('%d %b %Y')
+
+    headers = ['Tanggal Terbit'] + list(df_chart.columns)
+    for col_idx, header in enumerate(headers, start=1):
+        ws_data.cell(row=1, column=col_idx, value=header)
+    for row_idx, row in enumerate(df_chart_reset.itertuples(index=False), start=2):
+        for col_idx, value in enumerate(row, start=1):
+            ws_data.cell(row=row_idx, column=col_idx, value=value)
+
+    n_rows = len(df_chart_reset)
+    n_cols = len(headers)
+
+    chart = LineChart()
+    chart.title = f"Komparasi Tren Harga Ammonia ({jenis_harga})"
+    chart.height = 14
+    chart.width = 32
+    chart.style = None
+    chart.title.overlay = False
+
+    data_ref = Reference(ws_data, min_col=2, max_col=n_cols, min_row=1, max_row=n_rows + 1)
+    cats_ref = Reference(ws_data, min_col=1, max_col=1, min_row=2, max_row=n_rows + 1)
+    chart.add_data(data_ref, titles_from_data=True)
+    chart.set_categories(cats_ref)
+
+    label_columns = list(df_chart.columns)
+    for series, label in zip(chart.series, label_columns):
+        series.marker.symbol = "circle"
+        series.marker.size = 5
+        series.smooth = False
+        hex_color = warna_map.get(label, "#1f77b4").lstrip('#').upper()
+        series.graphicalProperties.line.width = 18000
+        series.graphicalProperties.line.solidFill = hex_color
+        series.marker.graphicalProperties.solidFill = hex_color
+        series.marker.graphicalProperties.line.solidFill = hex_color
+
+    chart.y_axis.title = y_label
+    chart.y_axis.majorGridlines = ChartLines()
+    chart.y_axis.majorGridlines.graphicalProperties = GraphicalProperties()
+    chart.y_axis.majorGridlines.graphicalProperties.line = LineProperties(solidFill="E0E0E0", w=9525)
+    chart.y_axis.delete = False
+
+    chart.x_axis.title = "Tanggal Publikasi"
+    chart.x_axis.delete = False
+    chart.x_axis.majorGridlines = None
+    chart.x_axis.tickLblSkip = 1
+    chart.x_axis.tickMarkSkip = 1
+    chart.x_axis.txPr = RichText(
+        bodyPr=RichTextProperties(rot=-5400000, vert="horz"),
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=700)),
+                      endParaRPr=CharacterProperties(sz=700))]
+    )
+
+    chart.legend.position = 'b'
+    chart.legend.overlay = False
+
+    chart.layout = Layout(
+        manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge")
+    )
+
+    ws.add_chart(chart, "A1")
+
+    HEADER_BLUE = "BDD7EE"
+    thin = Side(style='thin', color='000000')
+    TABLE_START_ROW = 44
+    n_date_cols = len(kolom_tanggal)
+    last_col = 1 + n_date_cols
+
+    ws.cell(row=TABLE_START_ROW, column=1,
+            value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
+
+    header_row1 = TABLE_START_ROW + 1
+    header_row2 = header_row1 + 1
+    first_data_row = header_row2 + 1
+    last_data_row = first_data_row + len(df_pivot) - 1
+
+    for col_idx in range(1, last_col + 1):
+        cell = ws.cell(row=header_row1, column=col_idx)
+        cell.fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+        cell.font = Font(bold=True, size=12)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    ws.cell(row=header_row1, column=1, value="Referensi")
+    ws.cell(row=header_row1, column=2, value="Harga USD/MT")
+
+    ws.cell(row=header_row2, column=1).fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+    for col_idx, tgl_label in enumerate(kolom_tanggal, start=2):
+        cell = ws.cell(row=header_row2, column=col_idx, value=tgl_label)
+        cell.font = Font(bold=True, size=11)
+        cell.fill = PatternFill(start_color=HEADER_BLUE, end_color=HEADER_BLUE, fill_type="solid")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    for row_offset, (index_label, row) in enumerate(df_pivot.iterrows()):
+        r = first_data_row + row_offset
+        cell = ws.cell(row=r, column=1, value=index_label)
+        cell.alignment = Alignment(horizontal="left", vertical="center")
+        for col_idx, col in enumerate(df_pivot.columns, start=2):
+            val = row[col]
+            val_str = "" if pd.isna(val) else str(val)
+            c = ws.cell(row=r, column=col_idx, value=val_str)
+            c.alignment = Alignment(horizontal="center", vertical="center")
+
+    border_thin_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for r in range(header_row1, last_data_row + 1):
+        for c in range(1, last_col + 1):
+            ws.cell(row=r, column=c).border = border_thin_all
+
+    ws.merge_cells(start_row=header_row1, start_column=1, end_row=header_row2, end_column=1)
+    ws.merge_cells(start_row=header_row1, start_column=2, end_row=header_row1, end_column=last_col)
+
+    ws.column_dimensions['A'].width = 26
+    for col_idx in range(2, last_col + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 20
+
+    ws.row_dimensions[header_row1].height = 22
+    ws.row_dimensions[header_row2].height = 20
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+
+def variasikan_warna(hex_color, index, total):
+    if total <= 1:
+        return hex_color
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    factor = 0.6 + (0.7 * index / max(total - 1, 1))
+    r = min(255, int(r * factor))
+    g = min(255, int(g * factor))
+    b = min(255, int(b * factor))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
 
 def render(load_data, global_context):
     st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: Ammonia")
-    
-    # 1. Ambil data Ammonia dari database
+
+    from config_db import get_setting
+    from datetime import datetime
+
+    bahan_baku_date_str = get_setting("DATA_UPDATE_BAHAN_BAKU", "2026-03-31")
+    try:
+        tgl_update_bb = datetime.strptime(bahan_baku_date_str, "%Y-%m-%d").date()
+    except:
+        tgl_update_bb = datetime(2026, 3, 31).date()
+
+    bulan_indo_header = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+        7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
+    tgl_update_str = f"{tgl_update_bb.day:02d} {bulan_indo_header[tgl_update_bb.month]} {tgl_update_bb.year}"
+
+    st.markdown(
+        f"<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
+        f":material/update: Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
+        f"</p>",
+        unsafe_allow_html=True
+    )
+
     query = """
         SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
         FROM master_harga_bahan_baku 
@@ -14,7 +191,7 @@ def render(load_data, global_context):
         ORDER BY tanggal_terbit ASC
     """
     df = load_data(query)
-    
+
     if df.empty:
         st.warning("Data harga Ammonia belum tersedia di database.")
         return
@@ -23,137 +200,124 @@ def render(load_data, global_context):
     min_date = df['tanggal_terbit'].min()
     max_date = df['tanggal_terbit'].max()
 
-    # Pengaturan default tanggal mulai (Januari 2025)
     default_start_date = pd.Timestamp('2025-01-01').date()
     calendar_min_date = min(min_date, default_start_date)
-    
+
     if default_start_date > max_date or default_start_date < min_date:
         default_start_date = min_date
 
-    # 2. Expander untuk Filter Komparasi dengan Ikon Material Settings
     with st.expander(":material/settings: Filter Komparasi Harga Pasar", expanded=True):
         col_mulai, col_sampai, col_metode, col_jml = st.columns(4)
         with col_mulai:
-            start_date = st.date_input(
-                "Mulai dari tanggal", 
-                value=default_start_date,
-                min_value=calendar_min_date,
-                max_value=max_date
-            )
+            start_date = st.date_input("Mulai dari tanggal", value=default_start_date,
+                                        min_value=calendar_min_date, max_value=max_date)
         with col_sampai:
-            end_date = st.date_input(
-                "Sampai tanggal", 
-                value=max_date,
-                min_value=calendar_min_date,
-                max_value=max_date
-            )
+            end_date = st.date_input("Sampai tanggal", value=max_date,
+                                      min_value=calendar_min_date, max_value=max_date)
         with col_metode:
-            jenis_harga = st.selectbox(
-                "Jenis Harga", 
-                ["AVERAGE", "MIN", "MAX"],
-                help="Pilih nilai harga yang ingin diplot pada grafik"
-            )
+            jenis_harga = st.selectbox("Jenis Harga", ["AVERAGE", "MIN", "MAX"],
+                                        help="Pilih nilai harga yang ingin diplot pada grafik")
         with col_jml:
             jml_komparasi = st.number_input("Jumlah Komparasi", min_value=1, max_value=5, value=2)
-            
-        st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-        
-        komparasi_data = {}
-        warna_map = {}
 
+        st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+
+        komparasi_data = []
+        warna_map = {}
         default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
         for i in range(int(jml_komparasi)):
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
-                majalah_pilihan = st.selectbox(f"Majalah ke-{i+1}", list_majalah, index=i if i < len(list_majalah) else 0, key=f"majalah_{i}")
+                majalah_pilihan = st.selectbox(f"Majalah ke-{i+1}", list_majalah,
+                                                index=i if i < len(list_majalah) else 0, key=f"majalah_amonia_{i}")
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
-                incoterm_pilihan = st.multiselect(f"Metode Incoterm ke-{i+1}", list_incoterm, default=list_incoterm[:1] if len(list_incoterm) > 0 else [], key=f"incoterm_{i}")
+                incoterm_pilihan = st.multiselect(f"Metode Incoterm ke-{i+1}", list_incoterm,
+                                                   default=list_incoterm[:1] if len(list_incoterm) > 0 else [],
+                                                   key=f"incoterm_amonia_{i}")
             with c3:
-                warna_pilihan = st.color_picker("Warna", default_colors[i % len(default_colors)], key=f"color_{i}")
-            
+                warna_pilihan = st.color_picker("Warna", default_colors[i % len(default_colors)], key=f"color_amonia_{i}")
+
             if incoterm_pilihan:
-                komparasi_data[majalah_pilihan] = incoterm_pilihan
-                for incoterm in incoterm_pilihan:
-                    label = f"{majalah_pilihan} - {incoterm}"
-                    warna_map[label] = warna_pilihan
+                komparasi_data.append({
+                    "majalah": majalah_pilihan,
+                    "incoterms": incoterm_pilihan,
+                    "warna_dasar": warna_pilihan
+                })
+
+        for item in komparasi_data:
+            for idx, incoterm in enumerate(item["incoterms"]):
+                label = f"{item['majalah']} - {incoterm}"
+                warna_final = variasikan_warna(item["warna_dasar"], idx, len(item["incoterms"]))
+                warna_map[label] = warna_final
 
     if start_date <= end_date and komparasi_data:
         df_plot = pd.DataFrame()
-        
-        for majalah, incoterms in komparasi_data.items():
-            temp_df = df[(df['nama_majalah'] == majalah) & (df['incoterm'].isin(incoterms)) & (df['tanggal_terbit'] >= start_date) & (df['tanggal_terbit'] <= end_date)].copy()
+
+        for item in komparasi_data:
+            majalah = item["majalah"]
+            incoterms = item["incoterms"]
+            temp_df = df[(df['nama_majalah'] == majalah) & (df['incoterm'].isin(incoterms)) &
+                         (df['tanggal_terbit'] >= start_date) & (df['tanggal_terbit'] <= end_date)].copy()
             if not temp_df.empty:
                 temp_df['label_komparasi'] = temp_df['nama_majalah'] + ' - ' + temp_df['incoterm']
                 df_plot = pd.concat([df_plot, temp_df], ignore_index=True)
-        
+
         if not df_plot.empty:
             df_plot['harga_avg'] = (df_plot['harga_min'] + df_plot['harga_max']) / 2
-            
-            # Konversi data tanggal murni
             df_plot['tanggal_terbit'] = pd.to_datetime(df_plot['tanggal_terbit'])
             df_plot = df_plot.sort_values('tanggal_terbit')
             tanggal_unik = df_plot['tanggal_terbit'].unique()
-            
+
             if jenis_harga == "MIN": y_col, y_label = 'harga_min', 'Harga Minimum (USD/MT)'
             elif jenis_harga == "MAX": y_col, y_label = 'harga_max', 'Harga Maksimum (USD/MT)'
             else: y_col, y_label = 'harga_avg', 'Harga Rata-rata (USD/MT)'
-            
+
             fig = px.line(
                 df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
-                color_discrete_map=warna_map, markers=True, 
+                color_discrete_map=warna_map, markers=True,
                 title=f"Komparasi Tren Harga Ammonia ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
-            
+
             fig.update_layout(
                 hovermode="x unified",
                 legend=dict(orientation="v", yanchor="top", y=-0.6, xanchor="left", x=0),
                 margin=dict(b=300, t=80, l=60, r=40),
                 height=600
             )
-            
+
             fig.update_xaxes(
-                tickangle=-90,
-                type='date', 
-                tickmode='array',
-                tickvals=tanggal_unik,
-                tickformat="%d %b %Y",
-                title=dict(
-                    text="Tanggal Publikasi",
-                    standoff=40
-                )
+                tickangle=-90, type='date', tickmode='array', tickvals=tanggal_unik,
+                tickformat="%d %b %Y", title=dict(text="Tanggal Publikasi", standoff=40)
             )
-            
+
             fig.update_yaxes(dtick=50)
-            
+
             st.plotly_chart(fig, use_container_width=True)
-            
+
             st.markdown("#### :material/table_chart: Detail Histori Data (3 Periode Terakhir)")
-            
-            # Proses Pivot Data
+
             df_display = df_plot.copy()
             df_display['harga_range'] = df_display['harga_min'].apply(lambda x: f"{x:g}") + ' - ' + df_display['harga_max'].apply(lambda x: f"{x:g}")
-            
+
             df_pivot = df_display.pivot_table(
-                index='label_komparasi', 
-                columns='tanggal_terbit', 
-                values='harga_range',
+                index='label_komparasi', columns='tanggal_terbit', values='harga_range',
                 aggfunc=lambda x: ' '.join(x)
             )
-            
+
             df_pivot = df_pivot.sort_index(axis=1, ascending=False)
             df_pivot = df_pivot.iloc[:, :3]
-            
+
             bulan_indo = {
                 1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
                 7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
             }
             kolom_tanggal = [f"{d.day:02d} {bulan_indo[d.month]} {d.year}" for d in df_pivot.columns]
-            
+
             jml_kolom = len(kolom_tanggal)
-            
+
             thead = f'''
 <thead>
     <tr>
@@ -165,7 +329,7 @@ def render(load_data, global_context):
             for tgl in kolom_tanggal:
                 thead += f"<th>{tgl}</th>"
             thead += "</tr>\n</thead>"
-            
+
             tbody = "<tbody>\n"
             for index, row in df_pivot.iterrows():
                 tbody += f"<tr>\n<td style='text-align: left !important;'>{index}</td>\n"
@@ -175,9 +339,9 @@ def render(load_data, global_context):
                     tbody += f"<td>{val_str}</td>\n"
                 tbody += "</tr>\n"
             tbody += "</tbody>"
-            
+
             html_table = f"<table>\n{thead}\n{tbody}\n</table>"
-            
+
             styled_html = f"""
 <style>
 .custom-table-container {{
@@ -207,7 +371,19 @@ def render(load_data, global_context):
 </div>
 """
             st.markdown(styled_html, unsafe_allow_html=True)
-                
+
+            excel_buffer = generate_excel_export(
+                df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
+                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map
+            )
+
+            st.download_button(
+                label=":material/download: Download Excel (Chart + Tabel)",
+                data=excel_buffer,
+                file_name=f"komparasi_harga_Ammonia_{jenis_harga}_{start_date}_{end_date}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")
     else:
