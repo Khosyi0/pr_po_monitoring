@@ -88,7 +88,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     HEADER_BLUE = "BDD7EE"
     thin = Side(style='thin', color='000000')
-    TABLE_START_ROW = 44
+    TABLE_START_ROW = 34
     n_date_cols = len(kolom_tanggal)
     last_col = 1 + n_date_cols
 
@@ -179,7 +179,7 @@ def render(load_data, global_context):
 
     st.markdown(
         f"<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
-        f" Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
+        f"Data terakhir diperbarui pada <b>{tgl_update_str}</b>"
         f"</p>",
         unsafe_allow_html=True
     )
@@ -206,19 +206,37 @@ def render(load_data, global_context):
     if default_start_date > max_date or default_start_date < min_date:
         default_start_date = min_date
 
+    def _save_to_permanent(widget_key, permanent_key):
+        st.session_state[permanent_key] = st.session_state[widget_key]
+
     with st.expander(":material/settings: Filter Komparasi Harga Pasar", expanded=True):
         col_mulai, col_sampai, col_metode, col_jml = st.columns(4)
         with col_mulai:
-            start_date = st.date_input("Mulai dari tanggal", value=default_start_date,
-                                        min_value=calendar_min_date, max_value=max_date)
+            start_date = st.date_input("Mulai dari tanggal", value=st.session_state.get("_perm_start_date_amonia", default_start_date),
+                                        min_value=calendar_min_date, max_value=max_date,
+                                        key="start_date_amonia",
+                                        on_change=_save_to_permanent,
+                                        args=("start_date_amonia", "_perm_start_date_amonia"))
         with col_sampai:
-            end_date = st.date_input("Sampai tanggal", value=max_date,
-                                      min_value=calendar_min_date, max_value=max_date)
+            end_date = st.date_input("Sampai tanggal", value=st.session_state.get("_perm_end_date_amonia", max_date),
+                                      min_value=calendar_min_date, max_value=max_date,
+                                      key="end_date_amonia",
+                                      on_change=_save_to_permanent,
+                                      args=("end_date_amonia", "_perm_end_date_amonia"))
         with col_metode:
-            jenis_harga = st.selectbox("Jenis Harga", ["AVERAGE", "MIN", "MAX"],
-                                        help="Pilih nilai harga yang ingin diplot pada grafik")
+            jenis_harga_options = ["AVERAGE", "MIN", "MAX"]
+            jenis_harga_default = st.session_state.get("_perm_jenis_harga_amonia", "AVERAGE")
+            jenis_harga = st.selectbox("Jenis Harga", jenis_harga_options,
+                                        index=jenis_harga_options.index(jenis_harga_default) if jenis_harga_default in jenis_harga_options else 0,
+                                        help="Pilih nilai harga yang ingin diplot pada grafik",
+                                        key="jenis_harga_amonia",
+                                        on_change=_save_to_permanent,
+                                        args=("jenis_harga_amonia", "_perm_jenis_harga_amonia"))
         with col_jml:
-            jml_komparasi = st.number_input("Jumlah Komparasi", min_value=1, max_value=5, value=2)
+            jml_komparasi = st.number_input("Jumlah Komparasi", min_value=1, max_value=5, value=st.session_state.get("_perm_jml_komparasi_amonia", 2),
+                                             key="jml_komparasi_amonia",
+                                             on_change=_save_to_permanent,
+                                             args=("jml_komparasi_amonia", "_perm_jml_komparasi_amonia"))
 
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
@@ -229,20 +247,40 @@ def render(load_data, global_context):
         for i in range(int(jml_komparasi)):
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
+                perm_key_majalah = f"_perm_majalah_amonia_{i}"
+                default_majalah = st.session_state.get(perm_key_majalah, list_majalah[i] if i < len(list_majalah) else list_majalah[0])
+                majalah_index = list(list_majalah).index(default_majalah) if default_majalah in list_majalah else 0
                 majalah_pilihan = st.selectbox(f"Majalah ke-{i+1}", list_majalah,
-                                                index=i if i < len(list_majalah) else 0, key=f"majalah_amonia_{i}")
+                                                   index=majalah_index,
+                                                   key=f"majalah_amonia_{i}",
+                                                   on_change=_save_to_permanent,
+                                                   args=(f"majalah_amonia_{i}", perm_key_majalah))
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
-                incoterm_pilihan = st.multiselect(f"Metode Incoterm ke-{i+1}", list_incoterm,
-                                                   default=list_incoterm[:1] if len(list_incoterm) > 0 else [],
-                                                   key=f"incoterm_amonia_{i}")
+                perm_key_incoterm = f"_perm_incoterm_amonia_{i}"
+                default_incoterm = st.session_state.get(perm_key_incoterm, list_incoterm[0] if len(list_incoterm) > 0 else None)
+                incoterm_index = list(list_incoterm).index(default_incoterm) if default_incoterm in list_incoterm else 0
+                incoterm_pilihan = st.selectbox(
+                    f"Metode Incoterm ke-{i+1}", list_incoterm,
+                    index=incoterm_index if len(list_incoterm) > 0 else None,
+                    key=f"incoterm_amonia_{i}",
+                    on_change=_save_to_permanent,
+                    args=(f"incoterm_amonia_{i}", perm_key_incoterm)
+                )
             with c3:
-                warna_pilihan = st.color_picker("Warna", default_colors[i % len(default_colors)], key=f"color_amonia_{i}")
+                perm_key_warna = f"_perm_warna_amonia_{i}"
+                default_warna = st.session_state.get(perm_key_warna, default_colors[i % len(default_colors)])
+                warna_pilihan = st.color_picker(
+                    "Warna", default_warna,
+                    key=f"color_amonia_{i}",
+                    on_change=_save_to_permanent,
+                    args=(f"color_amonia_{i}", perm_key_warna)
+                )
 
             if incoterm_pilihan:
                 komparasi_data.append({
                     "majalah": majalah_pilihan,
-                    "incoterms": incoterm_pilihan,
+                    "incoterms": [incoterm_pilihan],
                     "warna_dasar": warna_pilihan
                 })
 
@@ -300,7 +338,7 @@ def render(load_data, global_context):
             st.markdown("#### :material/table_chart: Detail Histori Data (3 Periode Terakhir)")
 
             df_display = df_plot.copy()
-            df_display['harga_range'] = df_display['harga_min'].apply(lambda x: f"{x:g}") + ' - ' + df_display['harga_max'].apply(lambda x: f"{x:g}")
+            df_display['harga_range'] = df_display['harga_min'].apply(lambda x: f"{x:.2f}") + ' - ' + df_display['harga_max'].apply(lambda x: f"{x:.2f}")
 
             df_pivot = df_display.pivot_table(
                 index='label_komparasi', columns='tanggal_terbit', values='harga_range',
@@ -376,6 +414,26 @@ def render(load_data, global_context):
                 df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
                 y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map
             )
+
+            # --- CSS untuk mengubah warna tombol download jadi merah-oranye ---
+            st.markdown("""
+                <style>
+                div[data-testid="stDownloadButton"] button {
+                    background-color: #FF4B4B;
+                    color: white;
+                    border: none;
+                }
+                div[data-testid="stDownloadButton"] button:hover {
+                    background-color: #E54444;
+                    color: white;
+                    border: none;
+                }
+                div[data-testid="stDownloadButton"] button:active {
+                    background-color: #CE3D3D;
+                    color: white;
+                }
+                </style>
+            """, unsafe_allow_html=True)
 
             st.download_button(
                 label=":material/download: Download Excel (Chart + Tabel)",

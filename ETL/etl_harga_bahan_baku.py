@@ -27,8 +27,17 @@ class Config:
     
     SHEET_MAPPING = {
         'Ammonia': 'Ammonia',
-        'ZA': 'ZA',
-        'Phos Rock': 'Phosphate Rock'
+        'DAP': 'DAP',
+        'NH4CL': 'NH4Cl',
+        'MOP-KCl': 'MOP-KCl',
+        'NPK': 'NPK',
+        'Phos Acid': 'Phosphoric Acid',
+        'Phos Rock': 'Phosphate Rock',
+        'Sulfur New': 'Sulfur',
+        'Sulfuric Acid': 'Sulfuric Acid',
+        'TSP': 'TSP',
+        'UREA': 'Urea',
+        'ZA': 'ZA'
     }
 
 # =====================================================================
@@ -82,6 +91,9 @@ def extract_and_transform_sheet(file_path, sheet_name, bahan_baku):
     # Samakan format nama kolom Min/Max (berjaga-jaga jika ada typo huruf besar/kecil di Excel)
     col_mapping = {c: str(c).strip().lower() for c in df_stacked.columns}
     df_stacked = df_stacked.rename(columns=col_mapping)
+
+    if df_stacked.columns.duplicated().any():
+        df_stacked = df_stacked.loc[:, ~df_stacked.columns.duplicated(keep='first')]
     
     # Cek apakah kolom min dan max benar-benar ada
     if 'min' not in df_stacked.columns or 'max' not in df_stacked.columns:
@@ -149,7 +161,7 @@ def load_to_db(df_clean: pd.DataFrame, engine):
 
 def run_etl():
     print("=" * 55)
-    print("🚀 ETL HARGA BAHAN BAKU (v2 - 3 Level Header)")
+    print("ETL HARGA BAHAN BAKU")
     print("=" * 55)
 
     if not os.path.exists(Config.EXCEL_FILE):

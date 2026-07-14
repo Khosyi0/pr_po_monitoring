@@ -52,7 +52,7 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
 # Views - Harga Bahan Baku
-from views import v_bb_za, v_bb_ammonia, v_bb_phos_rock
+from views import v_bb_ammonia, v_bb_dap, v_bb_npk, v_bb_phos_rock, v_bb_tsp, v_bb_za, v_bb_nh4cl, v_bb_phos_acid, v_bb_urea, v_bb_sulfur, v_bb_sulfuric_acid, v_bb_mop_kcl
 
 # Views - Lainnya
 from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
@@ -254,9 +254,18 @@ def _render_sips_alert():               v_sips_alert.render(**st.session_state.g
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
-def _render_bb_za():                    v_bb_za.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_ammonia():               v_bb_ammonia.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_dap():                   v_bb_dap.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_nh4cl():                 v_bb_nh4cl.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_mop_kcl():               v_bb_mop_kcl.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_npk():                   v_bb_npk.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_phos_acid():             v_bb_phos_acid.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_phos_rock():             v_bb_phos_rock.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_sulfur():                v_bb_sulfur.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_sulfuric_acid():         v_bb_sulfuric_acid.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_tsp():                   v_bb_tsp.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_urea():                  v_bb_urea.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_za():                    v_bb_za.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
@@ -327,9 +336,18 @@ if is_admin():
 
 # Halaman Harga Bahan Baku
 bb_pages = [
-    st.Page(_render_bb_za, title="Harga BB ZA", icon=":material/science:"),
     st.Page(_render_bb_ammonia, title="Harga BB Ammonia", icon=":material/science:"),
-    st.Page(_render_bb_phos_rock, title="Harga BB Phosphate Rock", icon=":material/science:")
+    st.Page(_render_bb_dap, title="Harga BB DAP", icon=":material/science:"),
+    st.Page(_render_bb_nh4cl, title="Harga BB NH4Cl", icon=":material/science:"),
+    st.Page(_render_bb_mop_kcl, title="Harga BB MOP-KCl", icon=":material/science:"),
+    st.Page(_render_bb_npk, title="Harga BB NPK", icon=":material/science:"),
+    st.Page(_render_bb_phos_acid, title="Harga BB Phosphoric Acid", icon=":material/science:"),
+    st.Page(_render_bb_phos_rock, title="Harga BB Phosphate Rock", icon=":material/science:"),
+    st.Page(_render_bb_sulfur, title="Harga BB Sulfur", icon=":material/science:"),
+    st.Page(_render_bb_sulfuric_acid, title="Harga BB Sulfuric Acid", icon=":material/science:"),
+    st.Page(_render_bb_tsp, title="Harga BB TSP", icon=":material/science:"),
+    st.Page(_render_bb_urea, title="Harga BB Urea", icon=":material/science:"),
+    st.Page(_render_bb_za, title="Harga BB ZA", icon=":material/science:")
 ]
 
 nav_dict.update({
@@ -372,7 +390,7 @@ ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
-BB_TITLES        = {"Harga Bahan Baku ZA", "Harga Bahan Baku Ammonia"}
+BB_TITLES        = {"Harga BB Ammonia", "Harga BB DAP", "Harga BB NH4Cl", "Harga BB MOP-KCl", "Harga BB NPK", "Harga BB Phosphoric Acid", "Harga BB Phosphate Rock", "Harga BB Sulfur", "Harga BB Sulfuric Acid", "Harga BB TSP", "Harga BB Urea", "Harga BB ZA"}
 LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
 current_page = pg.title

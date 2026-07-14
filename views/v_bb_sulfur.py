@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Komparasi Harga ZA"
+    ws.title = "Komparasi Harga Sulfur"
     ws_data = wb.create_sheet("_DataChart")
 
     df_chart = df_plot.pivot_table(
@@ -38,7 +38,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_cols = len(headers)
 
     chart = LineChart()
-    chart.title = f"Komparasi Tren Harga ZA ({jenis_harga})"
+    chart.title = f"Komparasi Tren Harga Sulfur ({jenis_harga})"
     chart.height = 14
     chart.width = 32
     chart.style = None
@@ -160,7 +160,7 @@ def variasikan_warna(hex_color, index, total):
 
 
 def render(load_data, global_context):
-    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: ZA")
+    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: Sulfur")
 
     from config_db import get_setting
     from datetime import datetime
@@ -187,13 +187,13 @@ def render(load_data, global_context):
     query = """
         SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
         FROM master_harga_bahan_baku 
-        WHERE bahan_baku = 'ZA'
+        WHERE bahan_baku = 'Sulfur'
         ORDER BY tanggal_terbit ASC
     """
     df = load_data(query)
 
     if df.empty:
-        st.warning("Data harga ZA belum tersedia di database.")
+        st.warning("Data harga Sulfur belum tersedia di database.")
         return
 
     list_majalah = df['nama_majalah'].unique()
@@ -214,43 +214,43 @@ def render(load_data, global_context):
         with col_mulai:
             start_date = st.date_input(
                 "Mulai dari tanggal",
-                value=st.session_state.get("_perm_start_date_za", default_start_date),
+                value=st.session_state.get("_perm_start_date_sulfur", default_start_date),
                 min_value=calendar_min_date,
                 max_value=max_date,
-                key="start_date_za",
+                key="start_date_sulfur",
                 on_change=_save_to_permanent,
-                args=("start_date_za", "_perm_start_date_za")
+                args=("start_date_sulfur", "_perm_start_date_sulfur")
             )
         with col_sampai:
             end_date = st.date_input(
                 "Sampai tanggal",
-                value=st.session_state.get("_perm_end_date_za", max_date),
+                value=st.session_state.get("_perm_end_date_sulfur", max_date),
                 min_value=calendar_min_date,
                 max_value=max_date,
-                key="end_date_za",
+                key="end_date_sulfur",
                 on_change=_save_to_permanent,
-                args=("end_date_za", "_perm_end_date_za")
+                args=("end_date_sulfur", "_perm_end_date_sulfur")
             )
         with col_metode:
             jenis_harga_options = ["AVERAGE", "MIN", "MAX"]
-            jenis_harga_default = st.session_state.get("_perm_jenis_harga_za", "AVERAGE")
+            jenis_harga_default = st.session_state.get("_perm_jenis_harga_sulfur", "AVERAGE")
             jenis_harga = st.selectbox(
                 "Jenis Harga",
                 jenis_harga_options,
                 index=jenis_harga_options.index(jenis_harga_default) if jenis_harga_default in jenis_harga_options else 0,
                 help="Pilih nilai harga yang ingin diplot pada grafik",
-                key="jenis_harga_za",
+                key="jenis_harga_sulfur",
                 on_change=_save_to_permanent,
-                args=("jenis_harga_za", "_perm_jenis_harga_za")
+                args=("jenis_harga_sulfur", "_perm_jenis_harga_sulfur")
             )
         with col_jml:
             jml_komparasi = st.number_input(
                 "Jumlah Komparasi",
                 min_value=1, max_value=5,
-                value=st.session_state.get("_perm_jml_komparasi_za", 2),
-                key="jml_komparasi_za",
+                value=st.session_state.get("_perm_jml_komparasi_sulfur", 2),
+                key="jml_komparasi_sulfur",
                 on_change=_save_to_permanent,
-                args=("jml_komparasi_za", "_perm_jml_komparasi_za")
+                args=("jml_komparasi_sulfur", "_perm_jml_komparasi_sulfur")
             )
 
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
@@ -262,36 +262,36 @@ def render(load_data, global_context):
         for i in range(int(jml_komparasi)):
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
-                perm_key_majalah = f"_perm_majalah_za_{i}"
+                perm_key_majalah = f"_perm_majalah_sulfur_{i}"
                 default_majalah = st.session_state.get(perm_key_majalah, list_majalah[i] if i < len(list_majalah) else list_majalah[0])
                 majalah_index = list(list_majalah).index(default_majalah) if default_majalah in list_majalah else 0
                 majalah_pilihan = st.selectbox(
                     f"Majalah ke-{i+1}", list_majalah,
                     index=majalah_index,
-                    key=f"majalah_za_{i}",
+                    key=f"majalah_sulfur_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"majalah_za_{i}", perm_key_majalah)
+                    args=(f"majalah_sulfur_{i}", perm_key_majalah)
                 )
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
-                perm_key_incoterm = f"_perm_incoterm_za_{i}"
+                perm_key_incoterm = f"_perm_incoterm_sulfur_{i}"
                 default_incoterm = st.session_state.get(perm_key_incoterm, list_incoterm[0] if len(list_incoterm) > 0 else None)
                 incoterm_index = list(list_incoterm).index(default_incoterm) if default_incoterm in list_incoterm else 0
                 incoterm_pilihan = st.selectbox(
                     f"Metode Incoterm ke-{i+1}", list_incoterm,
                     index=incoterm_index if len(list_incoterm) > 0 else None,
-                    key=f"incoterm_za_{i}",
+                    key=f"incoterm_sulfur_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"incoterm_za_{i}", perm_key_incoterm)
+                    args=(f"incoterm_sulfur_{i}", perm_key_incoterm)
                 )
             with c3:
-                perm_key_warna = f"_perm_color_za_{i}"
+                perm_key_warna = f"_perm_color_sulfur_{i}"
                 default_warna = st.session_state.get(perm_key_warna, default_colors[i % len(default_colors)])
                 warna_pilihan = st.color_picker(
                     "Warna", default_warna,
-                    key=f"color_za_{i}",
+                    key=f"color_sulfur_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"color_za_{i}", perm_key_warna)
+                    args=(f"color_sulfur_{i}", perm_key_warna)
                 )
 
             if incoterm_pilihan:
@@ -332,7 +332,7 @@ def render(load_data, global_context):
             fig = px.line(
                 df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
                 color_discrete_map=warna_map, markers=True,
-                title=f"Komparasi Tren Harga ZA ({jenis_harga})",
+                title=f"Komparasi Tren Harga Sulfur ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
 
@@ -455,7 +455,7 @@ def render(load_data, global_context):
             st.download_button(
                 label=":material/download: Download Excel (Chart + Tabel)",
                 data=excel_buffer,
-                file_name=f"komparasi_harga_ZA_{jenis_harga}_{start_date}_{end_date}.xlsx",
+                file_name=f"komparasi_harga_sulfur_{jenis_harga}_{start_date}_{end_date}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
