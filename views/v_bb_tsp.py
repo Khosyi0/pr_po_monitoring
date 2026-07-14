@@ -311,6 +311,15 @@ def render(load_data, global_context):
 
         for item in komparasi_data:
             for idx, incoterm in enumerate(item["incoterms"]):
+                # 1. Gabungkan nama aslinya
+                label_asli = f"{item['majalah']} - {incoterm}"
+                
+                # 2. Ubah menjadi singkatan agar sinkron dengan yang ada di df_plot nanti
+                label_singkat = MAPPING_SINGKATAN.get(label_asli, label_asli)
+                
+                # 3. Masukkan ke warna_map menggunakan label yang sudah disingkat
+                warna_final = variasikan_warna(item["warna_dasar"], idx, len(item["incoterms"]))
+                warna_map[label_singkat] = warna_final
                 label = f"{item['majalah']} - {incoterm}"
                 warna_final = variasikan_warna(item["warna_dasar"], idx, len(item["incoterms"]))
                 warna_map[label] = warna_final
