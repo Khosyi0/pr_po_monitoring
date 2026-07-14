@@ -12,6 +12,7 @@ from openpyxl.drawing.text import RichTextProperties, Paragraph, ParagraphProper
 from openpyxl.drawing.line import LineProperties
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from utils import MAPPING_SINGKATAN
 
 
 def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
@@ -140,6 +141,13 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     ws.row_dimensions[header_row1].height = 22
     ws.row_dimensions[header_row2].height = 20
+
+    for sheet in wb.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.value is not None:
+                    is_bold = cell.font.bold if cell.font else False
+                    cell.font = Font(name='Arial', size=11, bold=is_bold)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -299,8 +307,16 @@ def render(load_data, global_context):
             temp_df = df[(df['nama_majalah'] == majalah) & (df['incoterm'].isin(incoterms)) &
                          (df['tanggal_terbit'] >= start_date) & (df['tanggal_terbit'] <= end_date)].copy()
             if not temp_df.empty:
+                # 1. Buat kolom nama aslinya
                 temp_df['label_komparasi'] = temp_df['nama_majalah'] + ' - ' + temp_df['incoterm']
+                
+                # 2. Timpa namanya menggunakan dictionary dari utils.py
+                temp_df['label_komparasi'] = temp_df['label_komparasi'].apply(
+                    lambda x: MAPPING_SINGKATAN.get(x, x)
+                )
+                
                 df_plot = pd.concat([df_plot, temp_df], ignore_index=True)
+                
 
         if not df_plot.empty:
             df_plot['harga_avg'] = (df_plot['harga_min'] + df_plot['harga_max']) / 2

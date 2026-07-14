@@ -11,6 +11,157 @@ import os
 import numpy as np
 
 # =============================================================================
+# MASTER MAPPING SINGKATAN KOMPARASI
+# =============================================================================
+# Tambahkan list singkatan majalah & incoterm di sini.
+# Format: "Nama Asli Dari Database": "Nama Singkatan Baru"
+
+MAPPING_SINGKATAN = {
+    # Ammonia
+    "Fertecon Ammonia - Middle East FOB"                    : "Fertecon - Middle East FOB",
+    "Fertecon Ammonia - South East Asia FOB"                : "Fertecon - SEA FOB",
+    "Fertecon Ammonia - Far East CFR"                       : "Fertecon - Far East CFR",
+    "Fertecon Ammonia - Freight Indonesia - Taiwan"         : "Fertecon - Freight Indonesia Taiwan",
+    "Fertecon Ammonia - Yuzhny/FSU FOB"                     : "Fertecon - Yuzhny/FSU FOB",
+    "Argus FMB Price Guide - Middle East FOB"               : "Argus FMB - Middle East FOB",
+    "Argus FMB Price Guide - North Africa FOB"              : "Argus FMB - North Africa FOB",
+    "Argus FMB Price Guide - India FOB"                     : "Argus FMB - India FOB",
+    "Argus FMB Price Guide - East Asia CFR (excl Taiwan)"   : "Argus FMB - East Asia CFR (excl Taiwan)",
+    "Argus FMB Price Guide - Taiwan CFR"                    : "Argus FMB - Taiwan CFR",
+    "Argus FMB Price Guide - Yuzhny FOB"                    : "Argus FMB - Yuzhny FOB",
+    "Argus FMB Price Guide - North Africa CFR"              : "Argus FMB - North Africa CFR",
+    "ICIS The Market - Yuzhny FOB"                          : "ICIS - Yuzhny FOB",
+    "ICIS The Market - North Africa CFR"                    : "ICIS - North Africa CFR",
+    "ICIS The Market - India CFR"                           : "ICIS - India CFR",
+    "ICIS The Market - Korea CFR"                           : "ICIS - Korea CFR",
+    "ICIS The Market - Taiwan CFR"                          : "ICIS - Taiwan CFR",
+    "ICIS The Market - Iran FOB"                            : "ICIS - Iran FOB",
+    # DAP
+    "Argus FMB Price Guide - Marocco FOB"               : "Argus FMB - Marocco FOB",
+    "Argus FMB Price Guide - China FOB"                 : "Argus FMB - China FOB",
+    "Argus FMB Price Guide - Saudi Arabia FOB"          : "Argus FMB - Saudi Arabia FOB",
+    "CRU Phosphate - Freight Red Sea - WC India"        : "CRU - Freight Red Sea WC India",
+    "CRU Phosphate - Freight China - WC India"          : "CRU - Freight China WC India",
+    "CRU Phosphate - FOB China"                         : "CRU - FOB China",
+    "Fertecon Phosphate - Jordan FOB Bulk"              : "Fertecon - Jordan FOB Bulk",
+    "Fertecon Phosphate - India CFR Bulk Contract"      : "Fertecon - India CFR Bulk Contract",
+    "Fertecon Phosphate - Marocco FOB Bulk"             : "Fertecon - Marocco FOB Bulk",
+    "Fertecon Phosphate - FOB China Cash"               : "Fertecon - FOB China Cash",
+    "Profercy Phosphate - Marocco FOB Bulk"             : "Profercy - Marocco FOB Bulk",
+    "Profercy Phosphate - Jordan FOB"                   : "Profercy - Jordan FOB",
+    "Profercy Phosphate - FOB China"                    : "Profercy - FOB China",
+    "Profercy Phosphate - KSA / Saudi Arabia FOB"       : "Profercy - Saudi Arabia FOB",
+    "ICIS The Market - N. Africa FOB"                   : "ICIS - N. Africa FOB",
+    "ICIS The Market - China FOB"                       : "ICIS - China FOB",
+    "ICIS The Market - Saudi Arabia FOB"                : "ICIS - Saudi Arabia FOB",
+    # NH4Cl
+    "Profercy Phosphate - Egypt FOB 30-31%"             : "Profercy - Egypt FOB 30-31%",
+    "Profercy Phosphate - Marocco FOB 31-33%"           : "Profercy - Marocco FOB 31-33%",
+    "Profercy Phosphate - Jordan FOB 34-36%"            : "Profercy - Jordan FOB 34-36%",
+    "Argus Nitrogen - CFR Southeast Asia"               : "Argus - CFR SEA",
+    # MOP-KCl
+    "MOP Ref. The Market - Israel/Jordan Standard FOB"                      : "MOP The Market - Israel/Jordan Standard FOB",
+    "MOP Ref. The Market - Vancouver Standard FOB"                          : "MOP The Market - Vancouver Standard FOB",
+    "MOP Ref. The Market - Brazil CFR"                                      : "MOP The Market - Brazil CFR",
+    "MOP Ref. The Market - SE Asia CFR"                                     : "MOP The Market - SEA CFR",
+    "MOP Ref. The Market - China CFR"                                       : "MOP The Market - China CFR",
+    "MOP Ref. Argus FMB Price Guide (spot) - India CFR Contract Std"        : "MOP Argus FMB - India CFR Contract Std",
+    "MOP Ref. Argus FMB Price Guide (spot) - SE Asia CFR Spot Std"          : "MOP Argus FMB - SEA CFR Spot Std",
+    "MOP Ref. Argus FMB Price Guide (spot) - Vancouver FOB Spot Std"        : "MOP Argus FMB - Vancouver FOB Spot Std",
+    "MOP Ref. Argus FMB Price Guide (spot) - Jordan FOB Spot Std"           : "MOP Argus FMB - Jordan FOB Spot Std",
+    "MOP Ref. Argus FMB Price Guide (spot) - Freight Vancouver - SE Asia"   : "MOP Argus FMB - Freight Vancouver SEA",
+    "MOP Ref. Argus FMB Price Guide (spot) - Freight Baltic - SE Asia"      : "MOP Argus FMB - Freight Baltic SEA",
+    "MOP Ref. Argus FMB Price Guide (spot) - FSU FOB"                       : "MOP Argus FMB - FSU FOB",
+    "MOP Ref. Argus FMB Price Guide (spot) - Baltic Sea FOB Std"            : "MOP Argus FMB - Baltic Sea FOB Std",
+    "MOP Ref. Argus FMB Price Guide (spot) - FOB Northwest Europe Std"      : "MOP Argus FMB - FOB Northwest Europe Std",
+    # NPK
+    "Profercy Phosphate - CFR S.E Asia"                 : "Profercy - CFR SEA",
+    "Profercy Phosphate - CFR China"                    : "Profercy - CFR China",
+    # Phosphoric Acid
+    "Fertecon Phosphate - India CFR"                    : "Fertecon - India CFR",
+    "Argus FMB Price Guide - India CFR"                 : "Argus FMB - India CFR",
+    ### ADA MAJALAH TANPA NAMA
+    "Profercy Phosphate - Morocco FOB"                  : "Profercy - Morocco FOB",
+    "Profercy Phosphate - India CFR"                    : "Profercy - India CFR",
+    "CRU Phosphate - Freight Marocco-WC India"          : "CRU Freight Marocco WC India",
+    # Phosphate Rock
+    "ICIS The Market - India CFR"                           : "ICIS - India CFR",
+    "ICIS The Market - Marocco FOB 70-72% BPL"              : "ICIS - Marocco FOB 70-72% BPL",
+    "Fertecon Phosphate - Casablanca FOB 70% BPL"           : "Fertecon - Casablanca FOB 70% BPL",
+    "Fertecon Phosphate - Freight Jordan-India"             : "Fertecon - Freight Jordan-India",
+    "Argus FMB Price Guide - India CFR 68-70% BPL"          : "Argus FMB - India CFR 68-70% BPL",
+    "Argus FMB Price Guide - India CFR 70-72% BPL"          : "Argus FMB - India CFR 70-72% BPL",
+    "Argus FMB Price Guide - North Africa FOB 69% BPL"      : "Argus FMB - North Africa FOB 69% BPL",
+    "Argus FMB Price Guide - Jordan FOB 68-70% BPL"         : "Argus FMB - Jordan FOB 68-70% BPL",
+    "Argus FMB Price Guide - Freight Red Sea - Indonesia"   : "Argus FMB - Freight Red Sea Indonesia",
+    "Profercy Phosphate - Egypt FOB 30-31%"                 : "Profercy - Egypt FOB 30-31%",
+    "Profercy Phosphate - Marocco FOB 31-33%"               : "Profercy - Marocco FOB 31-33%",
+    "Profercy Phosphate - Jordan FOB 34-36%"                : "Profercy - Jordan FOB 34-36%",
+    "Profercy Phosphate - Jordan FOB 32-34%"                : "Profercy - Jordan FOB 32-34%",
+    "Profercy Phosphate - Jordan FOB 28-31%"                : "Profercy - Jordan FOB 28-31%",
+    # Sulfur
+    "Fertecon Sulphur - CFR China Spot"                             : "Fertecon - CFR China Spot",
+    "Fertecon Sulphur - CFR India"                                  : "Fertecon - CFR India",
+    "Fertecon Sulphur - Freight ME - EC India"                      : "Fertecon - Freight ME EC India",
+    "Fertecon Sulphur - Middle East FOB Spot"                       : "Fertecon - Middle East FOB Spot",
+    "Fertecon Sulphur - Freight ME - China"                         : "Fertecon - Freight ME China",
+    "Fertecon Sulphur - Middle East FOB Contract"                   : "Fertecon - Middle East FOB Contract",
+    "Fertecon Sulphur - Middle East FOB"                            : "Fertecon - Middle East FOB",
+    "Fertecon Sulphur - Vancouver FOB Spot"                         : "Fertecon - Vancouver FOB Spot",
+    "Fertecon Sulphur - Vancouver FOB Contract"                     : "Fertecon - Vancouver FOB Contract",
+    "Fertecon Sulphur - India CFR"                                  : "Fertecon - India CFR",
+    "Argus FMB Price Guide Sulphur - M.E. FOB Quarterly Contract"   : "Argus FMB - M.E. FOB Quarterly Contract",
+    "Argus FMB Price Guide Sulphur - M.E. FOB Quarterly Spot"       : "Argus FMB - M.E. FOB Quarterly Spot",
+    "Argus FMB Price Guide Sulphur - CFR India Spot"                : "Argus FMB - CFR India Spot",
+    "Argus FMB Price Guide Sulphur - CFR China Spot"                : "Argus FMB - CFR China Spot",
+    "Argus FMB Price Guide Sulphur - Freight ME - EC India"         : "Argus FMB - Freight ME EC India",
+    "Argus FMB Price Guide Sulphur - Freight ME - N/River China"    : "Argus FMB - Freight ME N/River China",
+    "Argus FMB Price Guide Sulphur - CFR SEA"                       : "Argus FMB - CFR SEA",
+    "Argus FMB Price Guide Sulphur - CFR Indonesia Spot"            : "Argus FMB - CFR Indonesia Spot",
+    "FMB Weekly S. Acid - Spot Freight - South Korea-Chile"         : "FMB Weekly - Spot Freight South Korea-Chile",
+    # Sulfuric Acid
+    "Majalah ICIS SA pricing - CFR S.E. Asia Spot"              : "ICIS SA - CFR SEA Spot",
+    "Majalah ICIS SA pricing - Freight Philippine-Ind"          : "ICIS SA - Freight Philippine-Ind",
+    "Majalah ICIS SA pricing - CFR S.E. Asia"                   : "ICIS SA - CFR SEA",
+    "Majalah ICIS SA pricing - Spot Prices - FOB S. Korea/Japan": "ICIS SA - Spot FOB S. Korea/Japan",
+    "Majalah ICIS SA pricing - Spot - FOB China"                : "ICIS SA - Spot FOB China",
+    "Majalah ICIS SA pricing - Freight S.Korea/Japan - India"   : "ICIS SA - Freight S.Korea/Japan India",
+    "Majalah ICIS SA pricing - Freight China - India"           : "ICIS SA - Freight China India",
+    "Majalah ICIS SA pricing - CFR Indonesia"                   : "ICIS SA - CFR Indonesia",
+    "Argus FMB Sulphuric Acid - Spot prices - fob China"        : "Argus FMB - Spot FOB China",
+    "Argus FMB Sulphuric Acid - Spot prices - fob S. Korea/Jpn" : "Argus FMB - Spot FOB S.Korea/Japan",
+    "Argus FMB Sulphuric Acid - Spot prices - cfr India"        : "Argus FMB - Spot CFR India",
+    "Argus FMB Sulphuric Acid - Spot Price - cfr SEA"           : "Argus FMB - Spot CFR SEA",
+    "Argus FMB Sulphuric Acid - Freight Southeast Asia"         : "Argus FMB - Freight SEA",
+    # TSP 
+    "Argus FMB Price Guide - TSP China"                 : "Argus FMB - TSP China",
+    "Fertecon Phosphate - China fob bagged"             : "Fertecon - China FOB Bagged",
+    "Profercy Phosphate - Egypt FOB 30-31%"             : "Profercy - Egypt FOB 30-31%",
+    "Profercy Phosphate - Marocco FOB 31-33%"           : "Profercy - Marocco FOB 31-33%",
+    "Profercy Phosphate - Jordan FOB 34-36%"            : "Profercy - Jordan FOB 34-36%",
+    # Urea
+    "Profercy Nitrogen (Prilled Urea) - China FOB"          : "Profercy - China FOB",
+    "Profercy Nitrogen (Prilled Urea) - SE Asia CFR"        : "Profercy - SEA CFR",
+    "FMB Price Guide (Prilled Urea) ARGUS - China fob bulk" : "Profercy - China FOB Bulk",
+    "FMB Price Guide (Prilled Urea) ARGUS - S.E Asia CFR"   : "Profercy - SEA CFR",
+    # ZA
+    "Argus FMB Price Guide Nitrogen - (NH4)2SO4 SE Asia CFR"        : "Argus FMB - SEA CFR",
+    "Argus FMB Price Guide Nitrogen - FOB Kherson (Steel Grade)"    : "Argus FMB - FOB Kherson",
+    "Argus FMB Price Guide Nitrogen - FOB Black Sea"                : "Argus FMB - FOB Black Sea",
+    "Argus FMB Price Guide Nitrogen - (NH4)2SO4 FOB China"          : "Argus FMB - FOB China",
+    "Argus FMB Price Guide Nitrogen - CFR SEA (Ammonium Chloride)"  : "Argus FMB - CFR SEA",
+    "ICIS The Market - SE Asia CFR"                                 : "ICIS - SEA CFR",
+    "ICIS The Market - FOB Black Sea"                               : "ICIS - FOB Black Sea",
+    "Fertecon Nitrates - SE Asia CFR Caprolactam"                   : "Fertecon - SE Asia CFR",
+    "Fertecon Nitrates - China FOB Caprolactam"                     : "Fertecon - China FOB",
+    "Fertecon Nitrates - Black Sea FOB Steel Grade"                 : "Fertecon - Black Sea FOB Steel Grade",
+    "Fertecon Nitrates - Black Sea FOB Caprolactam"                 : "Fertecon - Black Sea FOB Caprolactam",
+    "Profercy Nitrogen - FOB China"                                 : "Profercy - FOB China",
+    "Profercy Nitrogen - CFR SEA"                                   : "Profercy - CFR SEA",
+    # Silakan lanjutkan list-nya di bawah ini untuk bahan baku lainnya...
+}
+
+# =============================================================================
 # FORMAT ANGKA & RUPIAH (STANDAR INDONESIA)
 # =============================================================================
 
@@ -195,27 +346,7 @@ def build_bagian_conditions(selected_bagian, exclude_bagian) -> tuple[str, str]:
     return "1=1", "1=1"
 
 def build_dept_cond(col: str, selected_department, exclude_dept) -> str:
-    """Bangun kondisi SQL filter Department untuk kolom tertentu.
-
-    Dipakai pada query yang tidak JOIN ke vw_pr_po_complete, misalnya query
-    langsung ke po_items (kolom `poi.department_code`) atau purchase_requisitions.
-
-    Parameters
-    ----------
-    col : str
-        Nama kolom department beserta alias tabel, misal ``'poi.department_code'``
-        atau ``'pr.department_code'``.
-    selected_department : list
-        Daftar department yang dipilih. ``['All']`` berarti tidak ada filter.
-    exclude_dept : bool
-        ``True`` → exclude department yang dipilih; ``False`` → include.
-
-    Returns
-    -------
-    str
-        Kondisi SQL siap pakai, misal ``"poi.department_code IN ('TA','TB')"``
-        atau ``'1=1'`` jika tidak ada filter.
-    """
+    """Bangun kondisi SQL filter Department untuk kolom tertentu."""
     if selected_department and 'All' not in selected_department:
         dept_list = "','".join(selected_department)
         if exclude_dept:
@@ -225,26 +356,7 @@ def build_dept_cond(col: str, selected_department, exclude_dept) -> str:
     return "1=1"
 
 def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
-    """Bangun kondisi SQL filter Purchasing Group untuk kolom tertentu.
-
-    Dipakai pada query yang tidak JOIN ke vw_pr_po_complete, misalnya query
-    langsung ke purchase_orders (kolom ``'poh.purchasing_group'``).
-
-    Parameters
-    ----------
-    col : str
-        Nama kolom purchasing_group beserta alias tabel, misal
-        ``'poh.purchasing_group'`` atau ``'poi.purchasing_group'``.
-    selected_p_group : list
-        Daftar purchasing group yang dipilih. ``['All']`` berarti tidak ada filter.
-    exclude_purchasing_group : bool
-        ``True`` → exclude group yang dipilih; ``False`` → include.
-
-    Returns
-    -------
-    str
-        Kondisi SQL siap pakai atau ``'1=1'`` jika tidak ada filter.
-    """
+    """Bangun kondisi SQL filter Purchasing Group untuk kolom tertentu."""
     if selected_p_group and 'All' not in selected_p_group:
         pg_list = "','".join(selected_p_group)
         if exclude_purchasing_group:
@@ -258,44 +370,13 @@ def build_pg_cond(col: str, selected_p_group, exclude_purchasing_group) -> str:
 # =============================================================================
 
 def build_sips_bagian_cond(selected_bagian, date_to=None) -> str:
-    """
-    Bangun kondisi filter bagian untuk query vw_sips menggunakan logika
-    "bagian karyawan ditentukan berdasarkan date_to filter, bukan tanggal transaksi".
-
-    LOGIKA MUTASI:
-    Ketika date_to >= berlaku_dari mutasi baru seorang karyawan, maka SELURUH
-    transaksi karyawan tersebut dianggap milik bagian baru (tidak peduli kapan
-    transaksi itu dibuat). Ini berarti filter bagian tidak menggunakan kolom
-    `bagian` di vw_sips (yang berbasis tanggal transaksi), melainkan mengecek
-    bagian aktif karyawan pada tanggal date_to via karyawan_bagian_history.
-
-    Aturan penentuan bagian karyawan pada tanggal D (date_to):
-      - Ambil baris di karyawan_bagian_history dengan berlaku_dari <= D
-        DAN (berlaku_sampai IS NULL OR berlaku_sampai >= D)
-      - Jika date_to tidak diberikan (None), pakai bagian saat ini
-        (berlaku_sampai IS NULL = masih aktif)
-
-    Parameters
-    ----------
-    selected_bagian : list
-        Daftar bagian yang dipilih user. ['All'] = tanpa filter.
-    date_to : date | str | None
-        Batas akhir tanggal filter. Digunakan sebagai "tanggal acuan"
-        untuk menentukan bagian aktif karyawan.
-
-    Returns
-    -------
-    str
-        Kondisi SQL siap pakai, atau '1=1' jika tidak ada filter bagian.
-    """
+    """Bangun kondisi filter bagian untuk query vw_sips..."""
     if not selected_bagian or "All" in selected_bagian:
         return "1=1"
 
     bg = ", ".join(f"'{b}'" for b in selected_bagian)
 
     if date_to:
-        # Bagian karyawan = bagian yang berlaku pada date_to
-        # (berlaku_dari <= date_to AND (berlaku_sampai IS NULL OR berlaku_sampai >= date_to))
         return f"""nik IN (
             SELECT nik FROM karyawan_bagian_history
             WHERE bagian IN ({bg})
@@ -303,31 +384,17 @@ def build_sips_bagian_cond(selected_bagian, date_to=None) -> str:
               AND (berlaku_sampai IS NULL OR berlaku_sampai >= '{date_to}'::date)
         )"""
     else:
-        # Tanpa date_to: gunakan bagian aktif saat ini (berlaku_sampai IS NULL)
         return f"""nik IN (
             SELECT nik FROM karyawan_bagian_history
             WHERE bagian IN ({bg})
               AND berlaku_sampai IS NULL
         )"""
 
-
 def build_sips_where(date_from=None, date_to=None,
                      selected_nama=None, selected_bagian=None,
                      selected_pgroup=None,
                      extra: list = None) -> str:
-    """
-    Bangun WHERE clause untuk query vw_sips.
-    - Filter tanggal menggunakan tgl_disposisi_buyer (konsisten dengan ETL &
-      kolom BULAN DISPO di Excel), bukan requisition_date.
-      Alasan: ETL menentukan bulan_import dari tgl_disposisi_buyer sebagai
-      anchor utama, sehingga filter dashboard harus mengikuti kolom yang sama
-      agar Total PR / Total PO sesuai dengan rekapan Excel atasan.
-    - Filter bagian menggunakan build_sips_bagian_cond() dengan acuan date_to,
-      sehingga karyawan yang mutasi bagian akan "membawa" seluruh transaksinya
-      ke bagian baru begitu date_to melewati tanggal efektif mutasi.
-    - Filter purchasing_group hanya aktif jika selected_pgroup bukan ['All']
-    - Sertakan extra=['nilai_sla IS NOT NULL'] dsb. jika perlu kondisi tambahan
-    """
+    """Bangun WHERE clause untuk query vw_sips..."""
     wp = ["1=1"]
     if extra:
         wp.extend(extra)
@@ -336,7 +403,6 @@ def build_sips_where(date_from=None, date_to=None,
     if date_to:
         wp.append(f"tgl_disposisi_buyer <= '{date_to}'")
 
-    # Filter bagian berbasis date_to (bukan kolom bagian statis di vw_sips)
     bagian_cond = build_sips_bagian_cond(selected_bagian, date_to=date_to)
     if bagian_cond != "1=1":
         wp.append(bagian_cond)
@@ -354,18 +420,10 @@ def build_sips_where(date_from=None, date_to=None,
 # =============================================================================
 
 def render_filter_bar(mode: str, load_data_fn) -> dict:
-    """
-    Render filter bar horizontal di atas konten halaman.
-
-    mode : 'sap'  → filter SAP  (Bagian, Dept, P.Group, Date Range)
-           'sips' → filter SIPS (Bagian, Nama, Date Range)
-
-    Mengembalikan dict berisi nilai filter aktif.
-    """
+    """Render filter bar horizontal di atas konten halaman."""
     current_year  = datetime.now().year
     default_start = datetime(current_year, 1, 1).date()
 
-    # Tanggal terakhir data diambil, update sesuai ETL terbaru
     from datetime import date as _date
     DATA_UPDATE_SAP  = _date(2026, 2, 28)
     DATA_UPDATE_SIPS = _date(2026, 2, 28)
@@ -398,7 +456,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         )
 
     if mode == 'sap':
-        # == Load options =======================================================
         try:
             dept_df = load_data_fn(
                 "SELECT DISTINCT department_code FROM departments ORDER BY department_code"
@@ -425,7 +482,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         except Exception:
             opts_dept = opts_bagian = opts_pg = ['All']
 
-        # Init session state TANPA value= di widget (cegah warning duplikat)
         _init('fb_bagian',    ['All'])
         _init('fb_dept',      ['All'])
         _init('fb_pgroup',    ['All'])
@@ -462,7 +518,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                 st.cache_data.clear()
                 st.rerun()
 
-        # == Info data update + divider =========================================
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
             f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
@@ -490,7 +545,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         except Exception:
             opts_bagian_sips = ['All']
 
-        # Init session state TANPA value= di widget (cegah warning duplikat)
         _init('fb_sips_bagian',    ['All'])
         _init('fb_sips_pgroup',    ['All'])
         _init('fb_sips_nama',      ['All'])
@@ -501,7 +555,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
             _all_logic("fb_sips_bagian")
             st.session_state.fb_sips_nama = ['All']
 
-        # Load nama berdasarkan bagian dipilih
         try:
             sel_bag = st.session_state.fb_sips_bagian
             if 'All' not in sel_bag and sel_bag:
@@ -517,7 +570,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
         except Exception:
             opts_nama = ['All']
 
-        # Load purchasing group SIPS
         try:
             pg_sips_df = load_data_fn(
                 "SELECT DISTINCT purchasing_group FROM sips_data WHERE purchasing_group IS NOT NULL ORDER BY purchasing_group"
@@ -555,7 +607,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
                 st.cache_data.clear()
                 st.rerun()
 
-        # == Info data update + divider =========================================
         st.markdown(
             f"<p style='font-size:11px; opacity:0.5; margin:6px 0 0 2px;'>"
             f"Data SAP per <b>{DATA_UPDATE_SAP.strftime('%d %B %Y')}</b> &nbsp;·&nbsp; "
@@ -578,13 +629,6 @@ def render_filter_bar(mode: str, load_data_fn) -> dict:
 # =============================================================================
 
 def inject_scroll_to_top():
-    """
-    Tombol scroll-to-top selalu visible di pojok kanan bawah.
-    - st.markdown  : render tombol + CSS (tidak butuh iframe)
-    - st.components: inject event listener via window.parent (butuh iframe
-                     tapi hanya untuk JS, bukan untuk menampilkan elemen)
-    """
-    # Tombol + CSS via st.markdown (selalu render, tidak butuh iframe)
     st.markdown("""
 <style>
 #stt-btn {
@@ -623,8 +667,6 @@ def inject_scroll_to_top():
 </button>
 """, unsafe_allow_html=True)
 
-    # Event listener via iframe, mengakses window.parent.document
-    # untuk scroll section[data-testid="stMain"] yang terbukti dari debug
     st.components.v1.html("""
 <script>
 (function() {
@@ -633,7 +675,6 @@ def inject_scroll_to_top():
         var btn = doc.getElementById('stt-btn');
         if (!btn) { setTimeout(attachListener, 200); return; }
 
-        // Hindari duplikat listener
         if (btn.dataset.sttAttached) return;
         btn.dataset.sttAttached = '1';
 
@@ -648,35 +689,24 @@ def inject_scroll_to_top():
 """, height=0)
 
 # =============================================================================
-# PETA SISTEM: LAZY LOAD: hanya dimuat saat user bertanya soal struktur
+# PETA SISTEM: LAZY LOAD
 # =============================================================================
 
-# Kata kunci yang mengindikasikan pertanyaan tentang struktur/letak di dashboard
 _TRIGGER_PETA = [
-    # Navigasi & letak
     "halaman", "page", "menu", "navigasi", "dimana", "di mana", "letak",
     "ada di", "temukan di", "lihat di", "pergi ke", "buka halaman",
-    # Elemen visual
     "chart", "grafik", "tabel", "table", "diagram", "visualisasi",
     "kpi", "kartu", "card", "metrik",
-    # Pertanyaan struktur
     "ada apa", "apa saja", "fitur apa", "struktur", "isi halaman",
     "menampilkan apa", "berisi apa", "bagian mana", "section",
-    # Kata tanya umum yang mungkin tentang navigasi
     "di sini ada", "bisa lihat", "cara lihat", "cara melihat",
 ]
 
 def _butuh_peta_sistem(user_input: str) -> bool:
-    """Cek apakah pertanyaan user memerlukan informasi Peta Sistem."""
     teks = user_input.lower()
     return any(k in teks for k in _TRIGGER_PETA)
 
 def _fetch_peta_sistem(load_data_fn) -> str:
-    """
-    Ambil Peta Sistem dari database (lazy, hanya dipanggil saat dibutuhkan).
-    Hasil di-cache di st.session_state selama sesi berlangsung.
-    """
-    # Cache di session_state agar tidak query DB berulang dalam satu sesi
     if "melati_peta_cache" in st.session_state:
         return st.session_state["melati_peta_cache"]
 
@@ -698,7 +728,6 @@ def _fetch_peta_sistem(load_data_fn) -> str:
 
         for _, row in df.iterrows():
             lines.append(f"{row['urutan']}. {row['nama_halaman']}")
-            # Indent setiap baris konten
             for baris in str(row['konten']).strip().splitlines():
                 lines.append(f"    {baris.strip()}")
             lines.append("")
@@ -708,7 +737,6 @@ def _fetch_peta_sistem(load_data_fn) -> str:
         return result
 
     except Exception as e:
-        # Tabel belum ada atau error, kembalikan string kosong, tidak crash
         return ""
 
 # =============================================================================
@@ -726,13 +754,10 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
             img_b64 = base64.b64encode(img_file.read()).decode()
 
     if img_b64:
-        # Jika gambar ditemukan, jadikan icon bulat (border-radius: 50%)
         icon_html = f'<img src="data:image/png;base64,{img_b64}" width="38" height="38" style="margin-right: 12px; border-radius: 50%; object-fit: cover; border: 2px solid #1f77b4;">'
     else:
-        # Fallback (cadangan) jika gambar tidak ditemukan, gunakan emoji
         icon_html = '<span style="font-size: 32px; margin-right: 12px;">🕵️‍♀️</span>'
     
-    # Header AI
     st.markdown(f"""
         <h1 style='display: flex; align-items: center; font-size:28px; color: #1f77b4; margin-bottom: 5px;'>
             {icon_html}
@@ -741,7 +766,6 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
     """, unsafe_allow_html=True)
     st.caption(f"Tanyakan *insight* atau kesimpulan dari data di sistem Monitoring & Reporting Pengadaan Barang.")
 
-    # 1. Inisialisasi API
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
         client = genai.Client(api_key=api_key)
@@ -749,14 +773,11 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
         st.error("API Key belum dikonfigurasi di file secrets.toml")
         return
 
-    # 2. Setup Memori Sesi
     if "chat_memory" not in st.session_state:
         st.session_state.chat_memory = []
 
-    # 3. KOTAK PERCAKAPAN SCROLLABLE (Tinggi Tetap 400px)
     chat_box = st.container(height=400)
     
-    # Render histori yang sudah ada ke dalam kotak tersebut
     with chat_box:
         if not st.session_state.chat_memory:
             st.info("Ketik pertanyaan Anda di bawah untuk memulai analisis data.")
@@ -770,45 +791,34 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
             with st.chat_message(msg["role"], avatar=avatar_img):
                 st.markdown(msg["content"])
 
-    # 4. KOTAK INPUT (Inline, diam di tempat)
-    # Menggunakan form agar teks otomatis terhapus (clear) setelah dikirim
     with st.form(key=f"chat_form_{nama_halaman}", clear_on_submit=True):
-        col_input, col_btn = st.columns([9, 1]) # Proporsi 90% input, 10% tombol
+        col_input, col_btn = st.columns([9, 1])
         
         with col_input:
             user_input = st.text_input(
                 "Prompt AI", 
                 placeholder="Contoh: Vendor mana yang nilai PO-nya paling besar?", 
-                label_visibility="collapsed" # Menyembunyikan label agar bersih
+                label_visibility="collapsed"
             )
         with col_btn:
             submit_btn = st.form_submit_button("Kirim", icon=":material/send:")
 
-    # 5. LOGIKA EKSEKUSI API
     if submit_btn and user_input:
         
-        # Simpan pertanyaan user ke memori
         st.session_state.chat_memory.append({"role": "user", "content": user_input})
         
-        # Tampilkan langsung ke dalam kotak percakapan yang di-scroll tadi
         with chat_box:
             with st.chat_message("user"):
                 st.markdown(user_input)
                 
-            # Render animasi loading & balasan AI
             with st.chat_message("assistant", avatar="assets/Melati_icon.png"):
                 with st.spinner("Tunggu, Melati sedang menganalisis data..."):
                     try:
-                        # -------------------------------------------------------------
-                        # PETA SISTEM: lazy load, hanya jika pertanyaan menyinggung
-                        # struktur / letak chart / navigasi dashboard
-                        # -------------------------------------------------------------
                         if _butuh_peta_sistem(user_input) and load_data_fn is not None:
                             peta_context = _fetch_peta_sistem(load_data_fn)
                         else:
                             peta_context = ""
 
-                        # Rakit Prompt Rahasia
                         system_prompt = f"""
                         Kamu adalah asisten AI bernama Melati, seorang analis data perempuan yang ceria, sangat teliti, dan bersikap layaknya "detektif" andal yang sedang menyelidiki data sistem perusahaan.
                         
@@ -817,7 +827,7 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
                         2. FAKTUAL & OBJEKTIF: Jawab HANYA berdasarkan data di bawah. JIKA DATA TIDAK ADA, katakan dengan nada detektif: "Hmm, sepertinya jejak data itu tidak kutemukan di layar saat ini 🔍."
                         3. NO HALLUCINATION: Sebagai detektif, kamu pantang mengarang bukti! JANGAN PERNAH mengarang angka, nama vendor, atau metrik yang tidak ada di data.
                         4. ATURAN PENOLAKAN RUMUS/KALKULASI: Kamu HANYA tahu deskripsi singkat chart. JIKA user bertanya tentang RUMUS, FORMULA, CARA MENGHITUNG, atau KALKULASI spesifik dari suatu chart, kamu WAJIB menjawab dengan template kalimat ini (sesuaikan nama halaman dan chart-nya):
-                           "Maaf, Melati masih belum bisa memperoleh informasi tersebut. Kamu bisa mengetahui informasinya dengan cara pergi ke Halaman [Judul Halaman], di chart/tabel [Nama Chart/Nama Tabel], lalu klik tombol 'Show Formula' berbentuk mata 😭."
+                            "Maaf, Melati masih belum bisa memperoleh informasi tersebut. Kamu bisa mengetahui informasinya dengan cara pergi ke Halaman [Judul Halaman], di chart/tabel [Nama Chart/Nama Tabel], lalu klik tombol 'Show Formula' berbentuk mata 😭."
                         5. BATASAN DOMAIN: Tolak dengan sopan hal di luar pengadaan, dashboard, atau data yang diberikan.
                         6. FORMAT: Berikan analisis terstruktur, tebalkan angka penting, gunakan bullet points, dan sedikit emoji.
                         7. ATURAN FILTER LINTAS SISTEM (PENTING!): Pada 'BUKTI DATA' di bawah, tertera informasi 'Halaman aktif' saat ini. JIKA user bertanya tentang data/angka dari sistem yang BERBEDA dengan halaman aktif saat ini (misalnya: kita sedang di halaman SIPS, tapi user menanyakan data SAP, atau sebaliknya), kamu WAJIB menyebutkan "Kondisi Filter" yang sedang berlaku pada data tersebut sebelum memberikan jawabannya. Ambil informasi filter ini dari teks di bawah tulisan [SAP] FILTER AKTIF atau [SIPS] FILTER AKTIF.
@@ -832,16 +842,13 @@ def render_chat_analyst(konteks_data_teks: str, nama_halaman: str, load_data_fn=
                         Pertanyaan dari User: {user_input}
                         """
                         
-                        # Eksekusi API Gemini
                         response = client.models.generate_content(
                             model="gemini-3-flash-preview",
                             contents=system_prompt
                         )
                         
-                        # Tampilkan hasil
                         st.markdown(response.text)
                         
-                        # Simpan ke memori agar tidak hilang saat filter diubah
                         st.session_state.chat_memory.append({"role": "assistant", "content": response.text})
                     
                     except Exception as e:
