@@ -12,6 +12,9 @@ from openpyxl.drawing.text import RichTextProperties, Paragraph, ParagraphProper
 from openpyxl.drawing.line import LineProperties
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.drawing.text import Font as DrawingFont, RegularTextRun
+from openpyxl.chart.text import Text
+from openpyxl.chart.title import Title
 from utils import MAPPING_SINGKATAN
 
 
@@ -38,8 +41,24 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_rows = len(df_chart_reset)
     n_cols = len(headers)
 
+    # =========================================================================
+    # SETUP FONT ARIAL UNTUK CHART
+    # =========================================================================
+    arial_font = DrawingFont(typeface='Arial')
+    cp_arial = CharacterProperties(latin=arial_font)
+    cp_arial_bold = CharacterProperties(latin=arial_font, b=True)
+    cp_arial_sz700 = CharacterProperties(sz=700, latin=arial_font)
+
+    # Fungsi bantu untuk membungkus teks menjadi Title Chart yang terformat
+    def create_formatted_title(text_val, is_bold=True):
+        cp = cp_arial_bold if is_bold else cp_arial
+        run = RegularTextRun(t=text_val, rPr=cp)
+        p = Paragraph(pPr=ParagraphProperties(defRPr=cp), r=[run])
+        return Title(tx=Text(rich=RichText(p=[p])))
+    # =========================================================================
+
     chart = LineChart()
-    chart.title = f"Komparasi Tren Harga Urea ({jenis_harga})"
+    chart.title = create_formatted_title(f"Komparasi Tren Harga Urea ({jenis_harga})", is_bold=True)
     chart.height = 14
     chart.width = 32
     chart.style = None
@@ -61,25 +80,34 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         series.marker.graphicalProperties.solidFill = hex_color
         series.marker.graphicalProperties.line.solidFill = hex_color
 
-    chart.y_axis.title = y_label
+    # 2. Terapkan Arial pada Axis Y (Judul dan Label Angka)
+    chart.y_axis.title = create_formatted_title(y_label, is_bold=True)
+    chart.y_axis.txPr = RichText(
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
+    )
     chart.y_axis.majorGridlines = ChartLines()
     chart.y_axis.majorGridlines.graphicalProperties = GraphicalProperties()
     chart.y_axis.majorGridlines.graphicalProperties.line = LineProperties(solidFill="E0E0E0", w=9525)
     chart.y_axis.delete = False
 
-    chart.x_axis.title = "Tanggal Publikasi"
+    # 3. Terapkan Arial pada Axis X (Judul dan Label Tanggal rotasi)
+    chart.x_axis.title = create_formatted_title("Tanggal Publikasi", is_bold=True)
+    chart.x_axis.txPr = RichText(
+        bodyPr=RichTextProperties(rot=-5400000, vert="horz"),
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial_sz700),
+                     endParaRPr=cp_arial_sz700)]
+    )
     chart.x_axis.delete = False
     chart.x_axis.majorGridlines = None
     chart.x_axis.tickLblSkip = 1
     chart.x_axis.tickMarkSkip = 1
-    chart.x_axis.txPr = RichText(
-        bodyPr=RichTextProperties(rot=-5400000, vert="horz"),
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=CharacterProperties(sz=700)),
-                      endParaRPr=CharacterProperties(sz=700))]
-    )
 
+    # 4. Terapkan Arial pada Legend
     chart.legend.position = 'b'
     chart.legend.overlay = False
+    chart.legend.txPr = RichText(
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
+    )
 
     chart.layout = Layout(
         manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge")
@@ -87,6 +115,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     ws.add_chart(chart, "A1")
 
+    # ========================== STYLING TABEL ==========================
     HEADER_BLUE = "BDD7EE"
     thin = Side(style='thin', color='000000')
     TABLE_START_ROW = 34
