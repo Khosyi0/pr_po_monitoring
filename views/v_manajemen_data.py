@@ -559,40 +559,84 @@ def render(**kwargs):
                     st.success("Proses sinkronisasi SIPS selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
         
         elif tipe_etl == "Inklaring Barang Impor":
-            file_inklaring = st.file_uploader("Upload File Inklaring (.csv / .xlsx)", type=["csv", "xlsx"])
-            update_tgl_inklaring = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_inklaring")
-            if file_inklaring:
-                if st.button("Jalankan ETL Inklaring", type="primary", icon=":material/cloud_upload:"):
-                    ext = ".csv" if file_inklaring.name.endswith(".csv") else ".xlsx"
-                    inklaring_path = f"temp_inklaring_upload{ext}"
-                    with open(inklaring_path, "wb") as f:
-                        f.write(file_inklaring.getbuffer())
+            # 1. PINDAHKAN FUNGSI HELPER KE SINI (KE ATAS) agar terhindar dari scope error
+            def _jalankan_etl_inklaring(file_path, update_tanggal):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_inklaring # type: ignore
+                
+                etl_inklaring.Config.INKLARING_FILE = file_path
+                etl_inklaring.db_get_engine = _get_engine
+                
+                terminal = st.empty()
+                capture_inklaring = StreamlitCapture(terminal)
+                with redirect_stdout(capture_inklaring), redirect_stderr(capture_inklaring):
+                    try:
+                        sukses = etl_inklaring.run_etl()
+                        capture_inklaring.flush()
                         
-                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-                    import etl_inklaring # type: ignore
-                    
-                    etl_inklaring.Config.INKLARING_FILE = inklaring_path
-                    etl_inklaring.db_get_engine = _get_engine
-                    
-                    terminal = st.empty()
-                    capture_inklaring = StreamlitCapture(terminal)
-                    with redirect_stdout(capture_inklaring), redirect_stderr(capture_inklaring):
-                        try:
-                            sukses = etl_inklaring.run_etl()
-                            capture_inklaring.flush()
+                        if sukses:
+                            if update_tanggal:
+                                set_setting("DATA_UPDATE_INKLARING", datetime.today().strftime("%Y-%m-%d"))
+                            st.success("Proses sinkronisasi Inklaring selesai! Tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+                            st.cache_data.clear()
+                        else:
+                            st.error("Proses ETL Inklaring gagal, periksa terminal di atas.")
+                    except Exception as e:
+                        st.error(f"Gagal memproses data Inklaring: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+
+            # 2. LOGIKA ANTARMUKA / UI MODUL INKLARING
+            metode_input = st.radio("Metode Input Data Inklaring", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_inklaring")
+            update_tgl_inklaring = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_inklaring")
+            
+            if metode_input == "Upload File Manual":
+                file_inklaring = st.file_uploader("Upload File Inklaring (.csv / .xlsx)", type=["csv", "xlsx"])
+                if file_inklaring:
+                    if st.button("Jalankan ETL Inklaring", type="primary", icon=":material/cloud_upload:"):
+                        ext = ".csv" if file_inklaring.name.endswith(".csv") else ".xlsx"
+                        inklaring_path = f"temp_inklaring_upload{ext}"
+                        with open(inklaring_path, "wb") as f:
+                            f.write(file_inklaring.getbuffer())
                             
-                            if sukses:
-                                if update_tgl_inklaring:
-                                    set_setting("DATA_UPDATE_INKLARING", datetime.today().strftime("%Y-%m-%d"))
-                                st.success("Proses sinkronisasi Inklaring selesai! Tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
-                                st.cache_data.clear()
-                            else:
-                                st.error("Proses ETL Inklaring gagal, periksa terminal di atas.")
-                        except Exception as e:
-                            st.error(f"Gagal memproses data Inklaring: {e}")
-                        finally:
-                            if os.path.exists(inklaring_path):
-                                os.remove(inklaring_path)
+                        _jalankan_etl_inklaring(inklaring_path, update_tgl_inklaring)
+            
+            else:
+                # Opsi Tarik dari Google Sheets
+                st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya.")
+                
+                # Masukkan ID default Google Sheet untuk Inklaring jika ada, atau biarkan kosong seperti di bawah
+                sheet_id_inklaring = st.text_input(
+                    "ID Google Sheet (Inklaring)", 
+                    value="1MD8RCYEeY_VC_NHjNfxiNKOTWyTNdgJscJL_thOZVtQ",  # Ganti dengan ID Google Sheet Inklaring jika berbeda
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    key="txt_sheet_inklaring"
+                )
+                
+                if st.button("Tarik Data & Jalankan ETL Inklaring", type="primary", icon=":material/cloud_download:"):
+                    if not sheet_id_inklaring:
+                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                    else:
+                        with st.spinner("Mengunduh data Inklaring dari Google Sheets..."):
+                            import requests
+                            try:
+                                # Mengunduh langsung dalam format Excel .xlsx agar parsing column header lebih konsisten
+                                export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_inklaring}/export?format=xlsx"
+                                response = requests.get(export_url)
+                                
+                                if response.status_code == 200:
+                                    # Simpan dengan ekstensi .xlsx agar dibaca oleh pd.read_excel di etl_inklaring.py
+                                    inklaring_path = "temp_inklaring_gsheet.xlsx"
+                                    with open(inklaring_path, "wb") as f:
+                                        f.write(response.content)
+                                    
+                                    st.success("File Inklaring berhasil diunduh. Memulai proses ETL...")
+                                    _jalankan_etl_inklaring(inklaring_path, update_tgl_inklaring)
+                                else:
+                                    st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
         elif tipe_etl == "EPROC (Utilisasi)":
             file_eproc = st.file_uploader("Upload File EPROC (.xlsx) — harus ada sheet 'EPROC'", type=["xlsx"])
@@ -623,37 +667,107 @@ def render(**kwargs):
                         os.remove(eproc_path)
                         
         elif tipe_etl == "Harga Bahan Baku":
-            file_bahan_baku = st.file_uploader("Upload File Rekapan Majalah (.xlsx)", type=["xlsx"])
+            
+            # 1. PINDAHKAN FUNGSI HELPER KE SINI (KE ATAS)
+            def _jalankan_etl_bahan_baku(file_path, update_tanggal):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_harga_bahan_baku as etl_bb # type: ignore
+
+                etl_bb.Config.EXCEL_FILE = file_path
+                etl_bb.db_get_engine = _get_engine
+
+                terminal = st.empty()
+                capture_bb = StreamlitCapture(terminal)
+                with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
+                    try:
+                        etl_bb.run_etl()
+                        capture_bb.flush()
+                        
+                        if update_tanggal:
+                            set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
+                        
+                        st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+
+            # 2. BARU SETELAH ITU LOGIKA UI-NYA
+            metode_input = st.radio("Metode Input Data", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True)
             update_tgl_bahan_baku = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_bahan_baku")
-            if file_bahan_baku:
-                if st.button("Jalankan ETL Harga Bahan Baku", type="primary", icon=":material/cloud_upload:"):
-                    bb_path = "temp_bahan_baku.xlsx"
-                    with open(bb_path, "wb") as f: 
-                        f.write(file_bahan_baku.getbuffer())
-
-                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-                    import etl_harga_bahan_baku as etl_bb # type: ignore
-
-                    etl_bb.Config.EXCEL_FILE = bb_path
-                    etl_bb.db_get_engine = _get_engine
-
-                    terminal = st.empty()
-                    capture_bb = StreamlitCapture(terminal)
-                    with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
-                        try:
-                            etl_bb.run_etl()
-                            capture_bb.flush()
+            
+            if metode_input == "Upload File Manual":
+                file_bahan_baku = st.file_uploader("Upload File Rekapan Majalah (.xlsx)", type=["xlsx"])
+                if file_bahan_baku:
+                    if st.button("Jalankan ETL Harga Bahan Baku", type="primary", icon=":material/cloud_upload:"):
+                        bb_path = "temp_bahan_baku.xlsx"
+                        with open(bb_path, "wb") as f: 
+                            f.write(file_bahan_baku.getbuffer())
                             
-                            if update_tgl_bahan_baku:
-                                set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
-                            
-                            st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
-                            st.cache_data.clear()
-                        except Exception as e:
-                            st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
-                        finally:
-                            if os.path.exists(bb_path):
-                                os.remove(bb_path)
+                        # Fungsi ini sekarang sudah dikenali karena sudah di-define di atas
+                        _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
+                        
+            else:
+                st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya.")
+                
+                sheet_id = st.text_input(
+                    "ID Google Sheet", 
+                    value="11QKLfNWhV7mFpwgJJ-6Zg8HWWs3yEmHCGszNuwDXl5o",
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                )
+                
+                if st.button("Tarik Data & Jalankan ETL", type="primary", icon=":material/cloud_download:"):
+                    if not sheet_id:
+                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                    else:
+                        with st.spinner("Mengunduh data dari Google Sheets..."):
+                            import requests
+                            try:
+                                export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+                                response = requests.get(export_url)
+                                
+                                if response.status_code == 200:
+                                    bb_path = "temp_bahan_baku_gsheet.xlsx"
+                                    with open(bb_path, "wb") as f:
+                                        f.write(response.content)
+                                    
+                                    st.success("File berhasil diunduh. Memulai proses ETL...")
+                                    
+                                    # Fungsi ini sekarang juga sudah dikenali
+                                    _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
+                                else:
+                                    st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat mengunduh: {e}")
+
+        # Tambahkan fungsi helper ini di luar blok if/elif, atau tepat di bawahnya 
+        # agar kode tidak berulang dan lebih rapi.
+        def _jalankan_etl_bahan_baku(file_path, update_tanggal):
+            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+            import etl_harga_bahan_baku as etl_bb # type: ignore
+
+            etl_bb.Config.EXCEL_FILE = file_path
+            etl_bb.db_get_engine = _get_engine
+
+            terminal = st.empty()
+            capture_bb = StreamlitCapture(terminal)
+            with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
+                try:
+                    etl_bb.run_etl()
+                    capture_bb.flush()
+                    
+                    if update_tanggal:
+                        set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
+                    
+                    st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
+                    st.cache_data.clear()
+                except Exception as e:
+                    st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
+                finally:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
 
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)

@@ -427,6 +427,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         'USA': {'name': 'USA', 'lat': 37.0902, 'lon': -95.7129},
         'UNITED STATES OF AMERICA': {'name': 'USA', 'lat': 37.0902, 'lon': -95.7129},
         'JORDAN': {'name': 'Jordan', 'lat': 31.2407, 'lon': 36.5115},
+        'KAZAKHSTAN': {'name': 'Kazakhstan', 'lat': 48.0196, 'lon': 66.9237},
         'QATAR': {'name': 'Qatar', 'lat': 25.3548, 'lon': 51.1839},
         'CANADA': {'name': 'Canada', 'lat': 56.1304, 'lon': -106.3468},
         'KANADA': {'name': 'Canada', 'lat': 56.1304, 'lon': -106.3468},
