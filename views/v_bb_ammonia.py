@@ -18,7 +18,7 @@ from openpyxl.chart.title import Title
 from utils import MAPPING_SINGKATAN
 
 
-def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
+def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map, list_resume):
     wb = Workbook()
     ws = wb.active
     ws.title = "Komparasi Harga Ammonia"
@@ -41,21 +41,17 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_rows = len(df_chart_reset)
     n_cols = len(headers)
 
-    # =========================================================================
-    # SETUP FONT ARIAL UNTUK CHART
-    # =========================================================================
+    # Setup Font Arial untuk Chart
     arial_font = DrawingFont(typeface='Arial')
     cp_arial = CharacterProperties(latin=arial_font)
     cp_arial_bold = CharacterProperties(latin=arial_font, b=True)
     cp_arial_sz700 = CharacterProperties(sz=700, latin=arial_font)
 
-    # Fungsi bantu untuk membungkus teks menjadi Title Chart yang terformat
     def create_formatted_title(text_val, is_bold=True):
         cp = cp_arial_bold if is_bold else cp_arial
         run = RegularTextRun(t=text_val, rPr=cp)
         p = Paragraph(pPr=ParagraphProperties(defRPr=cp), r=[run])
         return Title(tx=Text(rich=RichText(p=[p])))
-    # =========================================================================
 
     chart = LineChart()
     chart.title = create_formatted_title(f"Komparasi Tren Harga Ammonia ({jenis_harga})", is_bold=True)
@@ -80,39 +76,28 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         series.marker.graphicalProperties.solidFill = hex_color
         series.marker.graphicalProperties.line.solidFill = hex_color
 
-    # 2. Terapkan Arial pada Axis Y (Judul dan Label Angka)
     chart.y_axis.title = create_formatted_title(y_label, is_bold=True)
-    chart.y_axis.txPr = RichText(
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
-    )
+    chart.y_axis.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)])
     chart.y_axis.majorGridlines = ChartLines()
     chart.y_axis.majorGridlines.graphicalProperties = GraphicalProperties()
     chart.y_axis.majorGridlines.graphicalProperties.line = LineProperties(solidFill="E0E0E0", w=9525)
     chart.y_axis.delete = False
 
-    # 3. Terapkan Arial pada Axis X (Judul dan Label Tanggal rotasi)
     chart.x_axis.title = create_formatted_title("Tanggal Publikasi", is_bold=True)
     chart.x_axis.txPr = RichText(
         bodyPr=RichTextProperties(rot=-5400000, vert="horz"),
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial_sz700),
-                     endParaRPr=cp_arial_sz700)]
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial_sz700), endParaRPr=cp_arial_sz700)]
     )
     chart.x_axis.delete = False
     chart.x_axis.majorGridlines = None
     chart.x_axis.tickLblSkip = 1
     chart.x_axis.tickMarkSkip = 1
 
-    # 4. Terapkan Arial pada Legend
     chart.legend.position = 'b'
     chart.legend.overlay = False
-    chart.legend.txPr = RichText(
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
-    )
+    chart.legend.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)])
 
-    chart.layout = Layout(
-        manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge")
-    )
-
+    chart.layout = Layout(manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge"))
     ws.add_chart(chart, "A1")
 
     # ========================== STYLING TABEL ==========================
@@ -122,8 +107,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_date_cols = len(kolom_tanggal)
     last_col = 1 + n_date_cols
 
-    ws.cell(row=TABLE_START_ROW, column=1,
-            value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
+    ws.cell(row=TABLE_START_ROW, column=1, value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
 
     header_row1 = TABLE_START_ROW + 1
     header_row2 = header_row1 + 1
@@ -164,6 +148,27 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     ws.merge_cells(start_row=header_row1, start_column=1, end_row=header_row2, end_column=1)
     ws.merge_cells(start_row=header_row1, start_column=2, end_row=header_row1, end_column=last_col)
 
+    # ========================== EKSPOR RESUME KE EXCEL ==========================
+    # Beri jarak 2 baris kosong setelah tabel
+    resume_title_row = last_data_row + 2
+    ws.cell(row=resume_title_row, column=1, value="Resume :").font = Font(bold=True, size=11, italic=True, name='Arial')
+    
+    for idx, poin in enumerate(list_resume, start=1):
+        current_resume_row = resume_title_row + idx
+        cell = ws.cell(row=current_resume_row, column=1, value=f"•  {poin}")
+        cell.font = Font(size=11, name='Arial')
+        
+        # WAJIB: Aktifkan Wrap Text dan atur alignment ke Top-Left
+        cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+        
+        # Merge sel agar teks bisa membentang selebar tabel
+        ws.merge_cells(start_row=current_resume_row, start_column=1, end_row=current_resume_row, end_column=last_col)
+        
+        # Kalkulasi dinamis tinggi baris berdasarkan panjang karakter teks (asumsi 1 baris ~ 90 karakter)
+        jumlah_baris = (len(poin) // 90) + 1
+        ws.row_dimensions[current_resume_row].height = 16 * jumlah_baris
+    # ============================================================================
+
     ws.column_dimensions['A'].width = 26
     for col_idx in range(2, last_col + 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = 20
@@ -171,12 +176,16 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     ws.row_dimensions[header_row1].height = 22
     ws.row_dimensions[header_row2].height = 20
 
+    # Pastikan Font Utama Tetap Arial untuk seluruh sel (kecuali yang sudah di-set tebal/miring)
     for sheet in wb.worksheets:
         for row in sheet.iter_rows():
             for cell in row:
-                if cell.value is not None:
-                    is_bold = cell.font.bold if cell.font else False
-                    cell.font = Font(name='Arial', size=11, bold=is_bold)
+                if cell.value is not None and not cell.font:
+                    cell.font = Font(name='Arial', size=11)
+                elif cell.font:
+                    is_bold = cell.font.bold
+                    is_italic = cell.font.italic
+                    cell.font = Font(name='Arial', size=cell.font.size, bold=is_bold, italic=is_italic)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -194,6 +203,118 @@ def variasikan_warna(hex_color, index, total):
     g = min(255, int(g * factor))
     b = min(255, int(b * factor))
     return f"#{r:02x}{g:02x}{b:02x}"
+
+def hitung_resume_ammonia(df_plot, y_col):
+    """
+    Fungsi tingkat lanjut untuk merangkai resume Ammonia secara otomatis.
+    Mampu mendeteksi titik balik tren (zigzag) dan menambahkan narasi dampak biaya industri pupuk.
+    """
+    bulan_indo = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+        7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }
+
+    def _get_nama_minggu(dt):
+        if dt.day <= 7: return f"awal {bulan_indo[dt.month]} {dt.year}"
+        elif dt.day <= 14: return f"minggu kedua {bulan_indo[dt.month]} {dt.year}"
+        elif dt.day <= 21: return f"minggu ketiga {bulan_indo[dt.month]} {dt.year}"
+        else: return f"akhir {bulan_indo[dt.month]} {dt.year}"
+
+    if df_plot.empty:
+        return ["Data tidak tersedia."]
+
+    # =========================================================================
+    # LOGIKA BARU: SETUP 3 TITIK WAKTU (T0 = SEKARANG, T1 = 1 BULAN LALU, T2 = 2 BULAN LALU)
+    # =========================================================================
+    tgl_T0 = pd.Timestamp(df_plot['tanggal_terbit'].max())
+    batas_1_bulan = tgl_T0 - pd.DateOffset(months=1)
+    batas_2_bulan = tgl_T0 - pd.DateOffset(months=2)
+
+    # 1. Hitung Harga T0 (Terbaru - Rata-rata seluruh referensi rilis terakhir)
+    df_T0 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
+    harga_T0 = df_T0[y_col].mean()
+
+    # 2. Hitung Harga T1 (Sekitar 1 Bulan Lalu)
+    df_T1_range = df_plot[(df_plot['tanggal_terbit'] >= batas_1_bulan) & (df_plot['tanggal_terbit'] < tgl_T0)]
+    if not df_T1_range.empty:
+        df_T1 = df_T1_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
+        harga_T1 = df_T1[y_col].mean()
+        tgl_T1 = pd.Timestamp(df_T1['tanggal_terbit'].max())
+    else:
+        harga_T1 = harga_T0
+        tgl_T1 = tgl_T0
+
+    # 3. Hitung Harga T2 (Sekitar 2 Bulan Lalu / Batas Filter)
+    df_T2_range = df_plot[(df_plot['tanggal_terbit'] >= batas_2_bulan) & (df_plot['tanggal_terbit'] < batas_1_bulan)]
+    if not df_T2_range.empty:
+        df_T2 = df_T2_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')
+        harga_T2 = df_T2[y_col].mean()
+        tgl_T2 = pd.Timestamp(df_T2['tanggal_terbit'].min())
+    else:
+        df_T2 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')
+        harga_T2 = df_T2[y_col].mean()
+        tgl_T2 = pd.Timestamp(df_T2['tanggal_terbit'].min())
+
+    # =========================================================================
+    # ANALISIS TREN BERDASARKAN SELISIH BERTAHAP
+    # =========================================================================
+    delta_recent = harga_T0 - harga_T1  # Tren jangka pendek (Bulan Lalu ke Sekarang)
+    delta_past = harga_T1 - harga_T2    # Tren jangka menengah (2 Bulan Lalu ke Bulan Lalu)
+    
+    threshold_signifikan = 25.0  # Batas perubahan harga Ammonia ($) untuk dibilang signifikan
+
+    # --- POIN 1: MERANGKAI KALIMAT UTAMA ---
+    if delta_recent < -2.0:
+        tren_sekarang = "menunjukkan tren menurun"
+        signifikansi = " namun tidak signifikan" if abs(delta_recent) < threshold_signifikan else " yang cukup signifikan"
+        
+        # Cek apakah sebelumnya sempat naik (pola zigzag laporan asli)
+        if delta_past > 2.0:
+            konteks_historis = f" setelah mengalami kenaikan sepanjang {bulan_indo[tgl_T1.month]} {tgl_T1.year}"
+        else:
+            konteks_historis = ""
+            
+    elif delta_recent > 2.0:
+        tren_sekarang = "menunjukkan tren meningkat"
+        signifikansi = " namun tidak signifikan" if abs(delta_recent) < threshold_signifikan else " yang cukup signifikan"
+        
+        if delta_past < -2.0:
+            konteks_historis = f" setelah mengalami penurunan sepanjang {bulan_indo[tgl_T1.month]} {tgl_T1.year}"
+        else:
+            konteks_historis = ""
+    else:
+        tren_sekarang = "terpantau stabil"
+        signifikansi = ""
+        konteks_historis = ""
+
+    poin_1 = f"Secara keseluruhan, harga Ammonia {tren_sekarang}{signifikansi} pada {_get_nama_minggu(tgl_T0.date())}{konteks_historis}."
+
+    # --- POIN 2: MERANGKAI TEKS BISNIS / IMPACT INDUSTRI ---
+    if tren_sekarang == "menunjukkan tren menurun":
+        # Jika trennya turun tapi harganya masih di atas rata-rata Mei (T2), pas dengan laporan aslimu
+        if harga_T0 > harga_T2:
+            poin_2 = f"Meskipun menunjukkan tren menurun, harga Ammonia masih bertahan pada level yang tinggi dibandingkan awal {bulan_indo[tgl_T2.month]} {tgl_T2.year}, sehingga tetap memberikan tekanan terhadap biaya produksi pupuk fosfat."
+        else:
+            poin_2 = f"Penurunan harga ini sedikit memberikan kelonggaran terhadap tekanan biaya produksi pupuk fosfat jika dibandingkan rata-rata periode {bulan_indo[tgl_T2.month]}."
+    
+    elif tren_sekarang == "menunjukkan tren meningkat":
+        poin_2 = f"Peningkatan harga Ammonia ini semakin memberikan tekanan berat terhadap struktur biaya produksi pupuk fosfat komoditas turunan karena posisi harga bergerak menjauh dari rata-rata baseline USD {harga_T2:.2f}/MT."
+    
+    else: # Stabil
+        poin_2 = f"Harga Ammonia terpantau bertahan stabil pada level konstan jika dibandingkan dengan rata-rata periode awal {bulan_indo[tgl_T2.month]} {tgl_T2.year} yang berada di rata - rata USD {harga_T2:.2f}/MT."
+
+    list_resume = [poin_1, poin_2]
+
+    # --- POIN 3: DETEKSI MAJALAH MANDEK ---
+    for label in df_plot['label_komparasi'].unique():
+        df_ref = df_plot[df_plot['label_komparasi'] == label]
+        max_tgl_ref = pd.Timestamp(df_ref['tanggal_terbit'].max())
+        
+        if (tgl_T0 - max_tgl_ref).days > 14:
+            tgl_str = f"{max_tgl_ref.day:02d} {bulan_indo[max_tgl_ref.month]} {max_tgl_ref.year}"
+            list_resume.append(f"Untuk referensi {label}, harga terakhir dirilis pada {tgl_str}.")
+
+    return list_resume
 
 
 def render(load_data, global_context):
@@ -464,9 +585,17 @@ def render(load_data, global_context):
 """
             st.markdown(styled_html, unsafe_allow_html=True)
 
+            list_resume_otomatis = hitung_resume_ammonia(df_plot, y_col)
+            
+            st.markdown("##### *Resume :*")
+            for poin in list_resume_otomatis:
+                st.markdown(f"- {poin}")
+            st.markdown("<br>", unsafe_allow_html=True)
+
             excel_buffer = generate_excel_export(
                 df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
-                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map
+                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map,
+                list_resume=list_resume_otomatis # Masukkan variabel list_resume ke sini
             )
 
             # --- CSS untuk mengubah warna tombol download jadi merah-oranye ---
@@ -490,7 +619,7 @@ def render(load_data, global_context):
             """, unsafe_allow_html=True)
 
             st.download_button(
-                label=":material/download: Download Excel (Chart + Tabel)",
+                label=":material/download: Download Excel (Chart + Tabel + Resume)",
                 data=excel_buffer,
                 file_name=f"komparasi_harga_Ammonia_{jenis_harga}_{start_date}_{end_date}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

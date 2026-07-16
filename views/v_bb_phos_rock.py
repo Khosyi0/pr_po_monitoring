@@ -18,7 +18,7 @@ from openpyxl.chart.title import Title
 from utils import MAPPING_SINGKATAN
 
 
-def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map):
+def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map, list_resume):
     wb = Workbook()
     ws = wb.active
     ws.title = "Komparasi Harga Phosphate Rock"
@@ -164,6 +164,20 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     ws.merge_cells(start_row=header_row1, start_column=1, end_row=header_row2, end_column=1)
     ws.merge_cells(start_row=header_row1, start_column=2, end_row=header_row1, end_column=last_col)
 
+    resume_title_row = last_data_row + 2
+    ws.cell(row=resume_title_row, column=1, value="Resume :").font = Font(bold=True, size=11, italic=True, name='Arial')
+    
+    for idx, poin in enumerate(list_resume, start=1):
+        current_resume_row = resume_title_row + idx
+        cell = ws.cell(row=current_resume_row, column=1, value=f"•  {poin}")
+        cell.font = Font(size=11, name='Arial')
+        cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+        ws.merge_cells(start_row=current_resume_row, start_column=1, end_row=current_resume_row, end_column=last_col)
+        
+        # Kalkulasi tinggi baris agar teks rapi
+        jumlah_baris = (len(poin) // 90) + 1
+        ws.row_dimensions[current_resume_row].height = 16 * jumlah_baris
+
     ws.column_dimensions['A'].width = 26
     for col_idx in range(2, last_col + 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = 20
@@ -194,6 +208,50 @@ def variasikan_warna(hex_color, index, total):
     g = min(255, int(g * factor))
     b = min(255, int(b * factor))
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def hitung_resume_phosrock(df_plot, y_col):
+    bulan_indo = {1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+                  7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'}
+
+    def _get_nama_minggu(dt):
+        if dt.day <= 7: return f"awal {bulan_indo[dt.month]} {dt.year}"
+        elif dt.day <= 14: return f"minggu kedua {bulan_indo[dt.month]} {dt.year}"
+        elif dt.day <= 21: return f"minggu ketiga {bulan_indo[dt.month]} {dt.year}"
+        else: return f"akhir {bulan_indo[dt.month]} {dt.year}"
+
+    if df_plot.empty: return ["Data tidak tersedia."]
+
+    tgl_T0 = pd.Timestamp(df_plot['tanggal_terbit'].max())
+    batas_1_bulan = tgl_T0 - pd.DateOffset(months=1)
+    batas_2_bulan = tgl_T0 - pd.DateOffset(months=2)
+
+    df_T0 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
+    harga_T0 = df_T0[y_col].mean()
+
+    df_T1_range = df_plot[(df_plot['tanggal_terbit'] >= batas_1_bulan) & (df_plot['tanggal_terbit'] < tgl_T0)]
+    harga_T1 = df_T1_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')[y_col].mean() if not df_T1_range.empty else harga_T0
+    tgl_T1 = pd.Timestamp(df_T1_range['tanggal_terbit'].max()) if not df_T1_range.empty else tgl_T0
+
+    df_T2_range = df_plot[(df_plot['tanggal_terbit'] >= batas_2_bulan) & (df_plot['tanggal_terbit'] < batas_1_bulan)]
+    harga_T2 = df_T2_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')[y_col].mean() if not df_T2_range.empty else harga_T0
+    tgl_T2 = pd.Timestamp(df_T2_range['tanggal_terbit'].min()) if not df_T2_range.empty else tgl_T0
+
+    delta_recent = harga_T0 - harga_T1
+    threshold = 15.0 
+
+    tren = "menurun" if delta_recent < -2.0 else ("meningkat" if delta_recent > 2.0 else "stabil")
+    signifikansi = " signifikan" if abs(delta_recent) >= threshold else " tidak signifikan"
+    
+    poin_1 = f"Secara keseluruhan, harga Phosphate Rock menunjukkan tren {tren} ({signifikansi}) pada {_get_nama_minggu(tgl_T0.date())}."
+    poin_2 = f"Harga saat ini (USD {harga_T0:.2f}/MT) terpaut {abs(harga_T0 - harga_T2):.2f} USD/MT jika dibandingkan dengan periode {_get_nama_minggu(tgl_T2.date())}."
+
+    list_resume = [poin_1, poin_2]
+    # Deteksi mandek
+    for label in df_plot['label_komparasi'].unique():
+        if (tgl_T0 - pd.Timestamp(df_plot[df_plot['label_komparasi'] == label]['tanggal_terbit'].max())).days > 14:
+            list_resume.append(f"Untuk referensi {label}, harga terakhir dirilis pada tanggal lama.")
+    return list_resume
 
 
 def render(load_data, global_context):
@@ -473,9 +531,16 @@ def render(load_data, global_context):
 """
             st.markdown(styled_html, unsafe_allow_html=True)
 
+            list_resume_otomatis = hitung_resume_phosrock(df_plot, y_col)
+            st.markdown("##### *Resume :*")
+            for poin in list_resume_otomatis:
+                st.markdown(f"- {poin}")
+            st.markdown("<br>", unsafe_allow_html=True)
+
             excel_buffer = generate_excel_export(
                 df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
-                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map
+                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map,
+                list_resume=list_resume_otomatis # Tambahkan parameter ini
             )
 
             # --- CSS untuk mengubah warna tombol download jadi merah-oranye ---
