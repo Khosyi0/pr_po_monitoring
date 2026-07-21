@@ -71,14 +71,11 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     label_columns = list(df_chart.columns)
     for series, label in zip(chart.series, label_columns):
-        series.marker.symbol = "circle"
-        series.marker.size = 5
+        series.marker.symbol = "none"
         series.smooth = False
         hex_color = warna_map.get(label, "#1f77b4").lstrip('#').upper()
         series.graphicalProperties.line.width = 18000
         series.graphicalProperties.line.solidFill = hex_color
-        series.marker.graphicalProperties.solidFill = hex_color
-        series.marker.graphicalProperties.line.solidFill = hex_color
 
     # 2. Terapkan Arial pada Axis Y (Judul dan Label Angka)
     chart.y_axis.title = create_formatted_title(y_label, is_bold=True)
@@ -445,7 +442,7 @@ def render(load_data, global_context):
 
             fig = px.line(
                 df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
-                color_discrete_map=warna_map, markers=True,
+                color_discrete_map=warna_map,
                 title=f"Komparasi Tren Harga Phosphoric Acid ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
