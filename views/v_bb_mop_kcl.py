@@ -15,6 +15,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.drawing.text import Font as DrawingFont, RegularTextRun
 from openpyxl.chart.text import Text
 from openpyxl.chart.title import Title
+from openpyxl.chart.data_source import AxDataSource, StrRef
+from openpyxl.chart.legend import LegendEntry
 from utils import MAPPING_SINGKATAN
 
 
@@ -57,6 +59,12 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         return Title(tx=Text(rich=RichText(p=[p])))
     # =========================================================================
 
+    is_single_series = (n_cols - 1) == 1  # n_cols termasuk kolom tanggal
+    if is_single_series:
+        dummy_col_idx = n_cols + 1
+        ws_data.cell(row=1, column=dummy_col_idx, value=None)
+        n_cols = dummy_col_idx
+
     chart = LineChart()
     chart.title = create_formatted_title(f"Komparasi Tren Harga MOP-KCl ({jenis_harga})", is_bold=True)
     chart.height = 14
@@ -66,11 +74,8 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     data_ref = Reference(ws_data, min_col=2, max_col=n_cols, min_row=1, max_row=n_rows + 1)
     cats_ref = Reference(ws_data, min_col=1, max_col=1, min_row=2, max_row=n_rows + 1)
-    chart.add_data(data_ref, titles_from_data=True, from_rows=False)
+    chart.add_data(data_ref, titles_from_data=True)
     chart.set_categories(cats_ref)
-
-    if len(chart.series) != len(label_columns):
-        st.warning(f"Chart series mismatch terdeteksi: {len(chart.series)} vs {len(label_columns)} label")
 
     label_columns = list(df_chart.columns)
     for series, label in zip(chart.series, label_columns):
@@ -79,6 +84,16 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         hex_color = warna_map.get(label, "#1f77b4").lstrip('#').upper()
         series.graphicalProperties.line.width = 18000
         series.graphicalProperties.line.solidFill = hex_color
+
+    if is_single_series:
+        dummy_series = chart.series[-1]
+        dummy_series.graphicalProperties.line.noFill = True
+        dummy_series.marker.symbol = "none"
+        dummy_idx = len(chart.series) - 1
+        if chart.legend.legendEntry is None:
+            chart.legend.legendEntry = []
+        chart.legend.legendEntry.append(LegendEntry(idx=dummy_idx, delete=True))
+
 
     # 2. Terapkan Arial pada Axis Y (Judul dan Label Angka)
     chart.y_axis.title = create_formatted_title(y_label, is_bold=True)
