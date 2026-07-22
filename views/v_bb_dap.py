@@ -66,7 +66,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
 
     data_ref = Reference(ws_data, min_col=2, max_col=n_cols, min_row=1, max_row=n_rows + 1)
     cats_ref = Reference(ws_data, min_col=1, max_col=1, min_row=2, max_row=n_rows + 1)
-    chart.add_data(data_ref, titles_from_data=True)
+    chart.add_data(data_ref, titles_from_data=True, from_rows=False)
     chart.set_categories(cats_ref)
 
     label_columns = list(df_chart.columns)
