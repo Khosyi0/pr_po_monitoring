@@ -65,6 +65,9 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     chart.add_data(data_ref, titles_from_data=True, from_rows=False)
     chart.set_categories(cats_ref)
 
+    if len(chart.series) != len(label_columns):
+        st.warning(f"Chart series mismatch terdeteksi: {len(chart.series)} vs {len(label_columns)} label")
+
     label_columns = list(df_chart.columns)
     for series, label in zip(chart.series, label_columns):
         series.marker.symbol = "none"
