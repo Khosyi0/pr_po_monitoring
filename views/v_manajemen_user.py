@@ -207,6 +207,7 @@ def render(**kwargs):
     user_aktif = len(df_all[df_all['aktif'] == True]) if not df_all.empty else 0
     user_admin = len(df_all[df_all['role'] == 'admin']) if not df_all.empty else 0
     user_viewer = len(df_all[df_all['role'] == 'viewer']) if not df_all.empty else 0
+    user_admin_bb = len(df_all[df_all['role'] == 'admin_bb']) if not df_all.empty else 0
 
     # == Bagian 1: Metrik Singkat (Atas) =======================================
     col1, col2, col3 = st.columns(3)
@@ -221,7 +222,7 @@ def render(**kwargs):
         ), unsafe_allow_html=True)
     with col3:
         st.markdown(_user_card(
-            ICONS["key"], "Komposisi Role", f"{user_admin} Admin", f"{user_viewer} Viewer"
+            ICONS["key"], "Komposisi Role", f"{user_admin} Super, {user_admin_bb} BB", f"{user_viewer} Viewer"
         ), unsafe_allow_html=True)
         
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -281,8 +282,10 @@ def render(**kwargs):
                 with c_edit1:
                     edit_nama = st.text_input("Nama Lengkap *", value=user_data['nama_lengkap'])
                     # Tentukan index role saat ini
-                    role_index = 0 if user_data['role'] == 'viewer' else 1
-                    edit_role = st.selectbox("Role *", options=["viewer", "admin"], index=role_index)
+                    roles_tersedia = ["viewer", "admin", "admin_bb"]
+                    role_sekarang = user_data['role']
+                    role_index = roles_tersedia.index(role_sekarang) if role_sekarang in roles_tersedia else 0
+                    edit_role = st.selectbox("Role *", options=roles_tersedia, index=role_index)
                     edit_aktif = st.checkbox("Aktif (Izinkan Login)", value=bool(user_data['aktif']))
                     
                 with c_edit2:
@@ -323,7 +326,7 @@ def render(**kwargs):
             with c_left:
                 new_username = st.text_input("Username *", placeholder="e.g., mawar.p")
                 new_nama = st.text_input("Nama Lengkap *", placeholder="e.g., mawar")
-                new_role = st.selectbox("Role *", options=["viewer", "admin"])
+                new_role = st.selectbox("Role *", options=["viewer", "admin", "admin_bb"])
                 
             with c_right:
                 new_password = st.text_input("Password *", type="password", placeholder="Masukkan password kuat...")

@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.axis import ChartLines
@@ -15,15 +16,263 @@ from openpyxl.utils import get_column_letter
 from openpyxl.drawing.text import Font as DrawingFont, RegularTextRun
 from openpyxl.chart.text import Text
 from openpyxl.chart.title import Title
-from openpyxl.chart.data_source import AxDataSource, StrRef
 from openpyxl.chart.legend import LegendEntry
+
 from utils import MAPPING_SINGKATAN
 
+BULAN_INDO = {
+    1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
+    7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+}
 
-def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map, list_resume):
+
+# =============================================================================
+# KONFIGURASI SEMUA BAHAN BAKU
+# Tambahkan/edit entry di sini untuk menambah bahan baku baru, tanpa file baru.
+#
+# Field:
+#   label                 : Nama tampilan (judul, chart, sheet Excel, dsb)
+#   db_value              : Nilai kolom `bahan_baku` di query SQL (biasanya = label)
+#   threshold_signifikan  : Batas ($ USD/MT) untuk narasi "signifikan" vs "tidak signifikan"
+#   kata_naik / kata_turun: Kata kerja tren, mis. "meningkat"/"menurun" atau "menguat"/"melemah"
+#   kalimat_dampak        : Template kalimat dampak industri (opsional, isi None jika tidak ada,
+#                           seperti pola Ammonia -> "pupuk fosfat")
+# =============================================================================
+BAHAN_BAKU_CONFIG = {
+    "Ammonia": {
+        "label": "Ammonia",
+        "db_value": "Ammonia",
+        "threshold_signifikan": 25.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": "pupuk fosfat",
+    },
+    "DAP": {
+        "label": "DAP",
+        "db_value": "DAP",
+        "threshold_signifikan": 20.0,
+        "kata_naik": "menguat",
+        "kata_turun": "melemah",
+        "kalimat_dampak": None,
+    },
+    "MOP-KCl": {
+        "label": "MOP-KCl",
+        "db_value": "MOP-KCl",
+        "threshold_signifikan": 20.0,
+        "kata_naik": "menguat",
+        "kata_turun": "melemah",
+        "kalimat_dampak": None,
+    },
+    "NH4Cl": {
+        "label": "NH4Cl",
+        "db_value": "NH4Cl",
+        "threshold_signifikan": 10.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "NPK": {
+        "label": "NPK",
+        "db_value": "NPK",
+        "threshold_signifikan": 15.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "Phosphoric Acid": {
+        "label": "Phosphoric Acid",
+        "db_value": "Phosphoric Acid",
+        "threshold_signifikan": 15.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "Phosphate Rock": {
+        "label": "Phosphate Rock",
+        "db_value": ["phosphate rock", "phos rock", "phosrock"],
+        "threshold_signifikan": 15.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "Sulfur": {
+        "label": "Sulfur",
+        "db_value": "Sulfur",
+        "threshold_signifikan": 10.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "Sulfuric Acid": {
+        "label": "Sulfuric Acid",
+        "db_value": "Sulfuric Acid",
+        "threshold_signifikan": 10.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "TSP": {
+        "label": "TSP",
+        "db_value": "TSP",
+        "threshold_signifikan": 10.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "Urea": {
+        "label": "Urea",
+        "db_value": "Urea",
+        "threshold_signifikan": 15.0,
+        "kata_naik": "meningkat",
+        "kata_turun": "menurun",
+        "kalimat_dampak": None,
+    },
+    "ZA": {
+        "label": "ZA",
+        "db_value": "ZA",
+        "threshold_signifikan": 10.0,
+        "kata_naik": "menguat",
+        "kata_turun": "melemah",
+        "kalimat_dampak": None,
+    },
+}
+
+
+def get_daftar_bahan_baku():
+    return list(BAHAN_BAKU_CONFIG.keys())
+
+
+def get_config(bahan_baku_key):
+    if bahan_baku_key not in BAHAN_BAKU_CONFIG:
+        raise KeyError(f"Konfigurasi untuk bahan baku '{bahan_baku_key}' belum didefinisikan di BAHAN_BAKU_CONFIG")
+    return BAHAN_BAKU_CONFIG[bahan_baku_key]
+
+
+# =============================================================================
+# RESUME OTOMATIS GENERIK (menggantikan hitung_resume_ammonia, hitung_resume_dap, dst)
+# =============================================================================
+def _get_nama_minggu(dt):
+    if dt.day <= 7:
+        return f"awal {BULAN_INDO[dt.month]} {dt.year}"
+    elif dt.day <= 14:
+        return f"minggu kedua {BULAN_INDO[dt.month]} {dt.year}"
+    elif dt.day <= 21:
+        return f"minggu ketiga {BULAN_INDO[dt.month]} {dt.year}"
+    else:
+        return f"akhir {BULAN_INDO[dt.month]} {dt.year}"
+
+
+def hitung_resume_generik(df_plot, y_col, config):
+    """
+    Fungsi resume otomatis generik untuk semua bahan baku.
+    Perbedaan narasi antar bahan baku (threshold, kata tren, kalimat dampak)
+    di-drive lewat `config` (lihat BAHAN_BAKU_CONFIG di atas), bukan lewat
+    duplikasi fungsi per bahan baku.
+    """
+    label_bb = config["label"]
+    threshold_signifikan = config.get("threshold_signifikan", 25.0)
+    kata_naik = config.get("kata_naik", "meningkat")
+    kata_turun = config.get("kata_turun", "menurun")
+    kalimat_dampak = config.get("kalimat_dampak")
+
+    if df_plot.empty:
+        return ["Data tidak tersedia."]
+
+    tgl_T0 = pd.Timestamp(df_plot['tanggal_terbit'].max())
+    batas_1_bulan = tgl_T0 - pd.DateOffset(months=1)
+    batas_2_bulan = tgl_T0 - pd.DateOffset(months=2)
+
+    df_T0 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
+    harga_T0 = df_T0[y_col].mean()
+
+    df_T1_range = df_plot[(df_plot['tanggal_terbit'] >= batas_1_bulan) & (df_plot['tanggal_terbit'] < tgl_T0)]
+    if not df_T1_range.empty:
+        df_T1 = df_T1_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
+        harga_T1 = df_T1[y_col].mean()
+        tgl_T1 = pd.Timestamp(df_T1['tanggal_terbit'].max())
+    else:
+        harga_T1, tgl_T1 = harga_T0, tgl_T0
+
+    df_T2_range = df_plot[(df_plot['tanggal_terbit'] >= batas_2_bulan) & (df_plot['tanggal_terbit'] < batas_1_bulan)]
+    if not df_T2_range.empty:
+        df_T2 = df_T2_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')
+        harga_T2 = df_T2[y_col].mean()
+        tgl_T2 = pd.Timestamp(df_T2['tanggal_terbit'].min())
+    else:
+        df_T2 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')
+        harga_T2 = df_T2[y_col].mean()
+        tgl_T2 = pd.Timestamp(df_T2['tanggal_terbit'].min())
+
+    delta_recent = harga_T0 - harga_T1
+    delta_past = harga_T1 - harga_T2
+
+    if delta_recent < -2.0:
+        tren_sekarang = f"menunjukkan tren {kata_turun}"
+        signifikansi = " namun tidak signifikan" if abs(delta_recent) < threshold_signifikan else " yang cukup signifikan"
+        konteks_historis = f" setelah mengalami kenaikan sepanjang {BULAN_INDO[tgl_T1.month]} {tgl_T1.year}" if delta_past > 2.0 else ""
+    elif delta_recent > 2.0:
+        tren_sekarang = f"menunjukkan tren {kata_naik}"
+        signifikansi = " namun tidak signifikan" if abs(delta_recent) < threshold_signifikan else " yang cukup signifikan"
+        konteks_historis = f" setelah mengalami penurunan sepanjang {BULAN_INDO[tgl_T1.month]} {tgl_T1.year}" if delta_past < -2.0 else ""
+    else:
+        tren_sekarang = "terpantau stabil"
+        signifikansi, konteks_historis = "", ""
+
+    poin_1 = f"Secara keseluruhan, harga {label_bb} {tren_sekarang}{signifikansi} pada {_get_nama_minggu(tgl_T0.date())}{konteks_historis}."
+
+    is_turun = tren_sekarang == f"menunjukkan tren {kata_turun}"
+    is_naik = tren_sekarang == f"menunjukkan tren {kata_naik}"
+
+    if is_turun:
+        if kalimat_dampak:
+            if harga_T0 > harga_T2:
+                poin_2 = (f"Meskipun menunjukkan tren {kata_turun}, harga {label_bb} masih bertahan pada level yang "
+                          f"tinggi dibandingkan awal {BULAN_INDO[tgl_T2.month]} {tgl_T2.year}, sehingga tetap memberikan "
+                          f"tekanan terhadap biaya produksi {kalimat_dampak}.")
+            else:
+                poin_2 = (f"Penurunan harga ini sedikit memberikan kelonggaran terhadap tekanan biaya produksi "
+                          f"{kalimat_dampak} jika dibandingkan rata-rata periode {BULAN_INDO[tgl_T2.month]}.")
+        else:
+            if harga_T0 > harga_T2:
+                poin_2 = (f"Meskipun demikian, posisi harga rata-rata saat ini masih bertahan pada level yang cenderung "
+                          f"lebih tinggi jika dibandingkan dengan periode awal {BULAN_INDO[tgl_T2.month]} {tgl_T2.year}.")
+            elif harga_T0 < harga_T2:
+                poin_2 = (f"Penurunan ini membawa rata-rata harga pasar bergerak ke level yang lebih rendah terpaut "
+                          f"USD {abs(harga_T0 - harga_T2):.2f}/MT dari posisi baseline awal {BULAN_INDO[tgl_T2.month]}.")
+            else:
+                poin_2 = f"Harga bergerak konstan dan stabil mereplikasi pergerakan harga pada periode awal {BULAN_INDO[tgl_T2.month]}."
+
+    elif is_naik:
+        if kalimat_dampak:
+            poin_2 = (f"Peningkatan harga {label_bb} ini semakin memberikan tekanan berat terhadap struktur biaya "
+                      f"produksi {kalimat_dampak} karena posisi harga bergerak menjauh dari rata-rata baseline "
+                      f"USD {harga_T2:.2f}/MT.")
+        else:
+            poin_2 = (f"Peningkatan ini membawa rata-rata harga pasar bergerak menjauh dari posisi baseline awal "
+                      f"{BULAN_INDO[tgl_T2.month]} sebesar USD {harga_T2:.2f}/MT.")
+    else:
+        poin_2 = (f"Harga {label_bb} terpantau bertahan stabil pada level konstan jika dibandingkan dengan rata-rata "
+                  f"periode awal {BULAN_INDO[tgl_T2.month]} {tgl_T2.year} yang berada di rata-rata USD {harga_T2:.2f}/MT.")
+
+    list_resume = [poin_1, poin_2]
+
+    for label in df_plot['label_komparasi'].unique():
+        df_ref = df_plot[df_plot['label_komparasi'] == label]
+        max_tgl_ref = pd.Timestamp(df_ref['tanggal_terbit'].max())
+        if (tgl_T0 - max_tgl_ref).days > 14:
+            tgl_str = f"{max_tgl_ref.day:02d} {BULAN_INDO[max_tgl_ref.month]} {max_tgl_ref.year}"
+            list_resume.append(f"Untuk referensi {label}, harga terakhir dirilis pada {tgl_str}.")
+
+    return list_resume
+
+
+# =============================================================================
+# EXCEL EXPORT (identik untuk semua bahan baku, cuma judul & sheet name beda)
+# =============================================================================
+def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jenis_harga, warna_map, list_resume, label_bb):
     wb = Workbook()
     ws = wb.active
-    ws.title = "Komparasi Harga Phosphoric Acid"
+    ws.title = f"Komparasi Harga {label_bb}"[:31]  # Excel sheet name max 31 char
     ws_data = wb.create_sheet("_DataChart")
 
     df_chart = df_plot.pivot_table(
@@ -43,30 +292,25 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_rows = len(df_chart_reset)
     n_cols = len(headers)
 
-    # =========================================================================
-    # SETUP FONT ARIAL UNTUK CHART
-    # =========================================================================
     arial_font = DrawingFont(typeface='Arial')
     cp_arial = CharacterProperties(latin=arial_font)
     cp_arial_bold = CharacterProperties(latin=arial_font, b=True)
     cp_arial_sz700 = CharacterProperties(sz=700, latin=arial_font)
 
-    # Fungsi bantu untuk membungkus teks menjadi Title Chart yang terformat
     def create_formatted_title(text_val, is_bold=True):
         cp = cp_arial_bold if is_bold else cp_arial
         run = RegularTextRun(t=text_val, rPr=cp)
         p = Paragraph(pPr=ParagraphProperties(defRPr=cp), r=[run])
         return Title(tx=Text(rich=RichText(p=[p])))
-    # =========================================================================
 
-    is_single_series = (n_cols - 1) == 1  # n_cols termasuk kolom tanggal
+    is_single_series = (n_cols - 1) == 1
     if is_single_series:
         dummy_col_idx = n_cols + 1
         ws_data.cell(row=1, column=dummy_col_idx, value=None)
         n_cols = dummy_col_idx
 
     chart = LineChart()
-    chart.title = create_formatted_title(f"Komparasi Tren Harga Phosphoric Acid ({jenis_harga})", is_bold=True)
+    chart.title = create_formatted_title(f"Komparasi Tren Harga {label_bb} ({jenis_harga})", is_bold=True)
     chart.height = 14
     chart.width = 32
     chart.style = None
@@ -94,40 +338,28 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
             chart.legend.legendEntry = []
         chart.legend.legendEntry.append(LegendEntry(idx=dummy_idx, delete=True))
 
-
-    # 2. Terapkan Arial pada Axis Y (Judul dan Label Angka)
     chart.y_axis.title = create_formatted_title(y_label, is_bold=True)
-    chart.y_axis.txPr = RichText(
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
-    )
+    chart.y_axis.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)])
     chart.y_axis.majorGridlines = ChartLines()
     chart.y_axis.majorGridlines.graphicalProperties = GraphicalProperties()
     chart.y_axis.majorGridlines.graphicalProperties.line = LineProperties(solidFill="E0E0E0", w=9525)
     chart.y_axis.delete = False
 
-    # 3. Terapkan Arial pada Axis X (Judul dan Label Tanggal rotasi)
     chart.x_axis.title = create_formatted_title("Tanggal Publikasi", is_bold=True)
     chart.x_axis.txPr = RichText(
         bodyPr=RichTextProperties(rot=-5400000, vert="horz"),
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial_sz700),
-                     endParaRPr=cp_arial_sz700)]
+        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial_sz700), endParaRPr=cp_arial_sz700)]
     )
     chart.x_axis.delete = False
     chart.x_axis.majorGridlines = None
     chart.x_axis.tickLblSkip = 1
     chart.x_axis.tickMarkSkip = 1
 
-    # 4. Terapkan Arial pada Legend
     chart.legend.position = 'b'
     chart.legend.overlay = False
-    chart.legend.txPr = RichText(
-        p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)]
-    )
+    chart.legend.txPr = RichText(p=[Paragraph(pPr=ParagraphProperties(defRPr=cp_arial), endParaRPr=cp_arial)])
 
-    chart.layout = Layout(
-        manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge")
-    )
-
+    chart.layout = Layout(manualLayout=ManualLayout(x=0.02, y=0.18, h=0.64, w=0.90, xMode="edge", yMode="edge"))
     ws.add_chart(chart, "A1")
 
     # ========================== STYLING TABEL ==========================
@@ -137,8 +369,7 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     n_date_cols = len(kolom_tanggal)
     last_col = 1 + n_date_cols
 
-    ws.cell(row=TABLE_START_ROW, column=1,
-            value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
+    ws.cell(row=TABLE_START_ROW, column=1, value="Detail Histori Data (3 Periode Terakhir)").font = Font(bold=True, size=13)
 
     header_row1 = TABLE_START_ROW + 1
     header_row2 = header_row1 + 1
@@ -179,17 +410,16 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
     ws.merge_cells(start_row=header_row1, start_column=1, end_row=header_row2, end_column=1)
     ws.merge_cells(start_row=header_row1, start_column=2, end_row=header_row1, end_column=last_col)
 
+    # ========================== RESUME ==========================
     resume_title_row = last_data_row + 2
     ws.cell(row=resume_title_row, column=1, value="Resume :").font = Font(bold=True, size=11, italic=True, name='Arial')
-    
+
     for idx, poin in enumerate(list_resume, start=1):
         current_resume_row = resume_title_row + idx
         cell = ws.cell(row=current_resume_row, column=1, value=f"•  {poin}")
         cell.font = Font(size=11, name='Arial')
         cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
         ws.merge_cells(start_row=current_resume_row, start_column=1, end_row=current_resume_row, end_column=last_col)
-        
-        # Kalkulasi dinamis tinggi baris
         jumlah_baris = (len(poin) // 90) + 1
         ws.row_dimensions[current_resume_row].height = 16 * jumlah_baris
 
@@ -205,7 +435,8 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
             for cell in row:
                 if cell.value is not None:
                     is_bold = cell.font.bold if cell.font else False
-                    cell.font = Font(name='Arial', size=11, bold=is_bold)
+                    is_italic = cell.font.italic if cell.font else False
+                    cell.font = Font(name='Arial', size=11, bold=is_bold, italic=is_italic)
 
     buffer = io.BytesIO()
     wb.save(buffer)
@@ -225,69 +456,33 @@ def variasikan_warna(hex_color, index, total):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def hitung_resume_phos_acid(df_plot, y_col):
-    """Fungsi pembantu untuk merangkai teks resume Phosphoric Acid secara otomatis (3 Titik Waktu)"""
-    bulan_indo = {1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
-                  7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'}
-
-    def _get_nama_minggu(dt):
-        if dt.day <= 7: return f"awal {bulan_indo[dt.month]} {dt.year}"
-        elif dt.day <= 14: return f"minggu kedua {bulan_indo[dt.month]} {dt.year}"
-        elif dt.day <= 21: return f"minggu ketiga {bulan_indo[dt.month]} {dt.year}"
-        else: return f"akhir {bulan_indo[dt.month]} {dt.year}"
-
-    if df_plot.empty: return ["Data tidak tersedia."]
-
-    tgl_T0 = pd.Timestamp(df_plot['tanggal_terbit'].max())
-    batas_1_bulan = tgl_T0 - pd.DateOffset(months=1)
-    batas_2_bulan = tgl_T0 - pd.DateOffset(months=2)
-
-    df_T0 = df_plot.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')
-    harga_T0 = df_T0[y_col].mean()
-
-    df_T1_range = df_plot[(df_plot['tanggal_terbit'] >= batas_1_bulan) & (df_plot['tanggal_terbit'] < tgl_T0)]
-    harga_T1 = df_T1_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='last')[y_col].mean() if not df_T1_range.empty else harga_T0
-    tgl_T1 = pd.Timestamp(df_T1_range['tanggal_terbit'].max()) if not df_T1_range.empty else tgl_T0
-
-    df_T2_range = df_plot[(df_plot['tanggal_terbit'] >= batas_2_bulan) & (df_plot['tanggal_terbit'] < batas_1_bulan)]
-    harga_T2 = df_T2_range.sort_values('tanggal_terbit').drop_duplicates(subset=['label_komparasi'], keep='first')[y_col].mean() if not df_T2_range.empty else harga_T0
-    tgl_T2 = pd.Timestamp(df_T2_range['tanggal_terbit'].min()) if not df_T2_range.empty else tgl_T0
-
-    delta_recent = harga_T0 - harga_T1
-    threshold = 15.0 
-
-    tren = "menurun" if delta_recent < -2.0 else ("meningkat" if delta_recent > 2.0 else "stabil")
-    signifikansi = " signifikan" if abs(delta_recent) >= threshold else " tidak signifikan"
-    
-    poin_1 = f"Secara keseluruhan, harga Phosphoric Acid menunjukkan tren {tren} ({signifikansi}) pada {_get_nama_minggu(tgl_T0.date())}."
-    poin_2 = f"Harga saat ini (USD {harga_T0:.2f}/MT) terpaut {abs(harga_T0 - harga_T2):.2f} USD/MT jika dibandingkan dengan periode {_get_nama_minggu(tgl_T2.date())}."
-
-    list_resume = [poin_1, poin_2]
-    
-    # Deteksi majalah mandek
-    for label in df_plot['label_komparasi'].unique():
-        if (tgl_T0 - pd.Timestamp(df_plot[df_plot['label_komparasi'] == label]['tanggal_terbit'].max())).days > 14:
-            list_resume.append(f"Untuk referensi {label}, harga terakhir dirilis pada tanggal lama.")
-    return list_resume
-
-
+# =============================================================================
+# RENDER UTAMA (dipanggil sekali per bahan baku terpilih)
+# =============================================================================
 def render(load_data, global_context):
-    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar: Phosphoric Acid")
+    st.markdown("### :material/science: Analisis Tren Komparasi Harga Pasar Bahan Baku")
+
+    daftar_bb = get_daftar_bahan_baku()
+    bahan_baku_pilihan = st.selectbox("Pilih Bahan Baku", daftar_bb, key="pilihan_bahan_baku")
+
+    config = get_config(bahan_baku_pilihan)
+    label_bb = config["label"]
+    db_value = config["db_value"]
+
+    # Suffix unik untuk session_state key, supaya filter tiap bahan baku tidak tabrakan
+    suffix = bahan_baku_pilihan.lower().replace(" ", "_")
+
+    st.markdown(f"#### :material/science: {label_bb}")
 
     from config_db import get_setting
-    from datetime import datetime
 
     bahan_baku_date_str = get_setting("DATA_UPDATE_BAHAN_BAKU", "2026-03-31")
     try:
         tgl_update_bb = datetime.strptime(bahan_baku_date_str, "%Y-%m-%d").date()
-    except:
+    except Exception:
         tgl_update_bb = datetime(2026, 3, 31).date()
 
-    bulan_indo_header = {
-        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
-        7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-    }
-    tgl_update_str = f"{tgl_update_bb.day:02d} {bulan_indo_header[tgl_update_bb.month]} {tgl_update_bb.year}"
+    tgl_update_str = f"{tgl_update_bb.day:02d} {BULAN_INDO[tgl_update_bb.month]} {tgl_update_bb.year}"
 
     st.markdown(
         f"<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
@@ -296,23 +491,31 @@ def render(load_data, global_context):
         unsafe_allow_html=True
     )
 
-    query = """
+    if isinstance(db_value, (list, tuple)):
+        alias_list = "', '".join([a.lower().strip() for a in db_value])
+        where_clause = f"lower(trim(bahan_baku)) IN ('{alias_list}')"
+    else:
+        where_clause = f"bahan_baku = '{db_value}'"
+
+    query = f"""
         SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
         FROM master_harga_bahan_baku 
-        WHERE bahan_baku = 'Phosphoric Acid'
+        WHERE {where_clause}
         ORDER BY tanggal_terbit ASC
     """
     df = load_data(query)
 
     if df.empty:
-        st.warning("Data harga Phosphoric Acid belum tersedia di database.")
+        st.warning(f"Data harga {label_bb} belum tersedia di database.")
         return
 
     list_majalah = df['nama_majalah'].unique()
     min_date = df['tanggal_terbit'].min()
     max_date = df['tanggal_terbit'].max()
 
-    default_start_date = pd.Timestamp('2025-01-01').date()
+    today = datetime.now()
+    default_start_date = pd.Timestamp(year=today.year, month=today.month, day=1) - pd.DateOffset(months=14)
+    default_start_date = default_start_date.date()
     calendar_min_date = min(min_date, default_start_date)
 
     if default_start_date > max_date or default_start_date < min_date:
@@ -326,43 +529,39 @@ def render(load_data, global_context):
         with col_mulai:
             start_date = st.date_input(
                 "Mulai dari tanggal",
-                value=st.session_state.get("_perm_start_date_phos_acid", default_start_date),
-                min_value=calendar_min_date,
-                max_value=max_date,
-                key="start_date_phos_acid",
+                value=st.session_state.get(f"_perm_start_date_{suffix}", default_start_date),
+                min_value=calendar_min_date, max_value=max_date,
+                key=f"start_date_{suffix}",
                 on_change=_save_to_permanent,
-                args=("start_date_phos_acid", "_perm_start_date_phos_acid")
+                args=(f"start_date_{suffix}", f"_perm_start_date_{suffix}")
             )
         with col_sampai:
             end_date = st.date_input(
                 "Sampai tanggal",
-                value=st.session_state.get("_perm_end_date_phos_acid", max_date),
-                min_value=calendar_min_date,
-                max_value=max_date,
-                key="end_date_phos_acid",
+                value=st.session_state.get(f"_perm_end_date_{suffix}", max_date),
+                min_value=calendar_min_date, max_value=max_date,
+                key=f"end_date_{suffix}",
                 on_change=_save_to_permanent,
-                args=("end_date_phos_acid", "_perm_end_date_phos_acid")
+                args=(f"end_date_{suffix}", f"_perm_end_date_{suffix}")
             )
         with col_metode:
             jenis_harga_options = ["AVERAGE", "MIN", "MAX"]
-            jenis_harga_default = st.session_state.get("_perm_jenis_harga_phos_acid", "AVERAGE")
+            jenis_harga_default = st.session_state.get(f"_perm_jenis_harga_{suffix}", "AVERAGE")
             jenis_harga = st.selectbox(
-                "Jenis Harga",
-                jenis_harga_options,
+                "Jenis Harga", jenis_harga_options,
                 index=jenis_harga_options.index(jenis_harga_default) if jenis_harga_default in jenis_harga_options else 0,
                 help="Pilih nilai harga yang ingin diplot pada grafik",
-                key="jenis_harga_phos_acid",
+                key=f"jenis_harga_{suffix}",
                 on_change=_save_to_permanent,
-                args=("jenis_harga_phos_acid", "_perm_jenis_harga_phos_acid")
+                args=(f"jenis_harga_{suffix}", f"_perm_jenis_harga_{suffix}")
             )
         with col_jml:
             jml_komparasi = st.number_input(
-                "Jumlah Komparasi",
-                min_value=1, max_value=5,
-                value=st.session_state.get("_perm_jml_komparasi_phos_acid", 2),
-                key="jml_komparasi_phos_acid",
+                "Jumlah Komparasi", min_value=1, max_value=5,
+                value=st.session_state.get(f"_perm_jml_komparasi_{suffix}", 2),
+                key=f"jml_komparasi_{suffix}",
                 on_change=_save_to_permanent,
-                args=("jml_komparasi_phos_acid", "_perm_jml_komparasi_phos_acid")
+                args=(f"jml_komparasi_{suffix}", f"_perm_jml_komparasi_{suffix}")
             )
 
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
@@ -374,36 +573,36 @@ def render(load_data, global_context):
         for i in range(int(jml_komparasi)):
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
-                perm_key_majalah = f"_perm_majalah_phos_acid_{i}"
+                perm_key_majalah = f"_perm_majalah_{suffix}_{i}"
                 default_majalah = st.session_state.get(perm_key_majalah, list_majalah[i] if i < len(list_majalah) else list_majalah[0])
                 majalah_index = list(list_majalah).index(default_majalah) if default_majalah in list_majalah else 0
                 majalah_pilihan = st.selectbox(
                     f"Majalah ke-{i+1}", list_majalah,
                     index=majalah_index,
-                    key=f"majalah_phos_acid_{i}",
+                    key=f"majalah_{suffix}_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"majalah_phos_acid_{i}", perm_key_majalah)
+                    args=(f"majalah_{suffix}_{i}", perm_key_majalah)
                 )
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
-                perm_key_incoterm = f"_perm_incoterm_phos_acid_{i}"
+                perm_key_incoterm = f"_perm_incoterm_{suffix}_{i}"
                 default_incoterm = st.session_state.get(perm_key_incoterm, list_incoterm[0] if len(list_incoterm) > 0 else None)
                 incoterm_index = list(list_incoterm).index(default_incoterm) if default_incoterm in list_incoterm else 0
                 incoterm_pilihan = st.selectbox(
                     f"Metode Incoterm ke-{i+1}", list_incoterm,
                     index=incoterm_index if len(list_incoterm) > 0 else None,
-                    key=f"incoterm_phos_acid_{i}",
+                    key=f"incoterm_{suffix}_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"incoterm_phos_acid_{i}", perm_key_incoterm)
+                    args=(f"incoterm_{suffix}_{i}", perm_key_incoterm)
                 )
             with c3:
-                perm_key_warna = f"_perm_color_phos_acid_{i}"
+                perm_key_warna = f"_perm_warna_{suffix}_{i}"
                 default_warna = st.session_state.get(perm_key_warna, default_colors[i % len(default_colors)])
                 warna_pilihan = st.color_picker(
                     "Warna", default_warna,
-                    key=f"color_phos_acid_{i}",
+                    key=f"color_{suffix}_{i}",
                     on_change=_save_to_permanent,
-                    args=(f"color_phos_acid_{i}", perm_key_warna)
+                    args=(f"color_{suffix}_{i}", perm_key_warna)
                 )
 
             if incoterm_pilihan:
@@ -415,18 +614,16 @@ def render(load_data, global_context):
 
         for item in komparasi_data:
             for idx, incoterm in enumerate(item["incoterms"]):
-                # 1. Gabungkan nama aslinya
                 label_asli = f"{item['majalah']} - {incoterm}"
-                
-                # 2. Ubah menjadi singkatan agar sinkron dengan yang ada di df_plot nanti
                 label_singkat = MAPPING_SINGKATAN.get(label_asli, label_asli)
-                
-                # 3. Masukkan ke warna_map menggunakan label yang sudah disingkat
                 warna_final = variasikan_warna(item["warna_dasar"], idx, len(item["incoterms"]))
                 warna_map[label_singkat] = warna_final
-                label = f"{item['majalah']} - {incoterm}"
-                warna_final = variasikan_warna(item["warna_dasar"], idx, len(item["incoterms"]))
-                warna_map[label] = warna_final
+
+    col_btn, _ = st.columns([1, 4])
+    with col_btn:
+        if st.button(":material/refresh: Refresh Data", use_container_width=True, key=f"refresh_{suffix}"):
+            st.cache_data.clear()
+            st.rerun()
 
     if start_date <= end_date and komparasi_data:
         df_plot = pd.DataFrame()
@@ -437,16 +634,11 @@ def render(load_data, global_context):
             temp_df = df[(df['nama_majalah'] == majalah) & (df['incoterm'].isin(incoterms)) &
                          (df['tanggal_terbit'] >= start_date) & (df['tanggal_terbit'] <= end_date)].copy()
             if not temp_df.empty:
-                # 1. Buat kolom nama aslinya
                 temp_df['label_komparasi'] = temp_df['nama_majalah'] + ' - ' + temp_df['incoterm']
-                
-                # 2. Timpa namanya menggunakan dictionary dari utils.py
                 temp_df['label_komparasi'] = temp_df['label_komparasi'].apply(
                     lambda x: MAPPING_SINGKATAN.get(x, x)
                 )
-                
                 df_plot = pd.concat([df_plot, temp_df], ignore_index=True)
-                
 
         if not df_plot.empty:
             df_plot['harga_avg'] = (df_plot['harga_min'] + df_plot['harga_max']) / 2
@@ -454,14 +646,17 @@ def render(load_data, global_context):
             df_plot = df_plot.sort_values('tanggal_terbit')
             tanggal_unik = df_plot['tanggal_terbit'].unique()
 
-            if jenis_harga == "MIN": y_col, y_label = 'harga_min', 'Harga Minimum (USD/MT)'
-            elif jenis_harga == "MAX": y_col, y_label = 'harga_max', 'Harga Maksimum (USD/MT)'
-            else: y_col, y_label = 'harga_avg', 'Harga Rata-rata (USD/MT)'
+            if jenis_harga == "MIN":
+                y_col, y_label = 'harga_min', 'Harga Minimum (USD/MT)'
+            elif jenis_harga == "MAX":
+                y_col, y_label = 'harga_max', 'Harga Maksimum (USD/MT)'
+            else:
+                y_col, y_label = 'harga_avg', 'Harga Rata-rata (USD/MT)'
 
             fig = px.line(
                 df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
                 color_discrete_map=warna_map,
-                title=f"Komparasi Tren Harga Phosphoric Acid ({jenis_harga})",
+                title=f"Komparasi Tren Harga {label_bb} ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
 
@@ -494,12 +689,7 @@ def render(load_data, global_context):
             df_pivot = df_pivot.sort_index(axis=1, ascending=False)
             df_pivot = df_pivot.iloc[:, :3]
 
-            bulan_indo = {
-                1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
-                7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
-            }
-            kolom_tanggal = [f"{d.day:02d} {bulan_indo[d.month]} {d.year}" for d in df_pivot.columns]
-
+            kolom_tanggal = [f"{d.day:02d} {BULAN_INDO[d.month]} {d.year}" for d in df_pivot.columns]
             jml_kolom = len(kolom_tanggal)
 
             thead = f'''
@@ -556,7 +746,8 @@ def render(load_data, global_context):
 """
             st.markdown(styled_html, unsafe_allow_html=True)
 
-            list_resume_otomatis = hitung_resume_phos_acid(df_plot, y_col)
+            list_resume_otomatis = hitung_resume_generik(df_plot, y_col, config)
+
             st.markdown("##### *Resume :*")
             for poin in list_resume_otomatis:
                 st.markdown(f"- {poin}")
@@ -565,7 +756,7 @@ def render(load_data, global_context):
             excel_buffer = generate_excel_export(
                 df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
                 y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map,
-                list_resume=list_resume_otomatis
+                list_resume=list_resume_otomatis, label_bb=label_bb
             )
 
             st.markdown("""
@@ -588,9 +779,9 @@ def render(load_data, global_context):
             """, unsafe_allow_html=True)
 
             st.download_button(
-                label=":material/download: Download Excel (Chart + Tabel)",
+                label=":material/download: Download Excel (Chart + Tabel + Resume)",
                 data=excel_buffer,
-                file_name=f"komparasi_harga_PhophoricAcid_{jenis_harga}_{start_date}_{end_date}.xlsx",
+                file_name=f"komparasi_harga_{label_bb}_{jenis_harga}_{start_date}_{end_date}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
