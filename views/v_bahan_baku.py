@@ -45,6 +45,12 @@ WARNA_HARGA_PEROLEHAN_DEFAULT = "#FFC300"
 #   kata_naik / kata_turun: Kata kerja tren, mis. "meningkat"/"menurun" atau "menguat"/"melemah"
 #   kalimat_dampak        : Template kalimat dampak industri (opsional, isi None jika tidak ada,
 #                           seperti pola Ammonia -> "pupuk fosfat")
+#   default_komparasi     : List default Majalah+Incoterm yang tampil pertama kali dibuka,
+#                           mis. [{"majalah": "Fertecon Ammonia", "incoterm": "South East Asia FOB"}, ...].
+#                           Kosongkan ([]) jika belum ada default khusus -> fallback ke majalah/incoterm
+#                           pertama yang tersedia di data (perilaku lama). Jika majalah/incoterm yang
+#                           didefinisikan di sini ternyata tidak ada di data, juga fallback diam-diam
+#                           ke majalah/incoterm pertama yang tersedia (tanpa menampilkan peringatan).
 # =============================================================================
 BAHAN_BAKU_CONFIG = {
     "Ammonia": {
@@ -54,6 +60,10 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": "pupuk fosfat",
+        "default_komparasi": [
+            {"majalah": "Fertecon Ammonia", "incoterm": "South East Asia FOB"},
+            {"majalah": "Argus FMB Price Guide", "incoterm": "East Asia CFR (excl Taiwan)"},
+        ],
     },
     "DAP": {
         "label": "DAP",
@@ -62,6 +72,10 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "menguat",
         "kata_turun": "melemah",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Argus FMB Price Guide", "incoterm": "China FOB"},
+            {"majalah": "Fertecon Phosphate", "incoterm": "FOB China Cash"},
+        ],
     },
     "MOP-KCl": {
         "label": "MOP-KCl",
@@ -70,6 +84,10 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "menguat",
         "kata_turun": "melemah",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "MOP Ref. Argus FMB Price Guide (spot)", "incoterm": "SE Asia CFR Spot Std"},
+            {"majalah": "CRU", "incoterm": "CFR SEA"},
+        ],
     },
     "NH4Cl": {
         "label": "NH4Cl",
@@ -78,6 +96,9 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Argus Nitrogen", "incoterm": "CFR Southeast Asia"},
+        ],
     },
     "NPK": {
         "label": "NPK",
@@ -86,6 +107,7 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [],
     },
     "Phosphoric Acid": {
         "label": "Phosphoric Acid",
@@ -94,6 +116,10 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Argus FMB Price Guide", "incoterm": "India CFR"},
+            {"majalah": "Fertecon Phosphate", "incoterm": "India CFR"},
+        ],
     },
     "Phosphate Rock": {
         "label": "Phosphate Rock",
@@ -102,6 +128,12 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Profercy Phosphate", "incoterm": "Jordan FOB 28-31%"},
+            {"majalah": "Profercy Phosphate", "incoterm": "Egypt FOB 30-31%"},
+            {"majalah": "Profercy Phosphate", "incoterm": "Jordan FOB 32-34%"},
+            {"majalah": "Argus FMB Price Guide", "incoterm": "Jordan FOB 68-70% BPL"},
+        ],
     },
     "Sulfur": {
         "label": "Sulfur",
@@ -110,6 +142,11 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Argus FMB Price Guide Sulphur", "incoterm": "CFR Indonesia Spot"},
+            {"majalah": "Argus FMB Price Guide Sulphur", "incoterm": "CFR India Spot"},
+            {"majalah": "Fertecon Sulphur", "incoterm": "India CFR"},
+        ],
     },
     "Sulfuric Acid": {
         "label": "Sulfuric Acid",
@@ -118,6 +155,11 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Majalah ICIS SA pricing", "incoterm": "CFR Indonesia"},
+            {"majalah": "Majalah ICIS SA pricing", "incoterm": "CFR S.E. Asia Spot"},
+            {"majalah": "Argus FMB Sulphuric Acid", "incoterm": "Spot Price - cfr SEA"},
+        ],
     },
     "TSP": {
         "label": "TSP",
@@ -126,6 +168,7 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [],
     },
     "Urea": {
         "label": "Urea",
@@ -134,6 +177,7 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "meningkat",
         "kata_turun": "menurun",
         "kalimat_dampak": None,
+        "default_komparasi": [],
     },
     "ZA": {
         "label": "ZA",
@@ -142,6 +186,10 @@ BAHAN_BAKU_CONFIG = {
         "kata_naik": "menguat",
         "kata_turun": "melemah",
         "kalimat_dampak": None,
+        "default_komparasi": [
+            {"majalah": "Fertecon Nitrates", "incoterm": "SE Asia CFR Caprolactam"},
+            {"majalah": "Argus FMB Price Guide Nitrogen", "incoterm": "(NH4)2SO4 SE Asia CFR"},
+        ],
     },
 }
 
@@ -600,9 +648,13 @@ def render(load_data, global_context):
                 args=(f"jenis_harga_{suffix}", f"_perm_jenis_harga_{suffix}")
             )
         with col_jml:
+            # Default jumlah komparasi mengikuti panjang `default_komparasi` di config
+            # (jika ada dan belum ada pilihan tersimpan dari interaksi sebelumnya).
+            default_komparasi_list = config.get("default_komparasi", [])
+            default_jml_komparasi = len(default_komparasi_list) if default_komparasi_list else 2
             jml_komparasi = st.number_input(
                 "Jumlah Komparasi", min_value=1, max_value=5,
-                value=st.session_state.get(f"_perm_jml_komparasi_{suffix}", 2),
+                value=st.session_state.get(f"_perm_jml_komparasi_{suffix}", default_jml_komparasi),
                 key=f"jml_komparasi_{suffix}",
                 on_change=_save_to_permanent,
                 args=(f"jml_komparasi_{suffix}", f"_perm_jml_komparasi_{suffix}")
@@ -639,10 +691,21 @@ def render(load_data, global_context):
         default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
         for i in range(int(jml_komparasi)):
+            # Default majalah & incoterm untuk index ke-i, diambil dari `default_komparasi`
+            # di config (kalau ada entry untuk index ini). Jika majalah/incoterm yang
+            # dikonfigurasi ternyata tidak ada di data (mis. salah ketik / data belum masuk),
+            # fallback diam-diam ke majalah/incoterm pertama yang tersedia.
+            default_dari_config = default_komparasi_list[i] if i < len(default_komparasi_list) else None
+
             c1, c2, c3 = st.columns([3, 3, 1])
             with c1:
                 perm_key_majalah = f"_perm_majalah_{suffix}_{i}"
-                default_majalah = st.session_state.get(perm_key_majalah, list_majalah[i] if i < len(list_majalah) else list_majalah[0])
+                if perm_key_majalah in st.session_state:
+                    default_majalah = st.session_state[perm_key_majalah]
+                elif default_dari_config and default_dari_config.get("majalah") in list_majalah:
+                    default_majalah = default_dari_config["majalah"]
+                else:
+                    default_majalah = list_majalah[i] if i < len(list_majalah) else list_majalah[0]
                 majalah_index = list(list_majalah).index(default_majalah) if default_majalah in list_majalah else 0
                 majalah_pilihan = st.selectbox(
                     f"Majalah ke-{i+1}", list_majalah,
@@ -654,7 +717,13 @@ def render(load_data, global_context):
             with c2:
                 list_incoterm = df[df['nama_majalah'] == majalah_pilihan]['incoterm'].unique()
                 perm_key_incoterm = f"_perm_incoterm_{suffix}_{i}"
-                default_incoterm = st.session_state.get(perm_key_incoterm, list_incoterm[0] if len(list_incoterm) > 0 else None)
+                if perm_key_incoterm in st.session_state:
+                    default_incoterm = st.session_state[perm_key_incoterm]
+                elif (default_dari_config and majalah_pilihan == default_dari_config.get("majalah")
+                      and default_dari_config.get("incoterm") in list_incoterm):
+                    default_incoterm = default_dari_config["incoterm"]
+                else:
+                    default_incoterm = list_incoterm[0] if len(list_incoterm) > 0 else None
                 incoterm_index = list(list_incoterm).index(default_incoterm) if default_incoterm in list_incoterm else 0
                 incoterm_pilihan = st.selectbox(
                     f"Metode Incoterm ke-{i+1}", list_incoterm,
