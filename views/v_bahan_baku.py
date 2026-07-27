@@ -25,6 +25,14 @@ BULAN_INDO = {
     7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
 }
 
+# Label komparasi khusus untuk garis "Harga Perolehan" pada chart.
+# Dipakai untuk membedakan garis ini dari garis komparasi Majalah - Incoterm biasa,
+# supaya bisa dikecualikan dari perhitungan resume otomatis & tabel histori data.
+LABEL_HARGA_PEROLEHAN = "Harga Perolehan"
+# Default warna kuning/emas dipilih karena tetap kontras baik di tema terang
+# maupun tema gelap (berbeda dengan hitam yang nyaris tak terlihat di dark mode).
+WARNA_HARGA_PEROLEHAN_DEFAULT = "#FFC300"
+
 
 # =============================================================================
 # KONFIGURASI SEMUA BAHAN BAKU
@@ -149,6 +157,38 @@ def get_config(bahan_baku_key):
 
 
 # =============================================================================
+# HARGA PEROLEHAN: query data dari tabel terpisah `harga_perolehan_bahan_baku`
+# =============================================================================
+def _load_harga_perolehan(load_data, db_value, start_date, end_date):
+    """
+    Mengambil data Harga Perolehan (tabel harga_perolehan_bahan_baku) untuk
+    bahan_baku terpilih, pada rentang tanggal yang sama dengan filter chart.
+    Mengembalikan DataFrame kosong jika tidak ada data (mis. tabel belum ada,
+    atau bahan baku tersebut memang tidak punya kolom Harga Perolehan di sumbernya).
+    """
+    if isinstance(db_value, (list, tuple)):
+        alias_list = "', '".join([a.lower().strip() for a in db_value])
+        where_clause = f"lower(trim(bahan_baku)) IN ('{alias_list}')"
+    else:
+        where_clause = f"bahan_baku = '{db_value}'"
+
+    query = f"""
+        SELECT tanggal_terbit, harga_perolehan
+        FROM harga_perolehan_bahan_baku
+        WHERE {where_clause}
+          AND tanggal_terbit >= '{start_date}' AND tanggal_terbit <= '{end_date}'
+        ORDER BY tanggal_terbit ASC
+    """
+    try:
+        df_hp = load_data(query)
+    except Exception:
+        # Tabel mungkin belum ada di database (belum pernah dijalankan ETL Harga Perolehan)
+        return pd.DataFrame(columns=['tanggal_terbit', 'harga_perolehan'])
+
+    return df_hp
+
+
+# =============================================================================
 # RESUME OTOMATIS GENERIK (menggantikan hitung_resume_ammonia, hitung_resume_dap, dst)
 # =============================================================================
 def _get_nama_minggu(dt):
@@ -168,6 +208,10 @@ def hitung_resume_generik(df_plot, y_col, config):
     Perbedaan narasi antar bahan baku (threshold, kata tren, kalimat dampak)
     di-drive lewat `config` (lihat BAHAN_BAKU_CONFIG di atas), bukan lewat
     duplikasi fungsi per bahan baku.
+
+    Catatan: `df_plot` yang diterima di sini HARUS sudah tidak mengandung baris
+    Harga Perolehan (label_komparasi == LABEL_HARGA_PEROLEHAN), karena resume
+    ini murni bicara soal komparasi Majalah - Incoterm.
     """
     label_bb = config["label"]
     threshold_signifikan = config.get("threshold_signifikan", 25.0)
@@ -566,6 +610,30 @@ def render(load_data, global_context):
 
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
+        # Toggle untuk menampilkan/menyembunyikan garis Harga Perolehan di chart,
+        # beserta color picker khusus untuk garis tersebut. Defaultnya aktif;
+        # kalau datanya memang tidak ada, toggle ini otomatis tidak berpengaruh
+        # karena tidak ada apapun yang ditambahkan ke chart.
+        col_hp_toggle, col_hp_warna = st.columns([3, 1])
+        with col_hp_toggle:
+            tampilkan_harga_perolehan = st.checkbox(
+                "Tampilkan garis Harga Perolehan pada chart",
+                value=st.session_state.get(f"_perm_tampilkan_hp_{suffix}", True),
+                key=f"tampilkan_hp_{suffix}",
+                on_change=_save_to_permanent,
+                args=(f"tampilkan_hp_{suffix}", f"_perm_tampilkan_hp_{suffix}")
+            )
+        with col_hp_warna:
+            warna_harga_perolehan = st.color_picker(
+                "Warna",
+                value=st.session_state.get(f"_perm_warna_hp_{suffix}", WARNA_HARGA_PEROLEHAN_DEFAULT),
+                key=f"warna_hp_{suffix}",
+                on_change=_save_to_permanent,
+                args=(f"warna_hp_{suffix}", f"_perm_warna_hp_{suffix}")
+            )
+
+        st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
+
         komparasi_data = []
         warna_map = {}
         default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
@@ -644,7 +712,11 @@ def render(load_data, global_context):
             df_plot['harga_avg'] = (df_plot['harga_min'] + df_plot['harga_max']) / 2
             df_plot['tanggal_terbit'] = pd.to_datetime(df_plot['tanggal_terbit'])
             df_plot = df_plot.sort_values('tanggal_terbit')
-            tanggal_unik = df_plot['tanggal_terbit'].unique()
+
+            # Simpan salinan df_plot SEBELUM Harga Perolehan ditambahkan, untuk dipakai
+            # oleh tabel "Detail Histori Data", resume otomatis, dan Excel export.
+            # Dengan begitu ketiganya tetap murni bicara soal komparasi Majalah - Incoterm.
+            df_plot_komparasi = df_plot.copy()
 
             if jenis_harga == "MIN":
                 y_col, y_label = 'harga_min', 'Harga Minimum (USD/MT)'
@@ -653,12 +725,39 @@ def render(load_data, global_context):
             else:
                 y_col, y_label = 'harga_avg', 'Harga Rata-rata (USD/MT)'
 
+            # ============= Tambahkan garis Harga Perolehan (jika ada & diaktifkan) =============
+            df_hp = pd.DataFrame()
+            if tampilkan_harga_perolehan:
+                df_hp = _load_harga_perolehan(load_data, db_value, start_date, end_date)
+
+            df_plot_chart = df_plot.copy()
+            if not df_hp.empty:
+                df_hp = df_hp.copy()
+                df_hp['tanggal_terbit'] = pd.to_datetime(df_hp['tanggal_terbit'])
+                df_hp['label_komparasi'] = LABEL_HARGA_PEROLEHAN
+                # Kolom Harga Perolehan diisi ke y_col yang sedang aktif (MIN/MAX/AVERAGE),
+                # karena Harga Perolehan sendiri hanya berupa satu nilai per tanggal
+                # (bukan rentang min-max), jadi nilainya sama untuk ketiga jenis harga.
+                df_hp[y_col] = df_hp['harga_perolehan']
+                df_hp_for_plot = df_hp[['tanggal_terbit', 'label_komparasi', y_col]]
+                df_plot_chart = pd.concat([df_plot_chart, df_hp_for_plot], ignore_index=True)
+                warna_map[LABEL_HARGA_PEROLEHAN] = warna_harga_perolehan
+
+            tanggal_unik = df_plot_chart['tanggal_terbit'].unique()
+
             fig = px.line(
-                df_plot, x='tanggal_terbit', y=y_col, color='label_komparasi',
+                df_plot_chart, x='tanggal_terbit', y=y_col, color='label_komparasi',
                 color_discrete_map=warna_map,
                 title=f"Komparasi Tren Harga {label_bb} ({jenis_harga})",
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
+
+            # Garis Harga Perolehan dibedakan secara visual (putus-putus) supaya
+            # tidak tertukar dengan garis komparasi Majalah - Incoterm biasa.
+            if not df_hp.empty:
+                fig.for_each_trace(
+                    lambda tr: tr.update(line=dict(dash="dash", width=3)) if tr.name == LABEL_HARGA_PEROLEHAN else ()
+                )
 
             fig.update_layout(
                 hovermode="x unified",
@@ -678,7 +777,7 @@ def render(load_data, global_context):
 
             st.markdown("#### :material/table_chart: Detail Histori Data (3 Periode Terakhir)")
 
-            df_display = df_plot.copy()
+            df_display = df_plot_komparasi.copy()
             df_display['harga_range'] = df_display['harga_min'].apply(lambda x: f"{x:.2f}") + ' - ' + df_display['harga_max'].apply(lambda x: f"{x:.2f}")
 
             df_pivot = df_display.pivot_table(
@@ -746,7 +845,7 @@ def render(load_data, global_context):
 """
             st.markdown(styled_html, unsafe_allow_html=True)
 
-            list_resume_otomatis = hitung_resume_generik(df_plot, y_col, config)
+            list_resume_otomatis = hitung_resume_generik(df_plot_komparasi, y_col, config)
 
             st.markdown("##### *Resume :*")
             for poin in list_resume_otomatis:
@@ -754,7 +853,7 @@ def render(load_data, global_context):
             st.markdown("<br>", unsafe_allow_html=True)
 
             excel_buffer = generate_excel_export(
-                df_plot=df_plot, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
+                df_plot=df_plot_komparasi, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
                 y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map,
                 list_resume=list_resume_otomatis, label_bb=label_bb
             )

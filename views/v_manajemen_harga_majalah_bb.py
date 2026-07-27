@@ -1,6 +1,6 @@
 """
 v_manajemen_harga_majalah_bb.py - Manajemen Data Harga Majalah Bahan Baku
-Halaman khusus admin untuk Tambah / Edit / Hapus data harga bahan baku
+Halaman khusus admin untuk Impor (ETL) / Tambah / Edit / Hapus data harga bahan baku
 dari majalah/referensi, langsung ke tabel master_harga_bahan_baku.
 
 Primary key alami tabel ini adalah kombinasi:
@@ -13,6 +13,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from sqlalchemy import text
+import os
+import sys
+import time
+from contextlib import redirect_stdout, redirect_stderr
 
 try:
     from .v_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
@@ -23,6 +27,44 @@ except ImportError:  # fallback saat file dijalankan langsung
 def _get_engine():
     from config_db import get_db_engine
     return get_db_engine()
+
+
+class StreamlitCapture:
+    """Menangkap output terminal dengan efisien, mengabaikan spam dari tqdm."""
+    def __init__(self, placeholder):
+        self.placeholder = placeholder
+        self.lines = []
+        self.buffer = ""
+        self.last_update = time.time()
+
+    def write(self, text):
+        # Abaikan output dari tqdm yang menggunakan \r (carriage return)
+        if '\r' in text:
+            return
+
+        self.buffer += text
+
+        # Jika ada baris baru, pisahkan dan masukkan ke daftar baris
+        if '\n' in self.buffer:
+            parts = self.buffer.split('\n')
+            self.lines.extend(parts[:-1])
+            self.buffer = parts[-1]
+
+        # Refresh UI max 1 detik sekali
+        if time.time() - self.last_update > 1.0:
+            self.flush()
+
+    def flush(self):
+        if not self.lines and not self.buffer:
+            return
+
+        # Tampilkan maksimal 25 baris terakhir agar UI tidak berat
+        display_lines = self.lines[-25:]
+        if self.buffer:
+            display_lines.append(self.buffer)
+
+        self.placeholder.code('\n'.join(display_lines), language='bash')
+        self.last_update = time.time()
 
 
 # =============================================================================
@@ -169,12 +211,44 @@ def _delete_row(engine, tanggal_terbit, nama_majalah, bahan_baku, incoterm):
             "incoterm": incoterm,
         })
 
+
 def _get_unique_options(engine, column):
     query = text(f"SELECT DISTINCT {column} FROM master_harga_bahan_baku WHERE {column} IS NOT NULL ORDER BY {column}")
     with engine.connect() as conn:
         res = conn.execute(query)
         return [r[0] for r in res]
-    
+
+
+# =============================================================================
+# HELPER ETL: dipakai oleh tab "Impor Data (ETL)"
+# =============================================================================
+def _jalankan_etl_bahan_baku(file_path, update_tanggal):
+    from config_db import set_setting
+
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+    import etl_harga_bahan_baku as etl_bb  # type: ignore
+
+    etl_bb.Config.EXCEL_FILE = file_path
+    etl_bb.db_get_engine = _get_engine
+
+    terminal = st.empty()
+    capture_bb = StreamlitCapture(terminal)
+    with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
+        try:
+            etl_bb.run_etl()
+            capture_bb.flush()
+
+            if update_tanggal:
+                set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
+
+            st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
+            st.cache_data.clear()
+        except Exception as e:
+            st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
 
 # =============================================================================
 # DIALOG KONFIRMASI HAPUS
@@ -218,8 +292,8 @@ def render(load_data, global_context=None):
     st.markdown("### :material/edit_document: Manajemen Harga Majalah Bahan Baku")
     st.markdown(
         "<p style='font-size:14px; opacity:0.65; margin-top:-6px; margin-bottom:16px;'>"
-        "Halaman khusus admin untuk menambah, mengubah, atau menghapus data harga bahan baku "
-        "hasil rekapan majalah/referensi."
+        "Halaman khusus admin untuk mengimpor (ETL), menambah, mengubah, atau menghapus data harga "
+        "bahan baku hasil rekapan majalah/referensi."
         "</p>",
         unsafe_allow_html=True
     )
@@ -236,10 +310,92 @@ def render(load_data, global_context=None):
         level, msg = st.session_state.pop('_bb_manajemen_msg')
         getattr(st, level)(msg)
 
-    tab_tambah, tab_lihat_edit_hapus = st.tabs([
+    tab_impor, tab_tambah, tab_lihat_edit_hapus = st.tabs([
+        ":material/cloud_upload: Impor Data (ETL)",
         ":material/add_circle: Tambah Data Baru",
         ":material/table_chart: Lihat / Edit / Hapus Data"
     ])
+
+    # =========================================================================
+    # TAB 0: IMPOR DATA (ETL)
+    # =========================================================================
+    with tab_impor:
+        st.markdown("#### Impor Data dari File Rekapan Majalah")
+        st.markdown(
+            "<p style='font-size:13px; opacity:0.65; margin-top:-4px; margin-bottom:16px;'>"
+            "Gunakan proses ETL untuk mengunggah file "
+            "rekapan Harga Bahan Baku (.xlsx), baik lewat upload manual maupun langsung dari Google Sheets."
+            "</p>",
+            unsafe_allow_html=True
+        )
+
+        metode_input = st.radio(
+            "Metode Input Data",
+            ["Upload File Manual", "Tarik Langsung dari Google Sheets"],
+            horizontal=True,
+            key="bb_manajemen_metode_input"
+        )
+        update_tgl_bahan_baku = st.checkbox(
+            "Update Tanggal Data Menjadi Hari Ini",
+            value=False,
+            key="bb_manajemen_chk_update_tgl"
+        )
+
+        if metode_input == "Upload File Manual":
+            file_bahan_baku = st.file_uploader(
+                "Upload File Rekapan Majalah (.xlsx)",
+                type=["xlsx"],
+                key="bb_manajemen_file_uploader"
+            )
+            if file_bahan_baku:
+                if st.button(
+                    "Jalankan ETL Harga Bahan Baku",
+                    type="primary",
+                    icon=":material/cloud_upload:",
+                    key="bb_manajemen_btn_etl_upload"
+                ):
+                    bb_path = "temp_bahan_baku_manajemen.xlsx"
+                    with open(bb_path, "wb") as f:
+                        f.write(file_bahan_baku.getbuffer())
+
+                    _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
+
+        else:
+            st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya.")
+
+            sheet_id = st.text_input(
+                "ID Google Sheet",
+                value="11QKLfNWhV7mFpwgJJ-6Zg8HWWs3yEmHCGszNuwDXl5o",
+                placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                key="bb_manajemen_sheet_id"
+            )
+
+            if st.button(
+                "Tarik Data & Jalankan ETL",
+                type="primary",
+                icon=":material/cloud_download:",
+                key="bb_manajemen_btn_etl_gsheet"
+            ):
+                if not sheet_id:
+                    st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                else:
+                    with st.spinner("Mengunduh data dari Google Sheets..."):
+                        import requests
+                        try:
+                            export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+                            response = requests.get(export_url)
+
+                            if response.status_code == 200:
+                                bb_path = "temp_bahan_baku_manajemen_gsheet.xlsx"
+                                with open(bb_path, "wb") as f:
+                                    f.write(response.content)
+
+                                st.success("File berhasil diunduh. Memulai proses ETL...")
+                                _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
+                            else:
+                                st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                        except Exception as e:
+                            st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
     # =========================================================================
     # TAB 1: TAMBAH DATA BARU
@@ -252,7 +408,7 @@ def render(load_data, global_context=None):
                 bahan_baku_baru = st.selectbox("Bahan Baku", daftar_bb_db_options, key="tambah_bahan_baku")
                 majalah_opt = st.selectbox("Nama Majalah", ["-- Tambah Baru --"] + list_majalah, key="tambah_majalah_opt")
                 majalah_baru = st.text_input("Ketik Nama Majalah (jika tambah baru)", key="tambah_majalah_baru")
-                
+
                 incoterm_opt = st.selectbox("Incoterm", ["-- Tambah Baru --"] + list_incoterm, key="tambah_incoterm_opt")
                 incoterm_baru = st.text_input("Ketik Incoterm (jika tambah baru)", key="tambah_incoterm_baru")
             with c2:
