@@ -430,17 +430,26 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         last_valid_idx_label = df_chart[label].last_valid_index()
         
         if last_valid_idx_label is not None:
-            # 2. Ambil posisi integer/urutan index tersebut (0-based)
             last_idx = df_chart.index.get_loc(last_valid_idx_label)
 
-            # 3. Buat DataLabel khusus untuk index terakhir ini dan aktifkan tampilkan nilai
-            dl = DataLabel(idx=last_idx, showVal=True)
-
-            # 4. Inisialisasi daftar label untuk series ini
+            # 1. Inisialisasi daftar label untuk series ini
             series.dLbls = DataLabelList()
-            series.dLbls.showVal = False # Pastikan label default mati agar titik lain tidak muncul angkanya
             
-            # 5. Pasang label khusus tersebut ke series
+            # 2. MATIKAN SEMUA pengaturan label global agar tidak menumpuk di semua titik
+            series.dLbls.showVal = False
+            series.dLbls.showCatName = False
+            series.dLbls.showSerName = False
+            series.dLbls.showPercent = False
+            series.dLbls.showLegendKey = False
+            series.dLbls.showBubbleSize = False
+            
+            # 3. Buat pengaturan label khusus HANYA untuk titik terakhir (last_idx)
+            dl = DataLabel(idx=last_idx)
+            dl.showVal = True         # Hanya nyalakan angkanya
+            dl.showCatName = False    # Pastikan tanggal tidak ikut muncul
+            dl.showSerName = False    # Pastikan nama majalah/incoterm tidak ikut muncul
+            
+            # 4. Sematkan label khusus tersebut ke series
             series.dLbls.dLbl.append(dl)
         # --- [MODIFIKASI 2 SELESAI] ---
 
