@@ -828,10 +828,29 @@ def render(load_data, global_context):
                     lambda tr: tr.update(line=dict(dash="dash", width=3)) if tr.name == LABEL_HARGA_PEROLEHAN else ()
                 )
 
+            # Label angka pada titik data TERAKHIR tiap garis (komparasi maupun Harga
+            # Perolehan), warnanya mengikuti warna garis masing-masing, supaya nilai
+            # terkini langsung terbaca tanpa perlu hover.
+            for label, df_label in df_plot_chart.groupby('label_komparasi'):
+                df_label_sorted = df_label.sort_values('tanggal_terbit')
+                titik_terakhir = df_label_sorted.iloc[-1]
+                warna_label = warna_map.get(label, "#1f77b4")
+                fig.add_annotation(
+                    x=titik_terakhir['tanggal_terbit'],
+                    y=titik_terakhir[y_col],
+                    text=f"<b>{titik_terakhir[y_col]:.2f}</b>",
+                    showarrow=False,
+                    xanchor="left",
+                    yanchor="middle",
+                    xshift=8,
+                    font=dict(color=warna_label, size=12),
+                    bgcolor="rgba(255,255,255,0.75)",
+                )
+
             fig.update_layout(
                 hovermode="x unified",
                 legend=dict(orientation="v", yanchor="top", y=-0.6, xanchor="left", x=0),
-                margin=dict(b=300, t=80, l=60, r=40),
+                margin=dict(b=300, t=80, l=60, r=90),
                 height=600
             )
 
