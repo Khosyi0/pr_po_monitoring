@@ -626,9 +626,7 @@ def render(load_data, **kwargs):
     # =========================================================================
     where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
     po_date_cond = f"""(
-        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
-        OR tgl_po IS NULL
-        OR tgl_po::text IN ('', '-')
+        tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date
     )"""
     where_gabungan = f"(({where_pr}) OR ({po_date_cond} AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')))"
 

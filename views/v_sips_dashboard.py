@@ -180,9 +180,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel secara harfiah
     po_date_cond = f"""(
-        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
-        OR tgl_po IS NULL 
-        OR tgl_po::text IN ('', '-')
+        tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date
     )"""
 
     # == Query KPI (Menggunakan pendekatan Subquery Mandiri) ====================
