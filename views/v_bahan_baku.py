@@ -19,6 +19,7 @@ from openpyxl.chart.title import Title
 from openpyxl.chart.legend import LegendEntry
 
 from utils import MAPPING_SINGKATAN
+import gdocs_export
 
 BULAN_INDO = {
     1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
@@ -85,8 +86,8 @@ BAHAN_BAKU_CONFIG = {
         "kata_turun": "melemah",
         "kalimat_dampak": None,
         "default_komparasi": [
-            {"majalah": "MOP Ref. Argus FMB Price Guide (spot)", "incoterm": "SE Asia CFR Spot Std"},
-            {"majalah": "CRU", "incoterm": "CFR SEA"},
+            {"majalah": "MOP Ref. Argus FMB Price Guide (spot)", "incoterm": "SE Asia CFR Spot Std", "tampil_chart": True},
+            {"majalah": "CRU", "incoterm": "CFR SEA", "tampil_chart": False}, # Default tidak muncul di chart
         ],
     },
     "NH4Cl": {
@@ -192,7 +193,6 @@ BAHAN_BAKU_CONFIG = {
         ],
     },
 }
-
 
 def get_daftar_bahan_baku():
     return list(BAHAN_BAKU_CONFIG.keys())
@@ -548,6 +548,113 @@ def variasikan_warna(hex_color, index, total):
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+# Helper function untuk memproses data bahan baku di belakang layar (untuk batch export)
+def _proses_batch_bahan_baku(bb_key, start_date, end_date, jenis_harga, load_data):
+    try:
+        config = get_config(bb_key)
+    except KeyError:
+        return None # Lewati jika config tidak ada
+
+    label_bb = config["label"]
+    db_value = config["db_value"]
+    default_komparasi_list = config.get("default_komparasi", [])
+    
+    if not default_komparasi_list:
+        return None # Lewati jika tidak ada default komparasi sama sekali
+
+    # 1. Query Database
+    if isinstance(db_value, (list, tuple)):
+        alias_list = "', '".join([a.lower().strip() for a in db_value])
+        where_clause = f"lower(trim(bahan_baku)) IN ('{alias_list}')"
+    else:
+        where_clause = f"bahan_baku = '{db_value}'"
+
+    query = f"""
+        SELECT tanggal_terbit, nama_majalah, incoterm, harga_min, harga_max 
+        FROM master_harga_bahan_baku 
+        WHERE {where_clause}
+          AND tanggal_terbit >= '{start_date}' AND tanggal_terbit <= '{end_date}'
+        ORDER BY tanggal_terbit ASC
+    """
+    df = load_data(query)
+    if df.empty:
+        return None
+
+    # 2. Filter data berdasarkan default_komparasi
+    df_plot = pd.DataFrame()
+    komparasi_data_internal = []
+    default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+
+    for idx, item in enumerate(default_komparasi_list):
+        majalah = item.get("majalah")
+        incoterm = item.get("incoterm")
+        tampil_chart = item.get("tampil_chart", True) # Default True, menghargai aturan MOP-KCl CRU
+        
+        temp_df = df[(df['nama_majalah'] == majalah) & (df['incoterm'] == incoterm)].copy()
+        if not temp_df.empty:
+            temp_df['label_komparasi'] = temp_df['nama_majalah'] + ' - ' + temp_df['incoterm']
+            temp_df['label_komparasi'] = temp_df['label_komparasi'].apply(lambda x: MAPPING_SINGKATAN.get(x, x))
+            df_plot = pd.concat([df_plot, temp_df], ignore_index=True)
+            
+            komparasi_data_internal.append({
+                "label_asli": f"{majalah} - {incoterm}",
+                "warna_dasar": default_colors[idx % len(default_colors)],
+                "tampil_chart": tampil_chart
+            })
+
+    if df_plot.empty:
+        return None
+
+    # 3. Proses kolom Y
+    df_plot['harga_avg'] = (df_plot['harga_min'] + df_plot['harga_max']) / 2
+    df_plot['tanggal_terbit'] = pd.to_datetime(df_plot['tanggal_terbit'])
+    df_plot = df_plot.sort_values('tanggal_terbit')
+    
+    if jenis_harga == "MIN":
+        y_col, y_label = 'harga_min', 'Harga Minimum (USD/MT)'
+    elif jenis_harga == "MAX":
+        y_col, y_label = 'harga_max', 'Harga Maksimum (USD/MT)'
+    else:
+        y_col, y_label = 'harga_avg', 'Harga Rata-rata (USD/MT)'
+
+    df_plot_komparasi = df_plot.copy()
+
+    # 4. Atur Mapping Warna (KHUSUS BATCH: Tanpa Harga Perolehan)
+    warna_map = {}
+    label_yang_tampil = []
+    for item in komparasi_data_internal:
+        label_singkat = MAPPING_SINGKATAN.get(item["label_asli"], item["label_asli"])
+        warna_map[label_singkat] = item["warna_dasar"]
+        if item["tampil_chart"]:
+            label_yang_tampil.append(label_singkat)
+
+    df_plot_chart = df_plot[df_plot['label_komparasi'].isin(label_yang_tampil)].copy()
+    
+    # Set None agar Matplotlib tidak merender garis putus-putus
+    gdocs_export_label_hp = None
+
+    # 5. Build df_pivot untuk Tabel
+    df_display = df_plot_komparasi.copy()
+    df_display['harga_range'] = df_display['harga_min'].apply(lambda x: f"{x:.2f}") + ' - ' + df_display['harga_max'].apply(lambda x: f"{x:.2f}")
+    df_pivot = df_display.pivot_table(index='label_komparasi', columns='tanggal_terbit', values='harga_range', aggfunc=lambda x: ' '.join(x)).sort_index(axis=1, ascending=False).iloc[:, :3]
+    kolom_tanggal = [f"{d.day:02d} {BULAN_INDO[d.month]} {d.year}" for d in df_pivot.columns]
+
+    # 6. Generate Komponen Final
+    list_resume_otomatis = hitung_resume_generik(df_plot_komparasi, y_col, config)
+    chart_image_bytes = gdocs_export.render_chart_matplotlib(
+        df_plot_chart=df_plot_chart, y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, 
+        label_bb=label_bb, warna_map=warna_map, label_harga_perolehan=gdocs_export_label_hp
+    )
+
+    return {
+        "label_bb": label_bb,
+        "image_bytes": chart_image_bytes,
+        "df_pivot": df_pivot,
+        "kolom_tanggal": kolom_tanggal,
+        "list_resume": list_resume_otomatis
+    }
+
+
 # =============================================================================
 # RENDER UTAMA (dipanggil sekali per bahan baku terpilih)
 # =============================================================================
@@ -670,7 +777,7 @@ def render(load_data, global_context):
         with col_hp_toggle:
             tampilkan_harga_perolehan = st.checkbox(
                 "Tampilkan garis Harga Perolehan pada chart",
-                value=st.session_state.get(f"_perm_tampilkan_hp_{suffix}", True),
+                value=st.session_state.get(f"_perm_tampilkan_hp_{suffix}", False),
                 key=f"tampilkan_hp_{suffix}",
                 on_change=_save_to_permanent,
                 args=(f"tampilkan_hp_{suffix}", f"_perm_tampilkan_hp_{suffix}")
@@ -691,13 +798,10 @@ def render(load_data, global_context):
         default_colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
         for i in range(int(jml_komparasi)):
-            # Default majalah & incoterm untuk index ke-i, diambil dari `default_komparasi`
-            # di config (kalau ada entry untuk index ini). Jika majalah/incoterm yang
-            # dikonfigurasi ternyata tidak ada di data (mis. salah ketik / data belum masuk),
-            # fallback diam-diam ke majalah/incoterm pertama yang tersedia.
             default_dari_config = default_komparasi_list[i] if i < len(default_komparasi_list) else None
 
-            c1, c2, c3 = st.columns([3, 3, 1])
+            # Ubah proporsi kolom untuk memberi ruang pada checkbox (c4)
+            c1, c2, c3, c4 = st.columns([3, 3, 1, 1])
             with c1:
                 perm_key_majalah = f"_perm_majalah_{suffix}_{i}"
                 if perm_key_majalah in st.session_state:
@@ -741,12 +845,29 @@ def render(load_data, global_context):
                     on_change=_save_to_permanent,
                     args=(f"color_{suffix}_{i}", perm_key_warna)
                 )
+            with c4:
+                perm_key_tampil = f"_perm_tampil_{suffix}_{i}"
+                # Cari nilai default dari config jika belum ada di session state
+                if perm_key_tampil in st.session_state:
+                    default_tampil = st.session_state[perm_key_tampil]
+                else:
+                    default_tampil = default_dari_config.get("tampil_chart", True) if default_dari_config else True
+                
+                st.write("") # Penyeimbang layout vertikal agar tidak terlalu atas
+                st.write("")
+                tampil_pilihan = st.checkbox(
+                    "Plot di Chart", value=default_tampil,
+                    key=f"tampil_{suffix}_{i}",
+                    on_change=_save_to_permanent,
+                    args=(f"tampil_{suffix}_{i}", perm_key_tampil)
+                )
 
             if incoterm_pilihan:
                 komparasi_data.append({
                     "majalah": majalah_pilihan,
                     "incoterms": [incoterm_pilihan],
-                    "warna_dasar": warna_pilihan
+                    "warna_dasar": warna_pilihan,
+                    "tampil_chart": tampil_pilihan # Simpan status checkbox
                 })
 
         for item in komparasi_data:
@@ -799,7 +920,17 @@ def render(load_data, global_context):
             if tampilkan_harga_perolehan:
                 df_hp = _load_harga_perolehan(load_data, db_value, start_date, end_date)
 
-            df_plot_chart = df_plot.copy()
+            # Filter khusus untuk Chart berdasarkan checkbox "Plot di Chart"
+            label_yang_tampil = []
+            for item in komparasi_data:
+                if item.get("tampil_chart", True):
+                    for incoterm in item["incoterms"]:
+                        label_asli = f"{item['majalah']} - {incoterm}"
+                        label_singkat = MAPPING_SINGKATAN.get(label_asli, label_asli)
+                        label_yang_tampil.append(label_singkat)
+            
+            df_plot_chart = df_plot[df_plot['label_komparasi'].isin(label_yang_tampil)].copy()
+
             if not df_hp.empty:
                 df_hp = df_hp.copy()
                 df_hp['tanggal_terbit'] = pd.to_datetime(df_hp['tanggal_terbit'])
@@ -813,6 +944,7 @@ def render(load_data, global_context):
                 warna_map[LABEL_HARGA_PEROLEHAN] = warna_harga_perolehan
 
             tanggal_unik = df_plot_chart['tanggal_terbit'].unique()
+            gdocs_export_label_hp = LABEL_HARGA_PEROLEHAN
 
             fig = px.line(
                 df_plot_chart, x='tanggal_terbit', y=y_col, color='label_komparasi',
@@ -940,37 +1072,94 @@ def render(load_data, global_context):
                 st.markdown(f"- {poin}")
             st.markdown("<br>", unsafe_allow_html=True)
 
-            excel_buffer = generate_excel_export(
-                df_plot=df_plot_komparasi, df_pivot=df_pivot, kolom_tanggal=kolom_tanggal,
-                y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, warna_map=warna_map,
-                list_resume=list_resume_otomatis, label_bb=label_bb
-            )
-
             st.markdown("""
                 <style>
-                div[data-testid="stDownloadButton"] button {
+                div[data-testid="stButton"] button[kind="primary"] {
                     background-color: #FF4B4B;
                     color: white;
                     border: none;
                 }
-                div[data-testid="stDownloadButton"] button:hover {
+                div[data-testid="stButton"] button[kind="primary"]:hover {
                     background-color: #E54444;
                     color: white;
                     border: none;
                 }
-                div[data-testid="stDownloadButton"] button:active {
+                div[data-testid="stButton"] button[kind="primary"]:active {
                     background-color: #CE3D3D;
                     color: white;
                 }
                 </style>
             """, unsafe_allow_html=True)
 
-            st.download_button(
-                label=":material/download: Download Excel (Chart + Tabel + Resume)",
-                data=excel_buffer,
-                file_name=f"komparasi_harga_{label_bb}_{jenis_harga}_{start_date}_{end_date}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            # --- BAGIAN TOMBOL ---
+            col_btn_single, col_btn_batch = st.columns([1, 1])
+            
+            with col_btn_single:
+                if st.button(
+                    ":material/description: Generate Docs (Tampilan Saat Ini)",
+                    type="primary",
+                    key=f"gen_gdocs_{suffix}",
+                    use_container_width=True,
+                ):
+                    with st.spinner("Membuat dokumen Google Docs, mohon tunggu sebentar..."):
+                        try:
+                            chart_image_bytes = gdocs_export.render_chart_matplotlib(
+                                df_plot_chart=df_plot_chart,
+                                y_col=y_col,
+                                y_label=y_label,
+                                jenis_harga=jenis_harga,
+                                label_bb=label_bb,
+                                warna_map=warna_map,
+                                label_harga_perolehan=gdocs_export_label_hp if not df_hp.empty else None,
+                            )
+                            doc_url = gdocs_export.generate_google_doc(
+                                label_bb=label_bb,
+                                jenis_harga=jenis_harga,
+                                start_date=start_date,
+                                end_date=end_date,
+                                image_bytes=chart_image_bytes,
+                                df_pivot=df_pivot,
+                                kolom_tanggal=kolom_tanggal,
+                                list_resume=list_resume_otomatis,
+                            )
+                            st.success("Dokumen Google Docs berhasil dibuat!")
+                            st.link_button(":material/open_in_new: Buka Google Docs", doc_url, use_container_width=False)
+                        except Exception as e:
+                            st.error(f"Gagal membuat Google Docs: {e}")
+
+            with col_btn_batch:
+                if st.button(
+                    ":material/library_books: Generate Docs (Seluruh 9 Bahan Baku)",
+                    type="primary",
+                    key=f"gen_gdocs_batch_{suffix}",
+                    use_container_width=True,
+                ):
+                    with st.spinner("Membuat kompilasi dokumen dari 9 Bahan Baku... (Proses ini mungkin memakan waktu)"):
+                        try:
+                            urutan_batch = [
+                                "ZA", "Phosphate Rock", "Sulfuric Acid", "Sulfur", 
+                                "MOP-KCl", "DAP", "Ammonia", "Phosphoric Acid", "NH4Cl"
+                            ]
+                            
+                            data_kompilasi = []
+                            for bb in urutan_batch:
+                                hasil = _proses_batch_bahan_baku(bb, start_date, end_date, jenis_harga, load_data)
+                                if hasil:
+                                    data_kompilasi.append(hasil)
+                            
+                            if data_kompilasi:
+                                doc_url = gdocs_export.generate_google_doc_batch(
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                    jenis_harga=jenis_harga,
+                                    list_data_batch=data_kompilasi
+                                )
+                                st.success("Dokumen Kompilasi Google Docs berhasil dibuat!")
+                                st.link_button(":material/open_in_new: Buka Dokumen Kompilasi", doc_url, use_container_width=False)
+                            else:
+                                st.warning("Tidak ada data yang valid untuk dirender pada rentang tanggal tersebut.")
+                        except Exception as e:
+                            st.error(f"Gagal membuat Dokumen Kompilasi: {e}")
 
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")
