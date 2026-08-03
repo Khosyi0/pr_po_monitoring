@@ -17,6 +17,7 @@ from openpyxl.drawing.text import Font as DrawingFont, RegularTextRun
 from openpyxl.chart.text import Text
 from openpyxl.chart.title import Title
 from openpyxl.chart.legend import LegendEntry
+from openpyxl.chart.label import DataLabelList, DataLabel
 
 from utils import MAPPING_SINGKATAN
 import gdocs_export
@@ -379,7 +380,10 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         ws_data.cell(row=1, column=col_idx, value=header)
     for row_idx, row in enumerate(df_chart_reset.itertuples(index=False), start=2):
         for col_idx, value in enumerate(row, start=1):
-            ws_data.cell(row=row_idx, column=col_idx, value=value)
+            cell = ws_data.cell(row=row_idx, column=col_idx, value=value)
+            # Format kolom data nilai (bukan tanggal) agar muncul 2 desimal di chart
+            if col_idx > 1 and isinstance(value, (int, float)) and not pd.isna(value):
+                cell.number_format = '#,##0.00'
 
     n_rows = len(df_chart_reset)
     n_cols = len(headers)
@@ -420,6 +424,34 @@ def generate_excel_export(df_plot, df_pivot, kolom_tanggal, y_col, y_label, jeni
         hex_color = warna_map.get(label, "#1f77b4").lstrip('#').upper()
         series.graphicalProperties.line.width = 18000
         series.graphicalProperties.line.solidFill = hex_color
+
+        # --- [MODIFIKASI 2 MULAI]: MEMUNCULKAN ANGKA DI TITIK TERAKHIR ---
+        # 1. Cari nama index dari baris data valid terakhir (bukan NaN) di kolom terkait
+        last_valid_idx_label = df_chart[label].last_valid_index()
+        
+        if last_valid_idx_label is not None:
+            last_idx = df_chart.index.get_loc(last_valid_idx_label)
+
+            # 1. Inisialisasi daftar label untuk series ini
+            series.dLbls = DataLabelList()
+            
+            # 2. MATIKAN SEMUA pengaturan label global agar tidak menumpuk di semua titik
+            series.dLbls.showVal = False
+            series.dLbls.showCatName = False
+            series.dLbls.showSerName = False
+            series.dLbls.showPercent = False
+            series.dLbls.showLegendKey = False
+            series.dLbls.showBubbleSize = False
+            
+            # 3. Buat pengaturan label khusus HANYA untuk titik terakhir (last_idx)
+            dl = DataLabel(idx=last_idx)
+            dl.showVal = True         # Hanya nyalakan angkanya
+            dl.showCatName = False    # Pastikan tanggal tidak ikut muncul
+            dl.showSerName = False    # Pastikan nama majalah/incoterm tidak ikut muncul
+            
+            # 4. Sematkan label khusus tersebut ke series
+            series.dLbls.dLbl.append(dl)
+        # --- [MODIFIKASI 2 SELESAI] ---
 
     if is_single_series:
         dummy_series = chart.series[-1]
