@@ -626,7 +626,18 @@ def render(load_data, **kwargs):
     # =========================================================================
     where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
     po_date_cond = f"""(
-        tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
+        OR (
+            UPPER(TRIM(status)) = 'PROSES PO'
+            AND (tgl_po IS NULL OR tgl_po::text IN ('', '-'))
+            AND (
+                CASE
+                    WHEN EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                        THEN DATE '{date_from.year}-01-01'
+                    ELSE tgl_disposisi_buyer
+                END
+            ) BETWEEN '{date_from}'::date AND '{date_to}'::date
+        )
     )"""
     where_gabungan = f"(({where_pr}) OR ({po_date_cond} AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO')))"
 
@@ -637,7 +648,15 @@ def render(load_data, **kwargs):
         FROM vw_sips WHERE {where_pr} GROUP BY 1
     ),
     po_bulanan AS (
-        SELECT DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month, COUNT(*) AS total_po
+        SELECT DATE_TRUNC('month',
+            CASE
+                WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-') THEN tgl_po
+                WHEN UPPER(TRIM(status)) = 'PROSES PO'
+                     AND EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                    THEN DATE '{date_from.year}-01-01'
+                ELSE tgl_disposisi_buyer
+            END
+        )::date AS month, COUNT(*) AS total_po
         FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} GROUP BY 1
     )
     SELECT TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
@@ -1521,7 +1540,15 @@ def render(load_data, **kwargs):
             FROM vw_sips WHERE {where_pr} AND {_bagian_filter_cond} GROUP BY 1
         ),
         po_bulanan AS (
-            SELECT DATE_TRUNC('month', COALESCE(tgl_po, tgl_disposisi_buyer))::date AS month, COUNT(*) AS total_po
+            SELECT DATE_TRUNC('month',
+                CASE
+                    WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-') THEN tgl_po
+                    WHEN UPPER(TRIM(status)) = 'PROSES PO'
+                        AND EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                        THEN DATE '{date_from.year}-01-01'
+                    ELSE tgl_disposisi_buyer
+                END
+            )::date AS month, COUNT(*) AS total_po
             FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} AND {_bagian_filter_cond} GROUP BY 1
         )
         SELECT TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,

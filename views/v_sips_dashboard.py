@@ -180,7 +180,18 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     # 3. Kondisi filter tanggal PO untuk meniru behavior "COUNTIFS" di Excel secara harfiah
     po_date_cond = f"""(
-        tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date
+        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
+        OR (
+            UPPER(TRIM(status)) = 'PROSES PO'
+            AND (tgl_po IS NULL OR tgl_po::text IN ('', '-'))
+            AND (
+                CASE
+                    WHEN EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                        THEN DATE '{date_from.year}-01-01'
+                    ELSE tgl_disposisi_buyer
+                END
+            ) BETWEEN '{date_from}'::date AND '{date_to}'::date
+        )
     )"""
 
     # == Query KPI (Menggunakan pendekatan Subquery Mandiri) ====================
@@ -312,15 +323,34 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             CASE WHEN {where_pr} THEN 1 ELSE 0 END AS is_pr,
             COALESCE(oe_pr, 0)       AS oe_pr,
             COALESCE(nilai_item_po, 0) AS nilai_item_po,
-            b.bulan,
+            b.bulan_pr,
+            b.bulan_po,
             outline_agreement
         FROM vw_sips
         LEFT JOIN LATERAL (
-            SELECT TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan
+            SELECT
+                -- bulan_pr: SELALU basis tgl_disposisi_buyer, dipakai
+                -- untuk mengelompokkan Total_PR (tidak berubah dari
+                -- logika where_pr).
+                TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan_pr,
+                -- bulan_po: mengikuti logika po_date_cond -- pakai
+                -- tgl_po kalau ada & terisi; kalau status PROSES PO
+                -- tanpa tgl_po, pakai tgl_disposisi_buyer, dengan
+                -- aturan carry-over (dorong ke 1 Januari date_from.year
+                -- kalau tgl_disposisi_buyer dari tahun sebelumnya).
+                TO_CHAR(DATE_TRUNC('month',
+                    CASE
+                        WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-')
+                            THEN tgl_po
+                        WHEN UPPER(TRIM(status)) = 'PROSES PO'
+                             AND EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                            THEN DATE '{date_from.year}-01-01'
+                        ELSE tgl_disposisi_buyer
+                    END
+                ), 'YYYY-MM') AS bulan_po
         ) AS b ON true
         WHERE ({where_pr}) OR ({where_po} AND {po_date_cond})
     """
-
     with st.spinner("Memuat data..."):
         try:
             df_kpi   = load_data(kpi_query)
@@ -408,6 +438,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
+    - Filter Tanggal Disposisis Buyer
     - Hitung seluruh baris
 
     **Target:** -""",
@@ -425,6 +456,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Formula Excel:**
     - Filter nama karyawan yang ingin dicari
     - Filter **Status** menjadi `Closed` dan `Proses PO`
+    - Filter Tanggal PO
     - Hitung seluruh baris
 
     **Target:** -""",
@@ -874,13 +906,29 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
         st.caption("Distribusi volume PR-PO per bulan.")
         
-        if 'bulan' in df_chart.columns and df_chart['bulan'].notna().any():
-            trend = (df_chart.groupby('bulan')
-                     .agg(Total_PR=('is_pr', 'sum'),
-                          Total_PO=('is_po', 'sum'))
-                     .reset_index()
-                     .sort_values('bulan'))
-            
+        if ('bulan_pr' in df_chart.columns and 'bulan_po' in df_chart.columns
+            and (df_chart['bulan_pr'].notna().any() or df_chart['bulan_po'].notna().any())):
+ 
+            # Hitung Total_PR dan Total_PO TERPISAH, masing-masing dengan
+            # kolom bulan acuannya sendiri, lalu digabung (outer merge)
+            # supaya bulan yang cuma py PR atau cuma py PO tetap tampil.
+            pr_bulanan = (df_chart[df_chart['is_pr'] == 1]
+                        .groupby('bulan_pr')
+                        .agg(Total_PR=('is_pr', 'sum'))
+                        .reset_index()
+                        .rename(columns={'bulan_pr': 'bulan'}))
+    
+            po_bulanan = (df_chart[df_chart['is_po'] == 1]
+                        .groupby('bulan_po')
+                        .agg(Total_PO=('is_po', 'sum'))
+                        .reset_index()
+                        .rename(columns={'bulan_po': 'bulan'}))
+    
+            trend = pd.merge(pr_bulanan, po_bulanan, on='bulan', how='outer')
+            trend['Total_PR'] = trend['Total_PR'].fillna(0).astype(int)
+            trend['Total_PO'] = trend['Total_PO'].fillna(0).astype(int)
+            trend = trend.sort_values('bulan').reset_index(drop=True)
+    
             # 1. Konversi 'YYYY-MM' ke tanggal 1 awal bulan terlebih dahulu
             trend['bulan'] = pd.to_datetime(trend['bulan'])
 
