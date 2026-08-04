@@ -84,13 +84,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         if (selected_bagian and 'All' not in selected_bagian) else None
     )
 
-    # Kondisi filter tanggal PO yang sinkron dengan dashboard utama
-    po_date_cond = f"""(
-        (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
-        OR tgl_po IS NULL 
-        OR tgl_po::text IN ('', '-')
-    )"""
-
     # ══════════════════════════════════════════════════════════════════════════
     # ALERT 1: PR Pending > 30 Hari (Selain Closed & Proses PO)
     # ══════════════════════════════════════════════════════════════════════════
@@ -150,7 +143,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         status
     FROM vw_sips
     WHERE {where_pr}
-      AND status NOT IN ('Closed', 'Proses PO')
+      AND UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO')
       AND tgl_disposisi_buyer IS NOT NULL
       AND (CURRENT_DATE - tgl_disposisi_buyer) > 30
     ORDER BY umur_hari DESC, nama, no_pr
@@ -256,8 +249,8 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
             COUNT(*) AS total_pr
         FROM vw_sips
         WHERE {where_pr}
-          AND status NOT IN ('Closed', 'Proses PO')
-          AND tgl_disposisi_buyer IS NOT NULL
+            AND UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO')
+            AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY 1
         ORDER BY MIN(CURRENT_DATE - tgl_disposisi_buyer)
         """
@@ -325,8 +318,8 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END) AS pr_merah
         FROM vw_sips
         WHERE {where_pr}
-          AND status NOT IN ('Closed', 'Proses PO')
-          AND tgl_disposisi_buyer IS NOT NULL
+            AND UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO')
+            AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY nama
         ORDER BY (
             COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) + 
@@ -417,10 +410,10 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     WHERE {where_pr}
     GROUP BY status
     ORDER BY
-        CASE status
-            WHEN 'Open'      THEN 1
-            WHEN 'Proses PO' THEN 2
-            WHEN 'Closed'    THEN 3
+        CASE UPPER(TRIM(status))
+            WHEN 'OPEN'      THEN 1
+            WHEN 'PROSES PO' THEN 2
+            WHEN 'CLOSED'    THEN 3
             ELSE 4
         END
     """

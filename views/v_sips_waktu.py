@@ -153,8 +153,17 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     # Kondisi filter tanggal PO yang sinkron dengan dashboard utama
     po_date_cond = f"""(
         (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
-        OR tgl_po IS NULL 
-        OR tgl_po::text IN ('', '-')
+        OR (
+            UPPER(TRIM(status)) = 'PROSES PO'
+            AND (tgl_po IS NULL OR tgl_po::text IN ('', '-'))
+            AND (
+                CASE
+                    WHEN EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                        THEN DATE '{date_from.year}-01-01'
+                    ELSE tgl_disposisi_buyer
+                END
+            ) BETWEEN '{date_from}'::date AND '{date_to}'::date
+        )
     )"""
 
     # Gabungan kriteria khusus analisis waktu (Hanya dokumen yang diproses)
@@ -166,7 +175,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
     kpi_q = f"""
     SELECT
-        ROUND(AVG(CASE WHEN status = 'Closed' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
+        ROUND(AVG(CASE WHEN UPPER(TRIM(status)) = 'CLOSED' THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
         ROUND(AVG(realisasi_sla)::numeric,2)                           AS avg_real,
         ROUND(AVG(standar_sla)::numeric,2)                             AS avg_std,
         ROUND(AVG(tgl_disposisi_buyer - requisition_date)::numeric,2)  AS avg_pra,
@@ -182,7 +191,15 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         nama, standar_sla, pr_po_days, realisasi_sla, nilai_sla,
         kontrak_status, prioritas, purchasing_group,
         
-        TO_CHAR(DATE_TRUNC('month', tgl_po), 'YYYY-MM') AS bulan,
+        TO_CHAR(DATE_TRUNC('month',
+            CASE
+                WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-') THEN tgl_po
+                WHEN UPPER(TRIM(status)) = 'PROSES PO'
+                     AND EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
+                    THEN DATE '{date_from.year}-01-01'
+                ELSE tgl_disposisi_buyer
+            END
+        ), 'YYYY-MM') AS bulan,
         
         (tgl_disposisi_buyer - requisition_date)        AS waktu_pra,
         (tgl_po - requisition_date)                     AS e2e,
@@ -643,33 +660,33 @@ Hijau = rata-rata headroom positif. Merah = sering melewati target.
 """)
 
     if df.empty or "bulan" not in df.columns or not df["bulan"].notna().any():
-            st.info("Tidak ada data untuk filter yang dipilih.")
+        st.info("Tidak ada data untuk filter yang dipilih.")
     else:
         trend = df.groupby("bulan").agg(
             avg_pr_po=("pr_po_days","mean"), avg_real=("realisasi_sla","mean"),
             avg_e2e  =("e2e","mean"), total=("nilai_sla","count"),
             ontime   =("nilai_sla", lambda x: (pd.to_numeric(x,errors="coerce")==1).sum()),
         ).reset_index().sort_values("bulan")
-
-    if date_from:
-        bulan_from = str(date_from)[:7]   # ambil "YYYY-MM"
-        trend = trend[trend["bulan"] >= bulan_from]
-    if date_to:
-        bulan_to = str(date_to)[:7]
-        trend = trend[trend["bulan"] <= bulan_to]
-
+ 
+        if date_from:
+            bulan_from = str(date_from)[:7]   # ambil "YYYY-MM"
+            trend = trend[trend["bulan"] >= bulan_from]
+        if date_to:
+            bulan_to = str(date_to)[:7]
+            trend = trend[trend["bulan"] <= bulan_to]
+ 
         if not trend.empty:
             trend["pct"] = (trend["ontime"]/trend["total"]*100).round(1)
             ft = go.Figure()
             ft.add_bar(x=trend["bulan"], y=trend["avg_e2e"],
-                        name="End-to-End (Req ke PO)", marker_color="#6c8ebf", opacity=0.5)
+                       name="End-to-End (Req ke PO)", marker_color="#6c8ebf", opacity=0.5)
             ft.add_scatter(x=trend["bulan"], y=trend["avg_pr_po"], name="PR-PO (kerja)",
-                            mode="lines+markers", line=dict(color="#f0a500",width=2), marker=dict(size=6))
+                           mode="lines+markers", line=dict(color="#f0a500",width=2), marker=dict(size=6))
             ft.add_scatter(x=trend["bulan"], y=trend["avg_real"], name="Realisasi SLA (kerja)",
-                            mode="lines+markers", line=dict(color="#09ab3b",width=2), marker=dict(size=6))
+                           mode="lines+markers", line=dict(color="#09ab3b",width=2), marker=dict(size=6))
             ft.add_scatter(x=trend["bulan"], y=trend["pct"], name="% On Time",
-                            mode="lines+markers", yaxis="y2",
-                            line=dict(color="#e03c3c",width=2,dash="dash"), marker=dict(size=5))
+                           mode="lines+markers", yaxis="y2",
+                           line=dict(color="#e03c3c",width=2,dash="dash"), marker=dict(size=5))
             ft.update_layout(
                 height=340,
                 yaxis =dict(title="Hari", **GRID),
