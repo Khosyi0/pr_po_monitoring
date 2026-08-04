@@ -961,40 +961,40 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                     y_pr = trend['Total_PR']
                     y_po = trend['Total_PO']
                     y_axis_title = 'Jumlah per Bulan'
-
+ 
                 fig_trend = go.Figure()
-            fig_trend.add_trace(go.Scatter(
-                x=trend['bulan'], y=y_pr,
-                name='Total PR', mode='lines+markers',
-                line=dict(color='#6c8ebf', width=2),
-                marker=dict(size=6),
-                hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PR: %{y}<extra></extra>'
-            ))
-            fig_trend.add_trace(go.Scatter(
-                x=trend['bulan'], y=y_po,
-                name='Total PO', mode='lines+markers',
-                line=dict(color='#f0a500', width=2),
-                marker=dict(size=6),
-                hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PO: %{y}<extra></extra>'
-            ))
-            
-            fig_trend.update_layout(
-                height=300, 
-                margin=dict(t=40, b=40, l=20, r=20),
-                legend=dict(orientation='h', yanchor='bottom', y=1.02),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color='gray',
-                xaxis=dict(
-                    gridcolor='rgba(128,128,128,0.15)',
-                    tickmode='array',
-                    tickvals=trend['bulan'],
-                    ticktext=trend['bulan'].dt.strftime('%b %Y') # Memastikan sumbu X bawah tetap "Jan 2026"
-                ),
-                yaxis=dict(title=y_axis_title, gridcolor='rgba(128,128,128,0.15)'),
-                separators=",."
-            )
-            st.plotly_chart(fig_trend, use_container_width=True)
+                fig_trend.add_trace(go.Scatter(
+                    x=trend['bulan'], y=y_pr,
+                    name='Total PR', mode='lines+markers',
+                    line=dict(color='#6c8ebf', width=2),
+                    marker=dict(size=6),
+                    hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PR: %{y}<extra></extra>'
+                ))
+                fig_trend.add_trace(go.Scatter(
+                    x=trend['bulan'], y=y_po,
+                    name='Total PO', mode='lines+markers',
+                    line=dict(color='#f0a500', width=2),
+                    marker=dict(size=6),
+                    hovertemplate='<b>%{x|%b %d, %Y}</b><br>Total PO: %{y}<extra></extra>'
+                ))
+ 
+                fig_trend.update_layout(
+                    height=300,
+                    margin=dict(t=40, b=40, l=20, r=20),
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font_color='gray',
+                    xaxis=dict(
+                        gridcolor='rgba(128,128,128,0.15)',
+                        tickmode='array',
+                        tickvals=trend['bulan'],
+                        ticktext=trend['bulan'].dt.strftime('%b %Y') # Memastikan sumbu X bawah tetap "Jan 2026"
+                    ),
+                    yaxis=dict(title=y_axis_title, gridcolor='rgba(128,128,128,0.15)'),
+                    separators=",."
+                )
+                st.plotly_chart(fig_trend, use_container_width=True)
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
