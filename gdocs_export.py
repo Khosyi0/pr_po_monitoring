@@ -414,7 +414,13 @@ def generate_google_doc(
             documentId=document_id,
             body={"requests": [{
                 "updateTableCellStyle": {
-                    "tableCellStyle": {"contentAlignment": "MIDDLE"},
+                    "tableCellStyle": {
+                        "contentAlignment": "MIDDLE",
+                        "paddingTop": {"magnitude": 2.835, "unit": "PT"},
+                        "paddingBottom": {"magnitude": 2.835, "unit": "PT"},
+                        "paddingLeft": {"magnitude": 2.835, "unit": "PT"},
+                        "paddingRight": {"magnitude": 2.835, "unit": "PT"}
+                    },
                     "tableRange": {
                         "tableCellLocation": {
                             "tableStartLocation": {"index": tabel_element_start_index},
@@ -424,7 +430,7 @@ def generate_google_doc(
                         "rowSpan": n_rows,
                         "columnSpan": n_cols,
                     },
-                    "fields": "contentAlignment",
+                    "fields": "contentAlignment,paddingTop,paddingBottom,paddingLeft,paddingRight",
                 }
             }]}
         ).execute()
@@ -718,8 +724,28 @@ def generate_google_doc_batch(
             # Merge & Style Header Tabel
             HEADER_BG_COLOR = {"red": 0.741, "green": 0.843, "blue": 0.933}
             req_style = [
-                # Vertical align middle semua sel
-                {"updateTableCellStyle": {"tableCellStyle": {"contentAlignment": "MIDDLE"}, "tableRange": {"tableCellLocation": {"tableStartLocation": {"index": tabel_start_index}, "rowIndex": 0, "columnIndex": 0}, "rowSpan": n_rows, "columnSpan": n_cols}, "fields": "contentAlignment"}},
+                # Vertical align middle & atur Padding 0.1cm untuk semua sel
+                {
+                    "updateTableCellStyle": {
+                        "tableCellStyle": {
+                            "contentAlignment": "MIDDLE",
+                            "paddingTop": {"magnitude": 2.835, "unit": "PT"},
+                            "paddingBottom": {"magnitude": 2.835, "unit": "PT"},
+                            "paddingLeft": {"magnitude": 2.835, "unit": "PT"},
+                            "paddingRight": {"magnitude": 2.835, "unit": "PT"}
+                        },
+                        "tableRange": {
+                            "tableCellLocation": {
+                                "tableStartLocation": {"index": tabel_start_index}, 
+                                "rowIndex": 0, 
+                                "columnIndex": 0
+                            }, 
+                            "rowSpan": n_rows, 
+                            "columnSpan": n_cols
+                        }, 
+                        "fields": "contentAlignment,paddingTop,paddingBottom,paddingLeft,paddingRight"
+                    }
+                },
                 # Merge 'Referensi'
                 {"mergeTableCells": {"tableRange": {"tableCellLocation": {"tableStartLocation": {"index": tabel_start_index}, "rowIndex": 0, "columnIndex": 0}, "rowSpan": 2, "columnSpan": 1}}},
                 # BG Color header
