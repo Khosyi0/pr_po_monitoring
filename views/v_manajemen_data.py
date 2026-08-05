@@ -442,7 +442,7 @@ def render(**kwargs):
         
         tipe_etl = st.selectbox(
             "Pilih Modul ETL", 
-            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)", "Harga Bahan Baku"]
+            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC", "Harga Bahan Baku"]
         )
 
         if tipe_etl == "SAP (PR & PO)":
@@ -532,31 +532,81 @@ def render(**kwargs):
                     st.success("Proses sinkronisasi SAP + SIPS selesai!")
                     
         elif tipe_etl == "SIPS":
-            file_sips = st.file_uploader("Upload File SIPS (.xlsx)", type=["xlsx"])
-            update_tgl_sips = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_sips")
-            if file_sips:
-                if st.button("Jalankan ETL SIPS", type="primary", icon=":material/cloud_upload:"):
-                    sips_path = "temp_sips.xlsx"
-                    with open(sips_path, "wb") as f: f.write(file_sips.getbuffer())
-                    
-                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-                    import etl_sips  # type: ignore
-                    
-                    etl_sips.Config.SIPS_FILE = sips_path
-                    etl_sips.Config.PERIODE_IMPORT = [] 
-                    etl_sips.db_get_engine = _get_engine
-                    
-                    terminal = st.empty()
-                    capture_sips = StreamlitCapture(terminal)
-                    with redirect_stdout(capture_sips), redirect_stderr(capture_sips):
+
+            # 1. FUNGSI HELPER (mengikuti pola Inklaring / Harga Bahan Baku)
+            def _jalankan_etl_sips(file_path, update_tanggal):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_sips  # type: ignore
+
+                etl_sips.Config.SIPS_FILE      = file_path
+                etl_sips.Config.SIPS_SHEET     = 'SIPS'
+                etl_sips.Config.PERIODE_IMPORT = []
+                etl_sips.db_get_engine         = _get_engine
+
+                terminal = st.empty()
+                capture_sips = StreamlitCapture(terminal)
+                with redirect_stdout(capture_sips), redirect_stderr(capture_sips):
+                    try:
                         etl_sips.run_etl()
                         capture_sips.flush()
-                        
-                    os.remove(sips_path)
-                    
-                    if update_tgl_sips:
-                        set_setting("DATA_UPDATE_SIPS", datetime.today().strftime("%Y-%m-%d"))
-                    st.success("Proses sinkronisasi SIPS selesai!, tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+
+                        if update_tanggal:
+                            set_setting("DATA_UPDATE_SIPS", datetime.today().strftime("%Y-%m-%d"))
+
+                        st.success("Proses sinkronisasi SIPS selesai! Tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"Gagal memproses data SIPS: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+
+            # 2. LOGIKA ANTARMUKA / UI MODUL SIPS
+            metode_input = st.radio("Metode Input Data SIPS", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_sips")
+            update_tgl_sips = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_sips")
+
+            if metode_input == "Upload File Manual":
+                file_sips = st.file_uploader("Upload File SIPS (.xlsx)", type=["xlsx"])
+                if file_sips:
+                    if st.button("Jalankan ETL SIPS", type="primary", icon=":material/cloud_upload:"):
+                        sips_path = "temp_sips.xlsx"
+                        with open(sips_path, "wb") as f:
+                            f.write(file_sips.getbuffer())
+
+                        _jalankan_etl_sips(sips_path, update_tgl_sips)
+
+            else:
+                # Opsi Tarik dari Google Sheets
+                st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya.")
+
+                sheet_id_sips = st.text_input(
+                    "ID Google Sheet (SIPS)",
+                    value="15v05LiVAp2kbus90Lf_uyfVc0EkwTHQMRs8JvP6vT9Q",
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    key="txt_sheet_sips"
+                )
+
+                if st.button("Tarik Data & Jalankan ETL SIPS", type="primary", icon=":material/cloud_download:"):
+                    if not sheet_id_sips:
+                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                    else:
+                        with st.spinner("Mengunduh data SIPS dari Google Sheets..."):
+                            import requests
+                            try:
+                                export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_sips}/export?format=xlsx"
+                                response = requests.get(export_url)
+
+                                if response.status_code == 200:
+                                    sips_path = "temp_sips_gsheet.xlsx"
+                                    with open(sips_path, "wb") as f:
+                                        f.write(response.content)
+
+                                    st.success("File SIPS berhasil diunduh. Memulai proses ETL...")
+                                    _jalankan_etl_sips(sips_path, update_tgl_sips)
+                                else:
+                                    st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat mengunduh: {e}")
         
         elif tipe_etl == "Inklaring Barang Impor":
             # 1. PINDAHKAN FUNGSI HELPER KE SINI (KE ATAS) agar terhindar dari scope error
@@ -638,33 +688,79 @@ def render(**kwargs):
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
-        elif tipe_etl == "EPROC (Utilisasi)":
-            file_eproc = st.file_uploader("Upload File EPROC (.xlsx) — harus ada sheet 'EPROC'", type=["xlsx"])
-            if file_eproc:
-                if st.button("Jalankan ETL EPROC", type="primary", icon=":material/cloud_upload:"):
-                    eproc_path = "temp_eproc.xlsx"
-                    with open(eproc_path, "wb") as f: 
-                        f.write(file_eproc.getbuffer())
+        elif tipe_etl == "EPROC":
 
-                    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-                    import etl_eproc # type: ignore
+            # 1. FUNGSI HELPER
+            def _jalankan_etl_eproc(file_path):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_eproc  # type: ignore
 
-                    etl_eproc.Config.EPROC_FILE = eproc_path
-                    etl_eproc.db_get_engine = _get_engine
+                etl_eproc.Config.EPROC_FILE = file_path
+                etl_eproc.db_get_engine = _get_engine
 
-                    terminal = st.empty()
-                    capture_eproc = StreamlitCapture(terminal)
-                    with redirect_stdout(capture_eproc), redirect_stderr(capture_eproc):
+                terminal = st.empty()
+                capture_eproc = StreamlitCapture(terminal)
+                with redirect_stdout(capture_eproc), redirect_stderr(capture_eproc):
+                    try:
                         sukses = etl_eproc.run_etl()
                         capture_eproc.flush()
 
                         if sukses:
                             st.success("✅ Proses unggah data EPROC selesai! Cek Dashboard Summary untuk melihat perubahannya.")
+                            st.cache_data.clear()
                         else:
                             st.error("❌ Proses gagal, silakan periksa log terminal di atas.")
+                    except Exception as e:
+                        st.error(f"Gagal memproses data EPROC: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
 
-                    if os.path.exists(eproc_path):
-                        os.remove(eproc_path)
+            # 2. LOGIKA ANTARMUKA / UI MODUL EPROC
+            metode_input = st.radio("Metode Input Data EPROC", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_eproc")
+
+            if metode_input == "Upload File Manual":
+                file_eproc = st.file_uploader("Upload File EPROC (.xlsx) — harus ada sheet 'EPROC'", type=["xlsx"])
+                if file_eproc:
+                    if st.button("Jalankan ETL EPROC", type="primary", icon=":material/cloud_upload:"):
+                        eproc_path = "temp_eproc.xlsx"
+                        with open(eproc_path, "wb") as f:
+                            f.write(file_eproc.getbuffer())
+
+                        _jalankan_etl_eproc(eproc_path)
+
+            else:
+                # Opsi Tarik dari Google Sheets
+                st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya.")
+
+                sheet_id_eproc = st.text_input(
+                    "ID Google Sheet (EPROC)",
+                    value="15v05LiVAp2kbus90Lf_uyfVc0EkwTHQMRs8JvP6vT9Q",
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    key="txt_sheet_eproc"
+                )
+
+                if st.button("Tarik Data & Jalankan ETL EPROC", type="primary", icon=":material/cloud_download:"):
+                    if not sheet_id_eproc:
+                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                    else:
+                        with st.spinner("Mengunduh data EPROC dari Google Sheets..."):
+                            import requests
+                            try:
+                                export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_eproc}/export?format=xlsx"
+                                response = requests.get(export_url)
+
+                                if response.status_code == 200:
+                                    eproc_path = "temp_eproc_gsheet.xlsx"
+                                    with open(eproc_path, "wb") as f:
+                                        f.write(response.content)
+
+                                    st.success("File EPROC berhasil diunduh. Memulai proses ETL...")
+                                    _jalankan_etl_eproc(eproc_path)
+                                else:
+                                    st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat mengunduh: {e}")
                         
         elif tipe_etl == "Harga Bahan Baku":
             

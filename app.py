@@ -51,8 +51,8 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 # Views - Inklaring Barang Impor
 from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
-# Views - Harga Bahan Baku
-from views import v_bahan_baku, v_manajemen_harga_majalah_bb
+# Views - Bahan Baku
+from views import v_bahan_baku, v_manajemen_harga_majalah_bb, v_kondisi_stock_bb
 
 # Views - Lainnya
 from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
@@ -256,6 +256,7 @@ def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_s
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_bahan_baku():               v_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
 def _render_manajemen_harga_majalah_bb(): v_manajemen_harga_majalah_bb.render(**st.session_state.get('_bb_view_args', {}))
+def _render_kondisi_stock_bb():         v_kondisi_stock_bb.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
@@ -324,7 +325,7 @@ inklaring_pages = [
 if is_admin():
     inklaring_pages.insert(1, st.Page(_render_inklaring_detail, title="Detailed Inklaring Data", icon=":material/unknown_document:"))
 
-# Halaman Harga Bahan Baku
+# Halaman Bahan Baku
 current_user_data = get_current_user()
 is_admin_bb = (current_user_data.get('role') == 'admin_bb') if current_user_data else False
 
@@ -335,13 +336,17 @@ bb_pages = [
 # Tambahkan is_admin_bb pada kondisi ini
 if is_admin() or is_admin_bb:
     bb_pages.append(
-        st.Page(_render_manajemen_harga_majalah_bb, title="Manajemen Harga Majalah Bahan Baku", icon=":material/edit_document:")
+        st.Page(_render_manajemen_harga_majalah_bb, title="Manajemen Harga Majalah BB", icon=":material/edit_document:")
     )
+
+bb_pages.append(
+    st.Page(_render_kondisi_stock_bb, title="Kondisi Stock BB", icon=":material/inventory:")
+)
 
 nav_dict.update({
     "SIPS": sips_pages,
     "Inklaring Barang Impor": inklaring_pages,
-    "Harga Bahan Baku": bb_pages,
+    "Bahan Baku": bb_pages,
     "SAP": sap_pages
 })
 
@@ -378,7 +383,7 @@ ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
-BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah Bahan Baku"}
+BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB"}
 LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
 current_page = pg.title
@@ -1357,7 +1362,7 @@ _logo_path_footer = "assets/logo_pg.png"
 _logo_b64_footer  = _load_icon_b64(_logo_path_footer)
 
 with col_foot1:
-    system_label = "Harga Bahan Baku" if is_bb else ("Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP")))
+    system_label = "Bahan Baku" if is_bb else ("Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP")))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.9 | "
