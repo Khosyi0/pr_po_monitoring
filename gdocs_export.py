@@ -59,6 +59,64 @@ TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 DEFAULT_MAX_DOCS_PER_BAHAN_BAKU = 3
 
+# =============================================================================
+# KONFIGURASI TAMPILAN TABEL (supaya isi tiap sel tidak wrap ke banyak baris)
+# =============================================================================
+# PENTING: font tabel WAJIB Arial 11pt di seluruh sel (header & data) -- ini
+# tidak bisa diubah/dikecilkan, jadi satu-satunya variabel yang bisa dikontrol
+# di sini adalah LEBAR KOLOM (dan, sebagai upaya terakhir, margin halaman).
+FONT_FAMILY_TABEL = "Arial"
+FONT_SIZE_TABEL_PT = 11
+
+# Lebar area teks halaman Google Docs default (Letter, margin 1 inch/72pt
+# kiri-kanan) dalam satuan PT. Ini batas "nyaman" sebelum kita mulai
+# mengecilkan margin halaman.
+LEBAR_HALAMAN_DEFAULT_PT = 468
+# Margin kiri/kanan halaman, default Google Docs 72pt (1 inch). Ini boleh
+# diperkecil kalau tabel butuh sedikit ruang tambahan supaya tidak wrap,
+# tapi tidak boleh lebih kecil dari MARGIN_HALAMAN_MIN_PT (supaya dokumen
+# tetap terlihat wajar, bukan tabel menempel ke tepi kertas).
+MARGIN_HALAMAN_DEFAULT_PT = 72
+MARGIN_HALAMAN_MIN_PT = 36  # 0.5 inch, batas bawah yang masih wajar
+# Lebar kertas Letter penuh (8.5 inch), dipakai untuk menghitung ulang lebar
+# area teks kalau margin dikecilkan: lebar_area = LEBAR_KERTAS - 2*margin.
+LEBAR_KERTAS_PT = 612
+
+# Lebar kolom "Referensi" (nama label sumber data, mis. "Argus FMB - East
+# Asia CFR (excl Taiwan)") dihitung dinamis dari panjang label TERPANJANG
+# yang benar-benar dipakai di dokumen ini -- bukan angka hardcode, karena
+# labelnya berubah-ubah tiap dokumen. Dibatasi antara MIN dan MAX supaya
+# label pendek tidak boros tempat dan label sangat panjang tidak menghabiskan
+# seluruh lebar halaman (sisanya boleh wrap ke baris ke-2 di dalam sel).
+LEBAR_KOLOM_REFERENSI_MIN_PT = 85
+LEBAR_KOLOM_REFERENSI_MAX_PT = 260
+# Padding kiri+kanan total per sel dalam PT (dipakai juga saat estimasi lebar
+# kolom supaya teks tidak mepet ke tepi sel).
+PADDING_HORIZONTAL_SEL_PT = 8
+
+# Lebar relatif tiap karakter Arial 11pt, dalam PT, per glyph -- jauh lebih
+# akurat daripada 1 angka rata-rata untuk semua karakter, karena Arial bukan
+# monospace: digit & spasi jauh lebih sempit daripada huruf kapital lebar
+# seperti "M"/"W". Nilai berikut adalah lebar advance-width Arial standar
+# (skala 1000 units/em) dikonversi ke PT pada ukuran 11pt, dibulatkan wajar.
+# Karakter yang tidak terdaftar memakai LEBAR_KARAKTER_DEFAULT_PT sebagai fallback.
+LEBAR_KARAKTER_ARIAL_11PT = {
+    " ": 3.13, "-": 3.85, ".": 3.13, ",": 3.13, "(": 3.76, ")": 3.76,
+    "0": 6.27, "1": 6.27, "2": 6.27, "3": 6.27, "4": 6.27, "5": 6.27,
+    "6": 6.27, "7": 6.27, "8": 6.27, "9": 6.27, "%": 10.03,
+    "i": 2.75, "j": 2.75, "l": 2.75, "I": 2.75, "t": 3.76, "f": 3.76, "r": 4.27,
+    "m": 9.66, "w": 8.14, "M": 9.66, "W": 12.53,
+}
+LEBAR_KARAKTER_DEFAULT_PT = 6.53  # untuk huruf lain (kapital/kecil umum), estimasi rata-rata
+LEBAR_KARAKTER_BOLD_FAKTOR = 1.08  # bold Arial sedikit lebih lebar dari reguler
+
+# Lebar kolom tanggal/harga: format harga di kolom ini konsisten, maksimal
+# sekitar "1000.00 - 1100.00" (18 karakter). Lebar dihitung dari estimasi
+# teks terpanjang ini di Arial 11pt, dengan batas bawah supaya tanggal di
+# header (mis. "30 Juli 2026") juga tetap muat 1 baris.
+TEKS_HARGA_TERPANJANG_CONTOH = "1000.00 - 1100.00"
+LEBAR_KOLOM_TANGGAL_MIN_PT = 68
+
 
 # =============================================================================
 # AUTENTIKASI & KLIEN API
@@ -254,6 +312,163 @@ def _hapus_file_drive(drive_service, file_id):
         pass
 
 
+def _estimasi_lebar_teks_pt(teks, bold=False):
+    """
+    Estimasi lebar teks (dalam PT) di Arial FONT_SIZE_TABEL_PT, dihitung per
+    karakter memakai LEBAR_KARAKTER_ARIAL_11PT (lebih akurat daripada 1 angka
+    rata-rata untuk semua karakter, karena Arial bukan monospace -- digit dan
+    spasi jauh lebih sempit daripada huruf kapital lebar seperti "M"/"W").
+    Bold sedikit lebih lebar dari reguler, jadi diberi faktor tambahan.
+    """
+    faktor_bold = LEBAR_KARAKTER_BOLD_FAKTOR if bold else 1.0
+    total = sum(
+        LEBAR_KARAKTER_ARIAL_11PT.get(ch, LEBAR_KARAKTER_DEFAULT_PT)
+        for ch in teks
+    )
+    return total * faktor_bold
+
+
+def _hitung_lebar_kolom_referensi(label_referensi_list):
+    """
+    Menghitung lebar kolom "Referensi" (dalam PT) dari panjang label TERPANJANG
+    yang benar-benar dipakai di dokumen ini (bisa "Fertecon - SEA FOB" atau
+    "Argus FMB - East Asia CFR (excl Taiwan)", tergantung data), dibatasi
+    antara LEBAR_KOLOM_REFERENSI_MIN_PT dan LEBAR_KOLOM_REFERENSI_MAX_PT.
+
+    Kalau label terpanjang butuh lebar lebih dari MAX_PT, kolom tetap dibatasi
+    ke MAX_PT -- sisanya nanti wrap ke baris ke-2 di dalam sel (disengaja,
+    sesuai keputusan: lebih baik wrap daripada kolom tanggal jadi terlalu
+    sempit).
+    """
+    if not label_referensi_list:
+        return LEBAR_KOLOM_REFERENSI_MIN_PT
+
+    label_terpanjang = max(label_referensi_list, key=len)
+    lebar_dibutuhkan = _estimasi_lebar_teks_pt(label_terpanjang) + PADDING_HORIZONTAL_SEL_PT
+    return max(LEBAR_KOLOM_REFERENSI_MIN_PT, min(LEBAR_KOLOM_REFERENSI_MAX_PT, lebar_dibutuhkan))
+
+
+def _hitung_lebar_kolom_tanggal():
+    """
+    Menghitung lebar kolom tanggal/harga (dalam PT) dari estimasi teks harga
+    terpanjang yang mungkin muncul (format konsisten, mis. "1000.00 - 1100.00"),
+    dengan bold diperhitungkan karena baris header juga bold.
+    """
+    lebar_dibutuhkan = _estimasi_lebar_teks_pt(TEKS_HARGA_TERPANJANG_CONTOH, bold=True) + PADDING_HORIZONTAL_SEL_PT
+    return max(LEBAR_KOLOM_TANGGAL_MIN_PT, lebar_dibutuhkan)
+
+
+def _hitung_lebar_kolom_tabel(n_cols, label_referensi_list):
+    """
+    Menghitung lebar tiap kolom tabel (dalam PT):
+      - Kolom "Referensi" (kolom ke-0): dinamis dari label terpanjang yang
+        benar-benar dipakai di dokumen ini.
+      - Kolom-kolom tanggal/harga: lebar seragam, dihitung dari estimasi
+        format harga terpanjang yang mungkin muncul (konsisten per definisi).
+    Mengembalikan (list_lebar_kolom, total_lebar_pt).
+    """
+    n_kolom_tanggal = max(n_cols - 1, 1)
+    lebar_referensi = _hitung_lebar_kolom_referensi(label_referensi_list)
+    lebar_tanggal = _hitung_lebar_kolom_tanggal()
+
+    lebar_kolom = [lebar_referensi] + [lebar_tanggal] * n_kolom_tanggal
+    return lebar_kolom, sum(lebar_kolom)
+
+
+def _requests_atur_margin_halaman(total_lebar_kolom_pt):
+    """
+    Kalau total lebar kolom yang dibutuhkan melebihi lebar area teks default
+    (LEBAR_HALAMAN_DEFAULT_PT, margin 1 inch), perkecil margin kiri/kanan
+    halaman supaya tabel tetap muat tanpa wrap -- turun sampai maksimal
+    MARGIN_HALAMAN_MIN_PT (0.5 inch), supaya dokumen tetap terlihat wajar.
+
+    Untuk kelebihan KECIL (mis. label Referensi sedikit panjang, atau 3 kolom
+    tanggal), margin minimum biasanya sudah cukup menampung semuanya tanpa
+    wrap sama sekali. Untuk kelebihan BESAR (mis. 4-5+ kolom tanggal, karena
+    tiap kolom tanggal perlu ~100-110pt supaya format harga "1000.00 -
+    1100.00" muat 1 baris di Arial 11pt), margin minimum saja tidak cukup --
+    fungsi ini tetap memakai margin minimum, dan sisa kelebihannya akan wrap
+    ke baris ke-2 di kolom Referensi (bukan mengecilkan kolom tanggal atau
+    fontnya, sesuai keputusan yang diambil).
+
+    Mengembalikan list request (kosong kalau margin default sudah cukup).
+    """
+    if total_lebar_kolom_pt <= LEBAR_HALAMAN_DEFAULT_PT:
+        return []
+
+    kelebihan = total_lebar_kolom_pt - LEBAR_HALAMAN_DEFAULT_PT
+    margin_baru = MARGIN_HALAMAN_DEFAULT_PT - (kelebihan / 2)
+    margin_baru = max(MARGIN_HALAMAN_MIN_PT, margin_baru)
+
+    return [{
+        "updateDocumentStyle": {
+            "documentStyle": {
+                "marginLeft": {"magnitude": margin_baru, "unit": "PT"},
+                "marginRight": {"magnitude": margin_baru, "unit": "PT"},
+            },
+            "fields": "marginLeft,marginRight",
+        }
+    }]
+
+
+def _requests_atur_lebar_kolom(tabel_start_index, n_cols, label_referensi_list):
+    """
+    Membuat list request updateTableColumnProperties untuk mengatur lebar
+    tiap kolom tabel secara fixed-width, sesuai hasil _hitung_lebar_kolom_tabel.
+    Mengembalikan (list_requests, total_lebar_pt) -- total_lebar_pt dipakai
+    pemanggil untuk memutuskan apakah margin halaman perlu disesuaikan.
+    """
+    lebar_kolom, total_lebar = _hitung_lebar_kolom_tabel(n_cols, label_referensi_list)
+    requests = []
+    for c_idx, lebar in enumerate(lebar_kolom):
+        requests.append({
+            "updateTableColumnProperties": {
+                "tableStartLocation": {"index": tabel_start_index},
+                "columnIndices": [c_idx],
+                "tableColumnProperties": {
+                    "widthType": "FIXED_WIDTH",
+                    "width": {"magnitude": lebar, "unit": "PT"},
+                },
+                "fields": "widthType,width",
+            }
+        })
+    return requests, total_lebar
+
+
+def _requests_font_tabel(tabel_element):
+    """
+    Membuat list request updateTextStyle untuk MEMASTIKAN seluruh isi tabel
+    (header maupun data) memakai Arial 11pt -- ukuran dan family font tabel
+    ini adalah persyaratan tetap, BUKAN sesuatu yang diperkecil untuk
+    menghindari wrap (lebar kolom yang menyesuaikan, bukan font).
+    Dipanggil setelah struktur tabel (dan mergenya, kalau ada) sudah final,
+    karena butuh startIndex/endIndex paragraf yang akurat dari tabel terbaru.
+    """
+    requests = []
+    for row in tabel_element["tableRows"]:
+        for cell in row["tableCells"]:
+            for content_elem in cell.get("content", []):
+                paragraph = content_elem.get("paragraph")
+                if not paragraph:
+                    continue
+                para_start = content_elem["startIndex"]
+                para_end = content_elem["endIndex"]
+                # Hanya beri style kalau ada isi teksnya (endIndex > startIndex+1
+                # karena tiap paragraf kosong tetap punya 1 karakter newline)
+                if para_end - 1 > para_start:
+                    requests.append({
+                        "updateTextStyle": {
+                            "range": {"startIndex": para_start, "endIndex": para_end - 1},
+                            "textStyle": {
+                                "weightedFontFamily": {"fontFamily": FONT_FAMILY_TABEL},
+                                "fontSize": {"magnitude": FONT_SIZE_TABEL_PT, "unit": "PT"},
+                            },
+                            "fields": "weightedFontFamily,fontSize",
+                        }
+                    })
+    return requests
+
+
 def generate_google_doc(
     label_bb, jenis_harga, start_date, end_date,
     image_bytes, df_pivot, kolom_tanggal, list_resume,
@@ -371,6 +586,26 @@ def generate_google_doc(
             tabel_element_start_index = elem["startIndex"]
 
     if tabel_element is not None:
+        # 6.0. Atur lebar tiap kolom LEBIH DULU (sebelum isi teks), supaya
+        # perhitungan wrap Docs sudah memakai lebar final saat teks dimasukkan.
+        # Lebar kolom "Referensi" dihitung dari label yang BENAR-BENAR dipakai
+        # di df_pivot ini (mis. "Fertecon - SEA FOB", "Argus FMB - East Asia
+        # CFR (excl Taiwan)"), bukan angka hardcode.
+        label_referensi_list = [str(idx) for idx in df_pivot.index]
+        requests_lebar_kolom, total_lebar_kolom = _requests_atur_lebar_kolom(
+            tabel_element_start_index, n_cols, label_referensi_list
+        )
+        # Kalau total lebar kolom sedikit melebihi lebar halaman default,
+        # kecilkan margin kiri/kanan (sampai batas minimum wajar) supaya
+        # tabel tetap muat tanpa wrap; kalau kelebihannya besar, margin
+        # minimum tetap dipakai dan sisanya wrap ke baris ke-2 di sel
+        # Referensi (bukan mengecilkan font, karena font wajib Arial 11pt).
+        requests_margin = _requests_atur_margin_halaman(total_lebar_kolom)
+        docs_service.documents().batchUpdate(
+            documentId=document_id,
+            body={"requests": requests_margin + requests_lebar_kolom}
+        ).execute()
+
         header_row_1 = ["Referensi"] + ["Harga USD/MT"] + [""] * (n_cols - 2)
         header_row_2 = [""] + kolom_tanggal
         data_rows = []
@@ -410,6 +645,8 @@ def generate_google_doc(
         # untuk SELURUH tabel sebelum merge, karena merge hanya mengubah
         # rowSpan/columnSpan dan tidak mempengaruhi contentAlignment yang sudah
         # di-set sebelumnya pada rentang sel yang tercakup.
+        # Padding kiri/kanan juga dikecilkan (dari default ~5pt ke 2pt) supaya
+        # ruang efektif untuk teks per sel lebih besar, mengurangi risiko wrap.
         docs_service.documents().batchUpdate(
             documentId=document_id,
             body={"requests": [{
@@ -418,8 +655,8 @@ def generate_google_doc(
                         "contentAlignment": "MIDDLE",
                         "paddingTop": {"magnitude": 2.835, "unit": "PT"},
                         "paddingBottom": {"magnitude": 2.835, "unit": "PT"},
-                        "paddingLeft": {"magnitude": 2.835, "unit": "PT"},
-                        "paddingRight": {"magnitude": 2.835, "unit": "PT"}
+                        "paddingLeft": {"magnitude": 2, "unit": "PT"},
+                        "paddingRight": {"magnitude": 2, "unit": "PT"}
                     },
                     "tableRange": {
                         "tableCellLocation": {
@@ -496,9 +733,9 @@ def generate_google_doc(
             documentId=document_id, body={"requests": requests_style}
         ).execute()
 
-        # 6c. Bold + rata tengah untuk teks di baris header & rata tengah untuk kolom harga
-        # (dilakukan SETELAH merge, karena index paragraph di dalam sel perlu 
-        # diambil ulang dari struktur tabel terbaru pasca-merge).
+        # 6c. Bold + rata tengah untuk teks di baris header & rata tengah untuk kolom harga,
+        # serta font size khusus tabel (dilakukan SETELAH merge, karena index paragraph
+        # di dalam sel perlu diambil ulang dari struktur tabel terbaru pasca-merge).
         doc_setelah_merge = docs_service.documents().get(documentId=document_id).execute()
         tabel_setelah_merge = None
         for elem in doc_setelah_merge["body"]["content"]:
@@ -557,6 +794,10 @@ def generate_google_doc(
                                 "fields": "alignment",
                             }
                         })
+
+            # Pastikan seluruh isi tabel (header & data) memakai Arial 11pt --
+            # lebar kolom yang menyesuaikan supaya tidak wrap, bukan font.
+            requests_text_style.extend(_requests_font_tabel(tabel_setelah_merge))
 
         if requests_text_style:
             docs_service.documents().batchUpdate(
@@ -698,6 +939,19 @@ def generate_google_doc_batch(
                 break
 
         if tabel_element:
+            # C.0. Atur lebar tiap kolom LEBIH DULU, sebelum isi teks dimasukkan.
+            # Lebar kolom "Referensi" dihitung dari label yang benar-benar
+            # dipakai di df_pivot bahan baku ini.
+            label_referensi_list = [str(idx) for idx in df_pivot.index]
+            requests_lebar_kolom, total_lebar_kolom = _requests_atur_lebar_kolom(
+                tabel_start_index, n_cols, label_referensi_list
+            )
+            requests_margin = _requests_atur_margin_halaman(total_lebar_kolom)
+            docs_service.documents().batchUpdate(
+                documentId=document_id,
+                body={"requests": requests_margin + requests_lebar_kolom}
+            ).execute()
+
             # Siapkan data baris
             header_1 = ["Referensi"] + ["Harga USD/MT"] + [""] * (n_cols - 2)
             header_2 = [""] + kolom_tanggal
@@ -724,15 +978,15 @@ def generate_google_doc_batch(
             # Merge & Style Header Tabel
             HEADER_BG_COLOR = {"red": 0.741, "green": 0.843, "blue": 0.933}
             req_style = [
-                # Vertical align middle & atur Padding 0.1cm untuk semua sel
+                # Vertical align middle & atur Padding (kiri/kanan dikecilkan) untuk semua sel
                 {
                     "updateTableCellStyle": {
                         "tableCellStyle": {
                             "contentAlignment": "MIDDLE",
                             "paddingTop": {"magnitude": 2.835, "unit": "PT"},
                             "paddingBottom": {"magnitude": 2.835, "unit": "PT"},
-                            "paddingLeft": {"magnitude": 2.835, "unit": "PT"},
-                            "paddingRight": {"magnitude": 2.835, "unit": "PT"}
+                            "paddingLeft": {"magnitude": 2, "unit": "PT"},
+                            "paddingRight": {"magnitude": 2, "unit": "PT"}
                         },
                         "tableRange": {
                             "tableCellLocation": {
@@ -756,7 +1010,7 @@ def generate_google_doc_batch(
                 req_style.append({"mergeTableCells": {"tableRange": {"tableCellLocation": {"tableStartLocation": {"index": tabel_start_index}, "rowIndex": 0, "columnIndex": 1}, "rowSpan": 1, "columnSpan": n_cols - 1}}})
             docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_style}).execute()
 
-            # Center text di header & data
+            # Center text di header & data + font size kecil khusus tabel
             doc_current = docs_service.documents().get(documentId=document_id).execute()
             tabel_element = next(elem["table"] for elem in reversed(doc_current["body"]["content"]) if "table" in elem)
             
@@ -777,6 +1031,10 @@ def generate_google_doc_batch(
                         if "paragraph" in content:
                             start, end = content["startIndex"], content["endIndex"]
                             req_text_center.append({"updateParagraphStyle": {"range": {"startIndex": start, "endIndex": end}, "paragraphStyle": {"alignment": "CENTER"}, "fields": "alignment"}})
+
+            # Pastikan seluruh isi tabel (header & data) memakai Arial 11pt
+            req_text_center.extend(_requests_font_tabel(tabel_element))
+
             if req_text_center:
                 docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_text_center}).execute()
 
