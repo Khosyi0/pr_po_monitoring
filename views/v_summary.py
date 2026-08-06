@@ -874,7 +874,7 @@ def render(load_data, **kwargs):
     # 1. On Spec
     _onspec_monthly = kpi_monthly_cache.get("KPI_ON_SPEC", {})
     _on_spec_override = _onspec_monthly.get("nilai", "") or get_setting("KPI_ON_SPEC_NILAI", "")
-    sla_on_spec_pct = 99.30
+    sla_on_spec_pct = 99.20
     if _on_spec_override:
         try:
             _clean_val = _on_spec_override.replace("%", "").strip().replace(",", ".")
@@ -1469,7 +1469,7 @@ def render(load_data, **kwargs):
             df_karyawan['Efisiensi Rp_val'] = df_karyawan['sips_oe_na'] - df_karyawan['sips_po_na']
             df_karyawan['Efisiensi %'] = (df_karyawan['Efisiensi Rp_val'] / df_karyawan['sips_oe_na'].replace(0, float('nan')) * 100).fillna(0)
             df_karyawan['% On Budget'] = (df_karyawan['on_budget_count'] / df_karyawan['total_po'].replace(0, float('nan')) * 100).fillna(0)
-            df_karyawan['% On Spec'] = 99.30
+            df_karyawan['% On Spec'] = 99.20
             df_karyawan['OTOBOS'] = ((df_karyawan['% On Time'] + df_karyawan['% On Budget'] + df_karyawan['% On Spec']) / 3).fillna(0)
             
             df_karyawan['% On Time'] = df_karyawan['% On Time'].apply(lambda x: f"{x:.2f}%")
