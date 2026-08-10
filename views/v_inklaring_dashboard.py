@@ -1,5 +1,7 @@
 """
 v_inklaring_dashboard.py - Halaman Dashboard Inklaring Barang Impor
+(FIXED: Check_List / kolom Status pada tabel SLA kini konsisten dengan
+KPI "PIB Selesai" — sama-sama memakai df['tgl_sppb'].notna())
 """
 import streamlit as st
 import pandas as pd
@@ -175,7 +177,11 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     is_hijau_mask = df['spjm'].fillna('').astype(str).str.strip().isin(['', '0', '0.0'])
     df['Keterangan_Jalur'] = np.where(is_hijau_mask, 'HIJAU', 'MERAH')
 
-    df['Check_List'] = df['status'].astype(str).str.lower().isin(['done', 'selesai', 'pib selesai', 'pib_selesai'])
+    # --- FIX: gunakan tgl_sppb sebagai satu-satunya sumber kebenaran status
+    # "Selesai", sama persis dengan definisi KPI "PIB Selesai" di bawah.
+    # (Sebelumnya kolom ini memakai df['status'] mentah dari database, yang
+    # bisa berbeda isi/format sehingga tidak sinkron dengan angka KPI.)
+    df['Check_List'] = df['tgl_sppb'].notna()
 
     df['SLA_Target'] = np.where(df['komoditi'] == 'SA', 15, 
                                 np.where(df['Keterangan_Jalur'] == 'MERAH', 8, 0))
@@ -192,6 +198,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     total_score_1 = (df['Score_SLA'] == 1).sum()
     persen_sla_epp = (total_score_1 / total_data) * 100 if total_data > 0 else 0
 
+    # KPI "PIB Selesai" tetap dihitung dari tgl_sppb (sekarang identik dengan Check_List)
     pib_selesai = df['tgl_sppb'].notna().sum()
     pib_on_progress = total_data - pib_selesai
 
@@ -210,6 +217,21 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     avg_bongkar = df['Lama_Bongkar_Hari'].mean()
     avg_bebas_hari = df['Bebas_Hari'].mean()
 
+    # Rincian angka nominal (total selisih hari / jumlah dokumen = rata-rata)
+    # untuk ditampilkan di popover formula, contoh: "-160 / 68 = -2,35 Hari".
+    def _sum_count_avg(value_col):
+        valid = df[value_col].dropna()
+        total = valid.sum()
+        count = valid.count()
+        avg = total / count if count > 0 else float('nan')
+        fmt_num = lambda v: format_number(v, decimals=2) if pd.notna(v) else "-"
+        total_str = f"{total:,.0f}".replace(",", ".")
+        return f"{total_str} / {count} = {fmt_num(avg)} Hari"
+
+    detail_bebas_hari = _sum_count_avg('Bebas_Hari')
+    detail_waiting = _sum_count_avg('Waiting_Time')
+    detail_bongkar = _sum_count_avg('Lama_Bongkar_Hari')
+
     KPI_DASH = [
         {
             "key": "kpi_total_pib",
@@ -227,7 +249,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "value": f"{format_number(pib_selesai)}",
             "delta": f"{format_number(pib_on_progress)} On Progress",
             "dtype": "neutral",
-            "formula": "Jumlah dokumen PIB yang Tanggal SPPB-nya sudah terisi. Dokumen On Progress adalah selisih Total PIB dengan PIB Selesai."
+            "formula": "Jumlah dokumen PIB yang Tanggal SPPB-nya sudah terisi. Dokumen On Progress adalah selisih Total PIB dengan PIB Selesai. (Kriteria ini sama dengan kolom Status pada Tabel Rincian SLA per Kapal.)"
         },
         {
             "key": "kpi_kinerja_sla",
@@ -245,7 +267,11 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "value": f"{format_number(avg_bebas_hari, decimals=2)} Hari" if pd.notna(avg_bebas_hari) else "-",
             "delta": "Tgl SPPB - Selesai Bongkar",
             "dtype": "neutral",
-            "formula": "Rata-rata selisih hari dari Selesai Bongkar hingga Tgl SPPB diterbitkan."
+            "formula": (
+                "Rata-rata selisih hari dari Selesai Bongkar hingga Tgl SPPB diterbitkan.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_bebas_hari}**"
+            )
         },
         {
             "key": "kpi_avg_waiting",
@@ -254,7 +280,11 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "value": f"{format_number(avg_waiting, decimals=2)} Hari" if pd.notna(avg_waiting) else "-",
             "delta": "Start Bongkar - Tgl PIB",
             "dtype": "neutral",
-            "formula": "Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar."
+            "formula": (
+                "Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_waiting}**"
+            )
         },
         {
             "key": "kpi_avg_bongkar",
@@ -263,7 +293,11 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             "value": f"{format_number(avg_bongkar, decimals=2)} Hari" if pd.notna(avg_bongkar) else "-",
             "delta": "Selesai Bongkar - Start Bongkar",
             "dtype": "neutral",
-            "formula": "Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar."
+            "formula": (
+                "Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_bongkar}**"
+            )
         },
         {
             "key": "kpi_total_biaya",

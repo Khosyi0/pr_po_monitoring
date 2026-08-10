@@ -164,6 +164,22 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     avg_bebas = df['Bebas_Hari'].mean()
     avg_waiting = df['Waiting_Time'].mean()
     avg_bongkar = df['Lama_Bongkar_Hari'].mean()
+
+    # Rincian angka nominal (total selisih hari / jumlah dokumen = rata-rata)
+    # untuk ditampilkan di popover formula, contoh: "-160 / 68 = -2,35 Hari".
+    # (Selaras dengan v_inklaring_dashboard.py)
+    def _sum_count_avg(value_col):
+        valid = df[value_col].dropna()
+        total = valid.sum()
+        count = valid.count()
+        avg = total / count if count > 0 else float('nan')
+        fmt_num = lambda v: format_number(v, decimals=2) if pd.notna(v) else "-"
+        total_str = f"{total:,.0f}".replace(",", ".")
+        return f"{total_str} / {count} = {fmt_num(avg)} Hari"
+
+    detail_bebas_hari = _sum_count_avg('Bebas_Hari')
+    detail_waiting = _sum_count_avg('Waiting_Time')
+    detail_bongkar = _sum_count_avg('Lama_Bongkar_Hari')
     
     # == KPI CARDS ============================================
     st.markdown("""
@@ -180,17 +196,29 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         val1 = f"{format_number(avg_bebas, decimals=1)} Hari" if pd.notna(avg_bebas) else "-"
         st.markdown(_card(ICONS["clock"], "Rata-rata Bebas (Hari)", val1, "Tgl SPPB - Selesai Bongkar", "neutral"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info("**Rata-rata Bebas (Hari)**: Rata-rata selisih hari dari Selesai Bongkar hingga Tgl SPPB diterbitkan.")
+            st.info(
+                "**Rata-rata Bebas (Hari)**: Rata-rata selisih hari dari Selesai Bongkar hingga Tgl SPPB diterbitkan.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_bebas_hari}**"
+            )
     with col2:
         val2 = f"{format_number(avg_waiting, decimals=1)} Hari" if pd.notna(avg_waiting) else "-"
         st.markdown(_card(ICONS["clock"], "Rata-rata Waiting Time", val2, "Start Bongkar - Tgl PIB", "neutral"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info("**Rata-rata Waiting Time**: Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar.")
+            st.info(
+                "**Rata-rata Waiting Time**: Rata-rata selisih hari dari Tgl PIB hingga Start Bongkar.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_waiting}**"
+            )
     with col3:
         val3 = f"{format_number(avg_bongkar, decimals=1)} Hari" if pd.notna(avg_bongkar) else "-"
         st.markdown(_card(ICONS["clock"], "Rata-rata Waktu Proses Bongkar", val3, "Selesai Bongkar - Start Bongkar", "neutral"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info("**Rata-rata Waktu Proses Bongkar**: Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar.")
+            st.info(
+                "**Rata-rata Waktu Proses Bongkar**: Rata-rata selisih hari dari Start Bongkar hingga Selesai Bongkar.\n\n"
+                f"Total Selisih Hari / Jumlah Dokumen = Rata-rata:\n"
+                f"**{detail_bongkar}**"
+            )
 
     st.markdown("---")
 
