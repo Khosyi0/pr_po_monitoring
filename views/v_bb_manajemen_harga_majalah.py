@@ -19,9 +19,9 @@ import time
 from contextlib import redirect_stdout, redirect_stderr
 
 try:
-    from .v_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
+    from .v_bb_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
 except ImportError:  # fallback saat file dijalankan langsung
-    from v_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
+    from views.v_bb_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
 
 
 def _get_engine():

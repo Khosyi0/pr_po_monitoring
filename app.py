@@ -52,7 +52,7 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
 
 # Views - Bahan Baku
-from views import v_bahan_baku, v_manajemen_harga_majalah_bb, v_kondisi_stock_bb
+from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock
 
 # Views - Lainnya
 from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
@@ -254,9 +254,9 @@ def _render_sips_alert():               v_sips_alert.render(**st.session_state.g
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
-def _render_bahan_baku():               v_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
-def _render_manajemen_harga_majalah_bb(): v_manajemen_harga_majalah_bb.render(**st.session_state.get('_bb_view_args', {}))
-def _render_kondisi_stock_bb():         v_kondisi_stock_bb.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
+def _render_manajemen_harga_majalah_bb(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
+def _render_kondisi_stock_bb():         v_bb_kondisi_stock.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
@@ -1365,7 +1365,7 @@ with col_foot1:
     system_label = "Bahan Baku" if is_bb else ("Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP")))
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
-        f"Monitoring Dashboard - {system_label} | v1.9 | "
+        f"Monitoring Dashboard - {system_label} | v1.9.3 | "
         f"{datetime.now(tz_wib).strftime('%Y-%m-%d %H:%M:%S')} WIB" 
         f"</div>",
         unsafe_allow_html=True

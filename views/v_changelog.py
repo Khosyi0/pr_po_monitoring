@@ -20,6 +20,26 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "7 Agustus 2026", "Versi": "v1.9.3", "Perubahan": """
+    - Mengubah fitur tombol export excel menjadi google docs
+    - Update halaman Harga Bahan Baku
+        - Menambahkan opsi menampilkan Harga Perolehan pada Trend Harga Bahan Baku
+        - Update tampilan line chart yang menampilkan nilai akhirnya
+    - Update kembali rumus pengambilan PR-PO karena ada celah yang menyebabkan beberapa PR-PO salah hitung
+    - Membuat halaman monitoring Kondisi Stock Bahan Baku
+    - """},
+        {"Tanggal": "24 Juni 2026", "Versi": "v1.9.2", "Perubahan": """
+    - Menyelesaikan halaman Harga Bahan Baku dan Manajemen Harga Majalah
+    - Membuat proses otomasi untuk update data harga bahan baku dan inklaring barang impor tiap harinya
+    - Membuat tombol di halaman Harga Bahan Baku untuk mengunduh excel yang berupa isi dari Trend Harga Bahan Baku
+    - """},
+        {"Tanggal": "10 Juni 2026", "Versi": "v1.9.1", "Perubahan": """
+    - Membuat Bagian Bahan Baku:
+        - Menambahkan halaman Harga Bahan Baku
+        - Menambahkan halaman Manajemen Harga Majalah
+    - Update rumus Kecepatan Pembebasan Barang Impor
+    - Menambahkan detail informasi dari sumber data dan perhitungan pada masing-masing KPI di halaman Executive Summary
+    - """},
         {"Tanggal": "5 Juni 2026", "Versi": "v1.9", "Perubahan": """
     - Update rumus pengambilan data Total PR dan Total PO di halaman Dashboard Monitoring SIPS dan Executive Summary
     - Merombak isi KPI Pengadaan Barang di halaman Executive Summary:
@@ -38,7 +58,7 @@ def render(**kwargs):
         - % Zero Stock Out Bahan Baku
         - % Zero Stock Out Kantong
         - % Utilisasi Single Platform Pengadaan
-        - # Safety Score Pengadaan Barang
+        - \# Safety Score Pengadaan Barang
         - Penyusunan Laporan Kinerja
         - Pemenuhan Izin Impor
     - """},
@@ -360,5 +380,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9.3"])):
             st.markdown(item["Perubahan"])

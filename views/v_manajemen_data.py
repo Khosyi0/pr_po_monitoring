@@ -442,7 +442,7 @@ def render(**kwargs):
         
         tipe_etl = st.selectbox(
             "Pilih Modul ETL", 
-            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC", "Harga Bahan Baku"]
+            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)", "Harga Bahan Baku", "Kondisi Stock BB"]
         )
 
         if tipe_etl == "SAP (PR & PO)":
@@ -530,7 +530,7 @@ def render(**kwargs):
                     if update_tgl_sips:
                         set_setting("DATA_UPDATE_SIPS", datetime.today().strftime("%Y-%m-%d"))
                     st.success("Proses sinkronisasi SAP + SIPS selesai!")
-                    
+
         elif tipe_etl == "SIPS":
 
             # 1. FUNGSI HELPER (mengikuti pola Inklaring / Harga Bahan Baku)
@@ -607,7 +607,7 @@ def render(**kwargs):
                                     st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
-        
+
         elif tipe_etl == "Inklaring Barang Impor":
             # 1. PINDAHKAN FUNGSI HELPER KE SINI (KE ATAS) agar terhindar dari scope error
             def _jalankan_etl_inklaring(file_path, update_tanggal):
@@ -688,7 +688,7 @@ def render(**kwargs):
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
-        elif tipe_etl == "EPROC":
+        elif tipe_etl == "EPROC (Utilisasi)":
 
             # 1. FUNGSI HELPER
             def _jalankan_etl_eproc(file_path):
@@ -761,7 +761,7 @@ def render(**kwargs):
                                     st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
-                        
+
         elif tipe_etl == "Harga Bahan Baku":
             
             # 1. PINDAHKAN FUNGSI HELPER KE SINI (KE ATAS)
@@ -791,7 +791,7 @@ def render(**kwargs):
                             os.remove(file_path)
 
             # 2. BARU SETELAH ITU LOGIKA UI-NYA
-            metode_input = st.radio("Metode Input Data", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True)
+            metode_input = st.radio("Metode Input Data", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_bb")
             update_tgl_bahan_baku = st.checkbox("Update Tanggal Data Menjadi Hari Ini", value=False, key="chk_bahan_baku")
             
             if metode_input == "Upload File Manual":
@@ -802,7 +802,6 @@ def render(**kwargs):
                         with open(bb_path, "wb") as f: 
                             f.write(file_bahan_baku.getbuffer())
                             
-                        # Fungsi ini sekarang sudah dikenali karena sudah di-define di atas
                         _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
                         
             else:
@@ -811,7 +810,8 @@ def render(**kwargs):
                 sheet_id = st.text_input(
                     "ID Google Sheet", 
                     value="11QKLfNWhV7mFpwgJJ-6Zg8HWWs3yEmHCGszNuwDXl5o",
-                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    key="txt_sheet_bb"
                 )
                 
                 if st.button("Tarik Data & Jalankan ETL", type="primary", icon=":material/cloud_download:"):
@@ -831,39 +831,104 @@ def render(**kwargs):
                                     
                                     st.success("File berhasil diunduh. Memulai proses ETL...")
                                     
-                                    # Fungsi ini sekarang juga sudah dikenali
                                     _jalankan_etl_bahan_baku(bb_path, update_tgl_bahan_baku)
                                 else:
                                     st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
-        # Tambahkan fungsi helper ini di luar blok if/elif, atau tepat di bawahnya 
-        # agar kode tidak berulang dan lebih rapi.
-        def _jalankan_etl_bahan_baku(file_path, update_tanggal):
-            sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
-            import etl_harga_bahan_baku as etl_bb # type: ignore
+        elif tipe_etl == "Kondisi Stock BB":
 
-            etl_bb.Config.EXCEL_FILE = file_path
-            etl_bb.db_get_engine = _get_engine
+            # 1. FUNGSI HELPER
+            def _jalankan_etl_kondisi_stock_bb(file_path, tahun_data):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_kondisi_stock_bb as etl_ksb  # type: ignore
 
-            terminal = st.empty()
-            capture_bb = StreamlitCapture(terminal)
-            with redirect_stdout(capture_bb), redirect_stderr(capture_bb):
-                try:
-                    etl_bb.run_etl()
-                    capture_bb.flush()
-                    
-                    if update_tanggal:
-                        set_setting("DATA_UPDATE_BAHAN_BAKU", datetime.today().strftime("%Y-%m-%d"))
-                    
-                    st.success("Proses sinkronisasi Harga Bahan Baku selesai! Tekan tombol Refresh Data agar data terbaru muncul.")
-                    st.cache_data.clear()
-                except Exception as e:
-                    st.error(f"Gagal memproses data Harga Bahan Baku: {e}")
-                finally:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+                etl_ksb.Config.EXCEL_FILE  = file_path
+                etl_ksb.Config.SHEET_PUPUK = 'Pupuk'
+                etl_ksb.Config.SHEET_BB    = 'Bahan Baku'
+                etl_ksb.Config.TAHUN_DATA  = tahun_data
+                etl_ksb.db_get_engine      = _get_engine
+
+                terminal = st.empty()
+                capture_ksb = StreamlitCapture(terminal)
+                with redirect_stdout(capture_ksb), redirect_stderr(capture_ksb):
+                    try:
+                        sukses = etl_ksb.run_etl()
+                        capture_ksb.flush()
+
+                        if sukses:
+                            st.success("Proses sinkronisasi Kondisi Stock BB selesai! Tekan tombol Refresh Data agar data terbaru muncul di dashboard.")
+                            st.cache_data.clear()
+                        else:
+                            st.error("Proses ETL Kondisi Stock BB gagal, periksa terminal di atas.")
+                    except Exception as e:
+                        st.error(f"Gagal memproses data Kondisi Stock BB: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+
+            # 2. LOGIKA ANTARMUKA / UI MODUL KONDISI STOCK BB
+            st.info(
+                "ℹ️ ETL modul ini hanya menghapus & mengganti data untuk **tahun yang dipilih** "
+                "di bawah ini. Data tahun-tahun lain di database tetap aman dan tidak tersentuh."
+            )
+
+            tahun_sekarang = datetime.today().year
+            tahun_data_ksb = st.selectbox(
+                "Tahun Data",
+                options=list(range(tahun_sekarang - 2, tahun_sekarang + 2)),
+                index=2,  # default ke tahun berjalan
+                key="sel_tahun_ksb",
+                help="Tahun data yang direkap di dalam file (bukan tahun hari ini). Dicek manual karena rekapan bisa dimulai dari bulan berapa saja tiap tahunnya."
+            )
+
+            metode_input = st.radio("Metode Input Data", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_ksb")
+
+            if metode_input == "Upload File Manual":
+                file_ksb = st.file_uploader(
+                    "Upload File Excel — harus ada sheet 'Pupuk' dan 'Bahan Baku'",
+                    type=["xlsx"],
+                    key="uploader_ksb"
+                )
+                if file_ksb:
+                    if st.button("Jalankan ETL Kondisi Stock BB", type="primary", icon=":material/cloud_upload:"):
+                        ksb_path = "temp_kondisi_stock_bb.xlsx"
+                        with open(ksb_path, "wb") as f:
+                            f.write(file_ksb.getbuffer())
+                        _jalankan_etl_kondisi_stock_bb(ksb_path, tahun_data_ksb)
+
+            else:
+                st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya. Sheet 'Pupuk' dan 'Bahan Baku' harus ada di dalamnya.")
+
+                sheet_id_ksb = st.text_input(
+                    "ID Google Sheet (Kondisi Stock BB)",
+                    value="1vlBMT1FzSYEhtU3iabkpG1rMZpIGoyE_5EF3ZVYqk3g",
+                    placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+                    key="txt_sheet_ksb"
+                )
+
+                if st.button("Tarik Data & Jalankan ETL Kondisi Stock BB", type="primary", icon=":material/cloud_download:"):
+                    if not sheet_id_ksb:
+                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                    else:
+                        with st.spinner("Mengunduh data dari Google Sheets..."):
+                            import requests
+                            try:
+                                export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id_ksb}/export?format=xlsx"
+                                response = requests.get(export_url)
+
+                                if response.status_code == 200:
+                                    ksb_path = "temp_kondisi_stock_bb_gsheet.xlsx"
+                                    with open(ksb_path, "wb") as f:
+                                        f.write(response.content)
+
+                                    st.success("File berhasil diunduh. Memulai proses ETL...")
+                                    _jalankan_etl_kondisi_stock_bb(ksb_path, tahun_data_ksb)
+                                else:
+                                    st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
+                            except Exception as e:
+                                st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -880,7 +945,7 @@ def render(**kwargs):
     
     st.warning("Fitur ini akan menghapus seluruh data transaksi dari database secara permanen. Gunakan hanya jika Anda perlu mengulang proses upload (ETL) dari awal atau membersihkan data yang salah.")
     
-    col_del1, col_del2, col_del3, col_del4 = st.columns(4)
+    col_del1, col_del2, col_del3, col_del4, col_del5 = st.columns(5)
     
     with col_del1:
         with st.expander("🗑️ Hapus Data SAP"):
@@ -941,6 +1006,44 @@ def render(**kwargs):
                         with engine.begin() as conn:
                             conn.execute(text("TRUNCATE TABLE master_harga_bahan_baku RESTART IDENTITY CASCADE;"))
                         st.success("Data Harga Bahan Baku berhasil dikosongkan!")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus data: {e}")
+
+    with col_del5:
+        with st.expander("🗑️ Hapus Kondisi Stock BB"):
+            st.write("Menghapus data Kondisi Stock BB per tahun tertentu (data tahun lain tidak terpengaruh), atau kosongkan seluruhnya.")
+            tahun_sekarang_del = datetime.today().year
+            pilihan_hapus_ksb = st.radio(
+                "Cakupan hapus",
+                ["Hapus tahun tertentu", "Hapus SEMUA tahun"],
+                key="radio_hapus_ksb",
+                horizontal=False
+            )
+            if pilihan_hapus_ksb == "Hapus tahun tertentu":
+                tahun_hapus_ksb = st.selectbox(
+                    "Pilih tahun yang akan dihapus",
+                    options=list(range(tahun_sekarang_del - 3, tahun_sekarang_del + 2)),
+                    index=3,
+                    key="sel_tahun_hapus_ksb"
+                )
+            confirm_ksb = st.checkbox("Saya yakin", key="confirm_ksb")
+            if st.button("Hapus Kondisi Stock BB", type="primary", disabled=not confirm_ksb, use_container_width=True):
+                with st.spinner("Menghapus data Kondisi Stock BB..."):
+                    try:
+                        engine = _get_engine()
+                        if pilihan_hapus_ksb == "Hapus tahun tertentu":
+                            with engine.begin() as conn:
+                                deleted = conn.execute(
+                                    text("DELETE FROM kondisi_stock_bb_raw WHERE tahun_data = :tahun"),
+                                    {'tahun': tahun_hapus_ksb}
+                                ).rowcount
+                            st.success(f"Data Kondisi Stock BB tahun {tahun_hapus_ksb} berhasil dihapus ({deleted} baris)!")
+                        else:
+                            with engine.begin() as conn:
+                                conn.execute(text("TRUNCATE TABLE kondisi_stock_bb_raw RESTART IDENTITY CASCADE;"))
+                            st.success("SELURUH data Kondisi Stock BB (semua tahun) berhasil dikosongkan!")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:
