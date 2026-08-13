@@ -53,6 +53,7 @@ from googleapiclient.http import MediaIoBaseUpload
 SCOPES = [
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/spreadsheets",
 ]
 
 TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -155,6 +156,128 @@ def _get_drive_service():
     creds = _get_credentials()
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
+def _get_sheets_service():
+    """Klien Google Sheets API, memakai kredensial OAuth yang sama dengan
+    Docs/Drive (_get_credentials() sudah ada di gdocs_export.py)."""
+    creds = _get_credentials()
+    return build("sheets", "v4", credentials=creds, cache_discovery=False)
+
+# ID spreadsheet Inklaring (hardcode, konsisten dengan pola sheet_id di
+# v_manajemen_data.py yang juga di-hardcode sebagai default value input).
+INKLARING_SPREADSHEET_ID = "1MD8RCYEeY_VC_NHjNfxiNKOTWyTNdgJscJL_thOZVtQ"
+INKLARING_SHEET_NAME = "2026 - BB/BD/BP"
+
+# Urutan kolom PERSIS seperti header sheet Inklaring (kolom A s.d. AU).
+# Kolom bertanda None adalah kolom hasil RUMUS di spreadsheet (No, NO AJU,
+# TOTAL, Lama Bongkar (Hari), BEBAS (Hari), Keterangan Jalur, CHECK LIST,
+# SLA, Score SLA, Kedatangan Kapal) -- SENGAJA dikosongkan saat append,
+# karena spreadsheet sudah punya rumus sendiri di kolom-kolom tsb dan akan
+# menghitung otomatis begitu baris baru diisi (rumus di-drag ke bawah oleh
+# pemilik sheet, bukan ditulis ulang oleh kode ini).
+INKLARING_SHEET_COLUMN_ORDER = [
+    None,               # A  - No (nomor urut manual di spreadsheet)
+    'tgl_pib',          # B  - Tgl PIB
+    'aju_pib',          # C  - AJU PIB
+    None,               # D  - NO AJU (rumus)
+    'sap',              # E  - SAP
+    'ln',               # F  - LN
+    'nama_kapal',       # G  - NAMA KAPAL
+    'tgl_eta',          # H  - Tgl ETA
+    'quantity_mt',      # I  - QUANTITY (MT)
+    'pemasok',          # J  - PEMASOK
+    'pengirim',         # K  - PENGIRIM
+    'agent',            # L  - AGENT
+    'komoditi',         # M  - KOMODITI
+    'asal_negara',      # N  - ASAL NEGARA
+    'port_of_load',     # O  - Port of Load
+    'hs_code',          # P  - HS
+    'bea_masuk_rp',     # Q  - Bea Masuk (Rp)
+    'ppn_rp',           # R  - PPN
+    'pph_rp',           # S  - PPH
+    None,               # T  - TOTAL (rumus)
+    'bm_persen',        # U  - BM %
+    'gudang_timbun',    # V  - GUDANG TIMBUN
+    'invoice',          # W  - INVOICE
+    'kurs',             # X  - Kurs
+    'skep_bc',          # Y  - SKEP BC
+    'start_bongkar',    # Z  - START BONGKAR
+    'selesai_bongkar',  # AA - SELESAI BONGKAR
+    None,               # AB - Lama Bongkar (Hari) (rumus)
+    'ppjk',             # AC - PPJK
+    'spjm',             # AD - SPJM
+    'ambil_sampel',     # AE - AMBIL SAMPEL
+    'no_pen_pib',       # AF - No Pen PIB
+    'tgl_no_pen_pib',   # AG - Tgl No Pen PIB
+    'no_sppb',          # AH - No S P P B
+    'tgl_sppb',         # AI - Tgl SPPB
+    'status',           # AJ - STATUS
+    None,               # AK - BEBAS (Hari) (rumus)
+    'no_sptnp',         # AL - NO SPTNP
+    'tgl_sptnp',        # AM - Tgl SPTNP
+    'nilai_sptnp',      # AN - NILAI SPTNP
+    None,               # AO - Keterangan Jalur (rumus)
+    None,               # AP - CHECK LIST (rumus)
+    None,               # AQ - (tidak disebutkan, dikosongkan)
+    None,               # AR - SLA (rumus)
+    None,               # AS - Score SLA (rumus)
+    None,               # AT - (tidak disebutkan, dikosongkan)
+    None,               # AU - Kedatangan Kapal (rumus)
+]
+ 
+ 
+def _format_nilai_untuk_sheet(val):
+    """Normalisasi 1 nilai field ke bentuk string/angka yang aman dikirim ke
+    Sheets API. Tanggal diformat 'YYYY-MM-DD' (konsisten dengan format yang
+    dipakai di PostgreSQL); None/NaN jadi string kosong."""
+    import math
+    from datetime import date, datetime as _dt
+    import pandas as _pd
+ 
+    if val is None:
+        return ""
+    if isinstance(val, float) and math.isnan(val):
+        return ""
+    if isinstance(val, (_pd.Timestamp, _dt, date)):
+        ts = _pd.Timestamp(val)
+        return "" if _pd.isna(ts) else ts.strftime("%Y-%m-%d")
+    return val
+ 
+ 
+def append_row_inklaring_ke_sheet(row_dict):
+    """
+    Menambahkan satu baris data Inklaring baru ke Google Sheet sumber
+    ("2026 - BB/BD/BP"), di baris kosong pertama setelah baris terakhir yang
+    terisi. Kolom hasil rumus (No, NO AJU, TOTAL, dst -- lihat
+    INKLARING_SHEET_COLUMN_ORDER) SENGAJA dikosongkan, karena spreadsheet
+    punya rumusnya sendiri di kolom tsb.
+ 
+    row_dict: dict dengan key = nama field internal (sama seperti
+    EDITABLE_DB_COLUMNS di v_inklaring_detail.py, mis. 'tgl_pib', 'aju_pib',
+    'sap', dst), value = nilai mentah (boleh date/datetime/None/str/angka).
+ 
+    Melempar Exception kalau gagal (pemanggil wajib menangkapnya sendiri agar
+    kegagalan tulis-ke-Sheets tidak membatalkan data yang sudah tersimpan di
+    PostgreSQL -- lihat pemakaian di v_inklaring_detail.py).
+    """
+    sheets_service = _get_sheets_service()
+ 
+    baris_untuk_sheet = []
+    for field_name in INKLARING_SHEET_COLUMN_ORDER:
+        if field_name is None:
+            baris_untuk_sheet.append("")
+        else:
+            baris_untuk_sheet.append(_format_nilai_untuk_sheet(row_dict.get(field_name)))
+ 
+    range_target = f"'{INKLARING_SHEET_NAME}'!A:A"
+    body = {"values": [baris_untuk_sheet]}
+ 
+    sheets_service.spreadsheets().values().append(
+        spreadsheetId=INKLARING_SPREADSHEET_ID,
+        range=range_target,
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body=body,
+    ).execute()
 
 def _get_config():
     cfg = st.secrets["google_docs_export"]
