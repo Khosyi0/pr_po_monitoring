@@ -26,20 +26,17 @@ def render(**kwargs):
         - Menambahkan opsi menampilkan Harga Perolehan pada Trend Harga Bahan Baku
         - Update tampilan line chart yang menampilkan nilai akhirnya
     - Update kembali rumus pengambilan PR-PO karena ada celah yang menyebabkan beberapa PR-PO salah hitung
-    - Membuat halaman monitoring Kondisi Stock Bahan Baku
-    - """},
+    - Membuat halaman monitoring Kondisi Stock Bahan Baku"""},
         {"Tanggal": "24 Juni 2026", "Versi": "v1.9.2", "Perubahan": """
     - Menyelesaikan halaman Harga Bahan Baku dan Manajemen Harga Majalah
     - Membuat proses otomasi untuk update data harga bahan baku dan inklaring barang impor tiap harinya
-    - Membuat tombol di halaman Harga Bahan Baku untuk mengunduh excel yang berupa isi dari Trend Harga Bahan Baku
-    - """},
+    - Membuat tombol di halaman Harga Bahan Baku untuk mengunduh excel yang berupa isi dari Trend Harga Bahan Baku"""},
         {"Tanggal": "10 Juni 2026", "Versi": "v1.9.1", "Perubahan": """
     - Membuat Bagian Bahan Baku:
         - Menambahkan halaman Harga Bahan Baku
         - Menambahkan halaman Manajemen Harga Majalah
     - Update rumus Kecepatan Pembebasan Barang Impor
-    - Menambahkan detail informasi dari sumber data dan perhitungan pada masing-masing KPI di halaman Executive Summary
-    - """},
+    - Menambahkan detail informasi dari sumber data dan perhitungan pada masing-masing KPI di halaman Executive Summary"""},
         {"Tanggal": "5 Juni 2026", "Versi": "v1.9", "Perubahan": """
     - Update rumus pengambilan data Total PR dan Total PO di halaman Dashboard Monitoring SIPS dan Executive Summary
     - Merombak isi KPI Pengadaan Barang di halaman Executive Summary:
@@ -60,22 +57,19 @@ def render(**kwargs):
         - % Utilisasi Single Platform Pengadaan
         - \# Safety Score Pengadaan Barang
         - Penyusunan Laporan Kinerja
-        - Pemenuhan Izin Impor
-    - """},
+        - Pemenuhan Izin Impor"""},
         {"Tanggal": "29 Mei 2026", "Versi": "v1.8.9", "Perubahan": """
     - Membatasi akses untuk viewer ke beberapa data sensitif
     - Menambahkan filter bulan secara Triwulanan di halaman Executive Summary
     - Update pengambilan data di halaman Executive Summary berdasarkan data SIPS, bukan SAP
-    - Update rumus Efisiensi menjadi hanya PR-PO yang jenisnya Non-Agreement
-    - """},
+    - Update rumus Efisiensi menjadi hanya PR-PO yang jenisnya Non-Agreement"""},
         {"Tanggal": "8 Mei 2026", "Versi": "v1.8.8", "Perubahan": """
     - Menambahkan fitur pencarian chart dan KPI
     - Menambahkan halaman untuk model AI:
         - Prediksi Jalur Impor
         - Prediksi Keterlambatan Vendor
         - Estimasi Durasi Pengadaan
-    - Menambahkan halaman Profile Departemen
-    - """},
+    - Menambahkan halaman Profile Departemen"""},
         {"Tanggal": "24 Apr 2026", "Versi": "v1.8.7", "Perubahan": """
     - Update UI pada kotak KPI dan chart di seluruh halaman
     - Menambahkan halaman Analisis Waktu Proses Inklaring

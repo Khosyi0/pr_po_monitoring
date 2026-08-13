@@ -15,6 +15,7 @@ import warnings
 import base64
 import os
 from zoneinfo import ZoneInfo
+
 warnings.filterwarnings('ignore')
 
 # == Load Dashboard icon (untuk page_icon & halaman login) ====================
@@ -49,7 +50,7 @@ from views import v_sap_dashboard, v_sap_detail, v_sap_evaluasi, v_sap_kinerja_p
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 
 # Views - Inklaring Barang Impor
-from views import v_inklaring_dashboard, v_inklaring_detail, v_inklaring_waktu
+from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_waktu
 
 # Views - Bahan Baku
 from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock
@@ -252,7 +253,7 @@ def _render_sips_detail():              v_sips_detail.render(**st.session_state.
 def _render_sips_waktu():               v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_alert():               v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
-def _render_inklaring_detail():         v_inklaring_detail.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_manajemen():      v_inklaring_manajemen.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
 def _render_manajemen_harga_majalah_bb(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
@@ -323,7 +324,7 @@ inklaring_pages = [
     st.Page(_render_inklaring_waktu,     title="Analisis Waktu Proses Inklaring", icon=":material/schedule:"),
 ]
 if is_admin():
-    inklaring_pages.insert(1, st.Page(_render_inklaring_detail, title="Detailed Inklaring Data", icon=":material/unknown_document:"))
+    inklaring_pages.insert(1, st.Page(_render_inklaring_manajemen, title="Manajemen Inklaring Data", icon=":material/unknown_document:"))
 
 # Halaman Bahan Baku
 current_user_data = get_current_user()
@@ -382,7 +383,7 @@ SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"}
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
-INKLARING_TITLES = {"Dashboard Inklaring", "Detailed Inklaring Data", "Analisis Waktu Proses Inklaring"}
+INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring"}
 BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB"}
 LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
