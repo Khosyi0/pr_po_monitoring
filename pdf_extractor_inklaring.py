@@ -52,12 +52,14 @@ BULAN_ID_KE_ANGKA = {
 
 # =============================================================================
 # MAPPING KOMODITI -> SINGKATAN
-# Teks komoditi dari PIB tidak selalu identik kata demi kata (mis. bisa ada
-# variasi kadar/merek seperti "PHOSPHATE ROCK 29% XYZ" atau "PHOSPHATE ROCK
-# 17% ABC"), tapi SELALU DIAWALI salah satu frasa berikut. Pencocokan
-# dilakukan berdasarkan apakah teks komoditi DIMULAI DENGAN salah satu key
-# di bawah (case-insensitive). Kalau tidak ada yang cocok, komoditi
-# dikosongkan (bukan dibiarkan sebagai teks asli), sesuai instruksi.
+# Teks komoditi dari PIB tidak selalu identik kata demi kata: bisa ada variasi
+# kadar/merek (mis. "PHOSPHATE ROCK 29% XYZ"), dan urutan kata inti bisa
+# TERBALIK antar dokumen (mis. "PHOSPHATE ROCK" vs "ROCK PHOSPHATE" -- sumber
+# datanya beda petugas input, tidak selalu konsisten). Karena itu pencocokan
+# TIDAK memakai prefix match, melainkan: apakah SEMUA kata kunci inti (di
+# bagian kiri, dipisah spasi) muncul di teks komoditi, dalam URUTAN BEBAS.
+# Kalau tidak ada satupun kombinasi kata kunci yang lengkap cocok, komoditi
+# dikosongkan (bukan dibiarkan sebagai teks asli).
 KOMODITI_KE_SINGKATAN = {
     "AMMONIUM SULPHATE CAPROLACTAM GRADE IN BULK": "ZA",
     "PHOSPHORIC ACID IN BULK": "PA",
@@ -67,22 +69,47 @@ KOMODITI_KE_SINGKATAN = {
     "DI-AMMONIUM PHOSPHATES (DAP) IN BULK": "DAP",
     "SULPHURIC ACID": "SA",
 }
-# Diurutkan dari key TERPANJANG ke TERPENDEK supaya prefix yang lebih
-# spesifik dicek lebih dulu (mencegah salah cocok ke prefix pendek yang
-# kebetulan juga jadi awalan key lain yang lebih panjang/spesifik).
-_KOMODITI_KEYS_URUT = sorted(KOMODITI_KE_SINGKATAN.keys(), key=len, reverse=True)
+
+
+def _kata_kunci_inti(label_komoditi):
+    """Ambil kata kunci inti dari label mapping, buang kata umum/generik
+    ("IN", "BULK", "GRADE") dan tanda kurung supaya pencocokan berbasis
+    kata-kunci tidak jadi terlalu longgar (mis. "IN BULK" sendirian jangan
+    sampai dianggap cocok ke banyak komoditi berbeda). Tanda hubung (mis. di
+    "DI-AMMONIUM") dipecah jadi kata terpisah, konsisten dengan cara token
+    diekstrak dari teks komoditi PDF di _petakan_komoditi."""
+    kata_umum_diabaikan = {"IN", "BULK", "GRADE", "OF", "NH4CL", "MOP", "DAP"}
+    label_bersih = label_komoditi.replace("(", " ").replace(")", " ").replace("-", " ")
+    kata_list = [
+        k for k in label_bersih.upper().split()
+        if k not in kata_umum_diabaikan
+    ]
+    return kata_list
+
+
+# Precompute kata kunci inti per label, diurutkan dari YANG PALING BANYAK
+# kata kuncinya ke yang paling sedikit -- supaya label yang lebih spesifik
+# (lebih banyak kata kunci wajib cocok) dicek lebih dulu, mencegah salah
+# cocok ke label lain yang kata kuncinya kebetulan subset.
+_KOMODITI_KATA_KUNCI = sorted(
+    ((label, _kata_kunci_inti(label), singkatan) for label, singkatan in KOMODITI_KE_SINGKATAN.items()),
+    key=lambda item: len(item[1]), reverse=True
+)
 
 
 def _petakan_komoditi(teks_komoditi):
     """Mencocokkan teks komoditi hasil ekstraksi PDF ke singkatannya
-    berdasarkan prefix (awalan), case-insensitive. Mengembalikan None kalau
-    tidak ada yang cocok (field dikosongkan, bukan diisi teks asli)."""
+    berdasarkan kemunculan SEMUA kata kunci inti suatu komoditi di dalam
+    teks (urutan kata bebas, jadi tahan terhadap pembalikan seperti
+    "ROCK PHOSPHATE" vs "PHOSPHATE ROCK"). Mengembalikan None kalau tidak
+    ada yang cocok (field dikosongkan, bukan diisi teks asli)."""
     if not teks_komoditi:
         return None
     teks_upper = teks_komoditi.strip().upper()
-    for key in _KOMODITI_KEYS_URUT:
-        if teks_upper.startswith(key.upper()):
-            return KOMODITI_KE_SINGKATAN[key]
+    kata_di_teks = set(re.findall(r"[A-Z0-9]+", teks_upper))
+    for _label, kata_kunci_list, singkatan in _KOMODITI_KATA_KUNCI:
+        if all(kata in kata_di_teks for kata in kata_kunci_list):
+            return singkatan
     return None
 
 
@@ -210,6 +237,59 @@ def _quantity_hilangkan_7_nol(teks_angka):
 # =============================================================================
 # 1. PIB NOPEN (paling banyak field diambil dari sini)
 # =============================================================================
+def _ekstrak_no_pen_pib_dari_koordinat(file_bytes):
+    """Mengekstrak No Pen PIB (nomor di field G, yang menumpuk secara visual
+    di baris yang sama dengan awal nama PENGIRIM/field '1. Nama, Alamat')
+    berdasarkan POSISI KATA (x, y) di halaman PDF, bukan pola teks/spasi.
+
+    Pendekatan berbasis pola spasi/koma terbukti TIDAK RELIABLE karena
+    pemisah antara nama perusahaan dan nomor pendaftaran sangat bervariasi
+    antar dokumen (kadang koma+1spasi, kadang tanpa koma+banyak spasi,
+    kadang tanpa koma+1spasi -- kombinasi terakhir ini tidak bisa dibedakan
+    dari spasi biasa di dalam nama lewat regex teks apapun). Posisi x/y kata
+    di halaman PDF jauh lebih stabil: nomor pendaftaran SELALU berada di
+    kolom kanan (x0 besar) pada baris (top) yang SAMA dengan label '1.'
+    field PENGIRIM.
+    """
+    try:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            page = pdf.pages[0]
+            words = page.extract_words()
+
+            # Cari label "1." yang jadi awal field PENGIRIM (bukan field A/B/C
+            # di bagian atas dokumen yang juga memakai angka "1." sebagai
+            # pilihan checkbox) -- dicirikan sebagai "1." dengan x0 KECIL
+            # (kolom paling kiri halaman, bukan menumpuk di tengah/kanan
+            # seperti checkbox A/B/C), dan merupakan kemunculan PERTAMA di
+            # posisi tsb pada halaman (field PENGIRIM selalu di atas field
+            # PENJUAL "1a.").
+            baris_label_1 = None
+            for w in words:
+                if w['text'] == '1.' and w['x0'] < 30:
+                    baris_label_1 = w
+                    break
+            if baris_label_1 is None:
+                return None
+
+            top_baris = baris_label_1['top']
+            # Toleransi 3pt untuk variasi kecil posisi vertikal antar kata
+            # dalam baris yang sama (baseline font kadang sedikit berbeda).
+            kata_sebaris = [
+                w for w in words
+                if abs(w['top'] - top_baris) <= 3 and w['x0'] > 250
+            ]
+            # Nomor pendaftaran adalah kata PALING KANAN di baris ini yang
+            # murni digit (>= 6 karakter) -- kolom kanan pada baris field
+            # PENGIRIM tidak punya konten lain selain nomor ini.
+            kandidat_angka = [w for w in kata_sebaris if re.fullmatch(r"\d{6,}", w['text'])]
+            if not kandidat_angka:
+                return None
+            kandidat_terkanan = max(kandidat_angka, key=lambda w: w['x0'])
+            return kandidat_terkanan['text']
+    except Exception:
+        return None
+
+
 def extract_pib_nopen(file_bytes):
     teks = _extract_text_all_pages(file_bytes)
     hasil = {}
@@ -219,17 +299,20 @@ def extract_pib_nopen(file_bytes):
     tgl_pib_raw = _cari(r"Tanggal Pengajuan\s*:\s*(\d{2}-\d{2}-\d{4})", teks)
     hasil['tgl_pib'] = _parse_tanggal_ddmmyyyy(tgl_pib_raw)
 
-    # No Pen PIB & Tgl No Pen PIB. Dengan layout=True, baris field G tampil:
-    #   "PENGIRIM                     SG G. Nomor dan Tanggal Pendaftaran 13-02-2025"
-    #   "1. Nama, Alamat : BEST SIGN ASIA ..., 000094"
-    # Nomor pendaftaran (000094) ada di UJUNG baris "1. Nama, Alamat" (kolom
-    # kanan yang menumpuk di baris yang sama dengan awal nama pengirim),
-    # sedangkan tanggalnya ada di baris "G. Nomor dan Tanggal Pendaftaran".
+    # No Pen PIB: nomor yang menumpuk secara visual di baris yang sama
+    # dengan field "1. Nama, Alamat" (PENGIRIM), di kolom kanan halaman
+    # (field G "Nomor dan Tanggal Pendaftaran"). Diambil berdasarkan posisi
+    # koordinat kata di halaman (lihat _ekstrak_no_pen_pib_dari_koordinat),
+    # BUKAN regex pada teks yang sudah diratakan lewat layout=True -- pemisah
+    # sebelum nomor (koma, jumlah spasi) terbukti tidak konsisten antar
+    # dokumen dan tidak bisa diandalkan sebagai penanda posisi.
+    hasil['no_pen_pib'] = _ekstrak_no_pen_pib_dari_koordinat(file_bytes)
+
+    # Tgl No Pen PIB tetap diambil dari teks biasa (baris "G. Nomor dan
+    # Tanggal Pendaftaran <tanggal>"), karena label & tanggalnya SELALU
+    # berdekatan langsung tanpa ambiguitas spasi.
     hasil['tgl_no_pen_pib'] = _parse_tanggal_ddmmyyyy(
         _cari(r"Nomor dan Tanggal Pendaftaran\s+(\d{2}-\d{2}-\d{4})", teks)
-    )
-    hasil['no_pen_pib'] = _cari(
-        r"1\.\s*Nama,\s*Alamat\s*:[^\n]*?,\s*(\d{6,})\s*$", teks, flags=re.MULTILINE
     )
 
     # PENGIRIM = "1. Nama, Alamat" ; PEMASOK = "1a. Nama, Alamat" -- HANYA
@@ -415,8 +498,25 @@ def extract_sptnp(file_bytes):
 # =============================================================================
 def extract_inward(file_bytes):
     hasil = {}
+
+    # Beberapa dokumen INWARD (BC 1.1) ternyata punya layer teks NATIVE yang
+    # bersih (bukan vector-graphics murni seperti contoh awal) -- dicoba
+    # LEBIH DULU karena 100% akurat, tanpa risiko typo OCR (mis. "HAI" salah
+    # baca jadi "HAl"). OCR hanya dipakai sebagai FALLBACK kalau dokumen
+    # memang tidak punya teks sama sekali.
+    teks_native = _extract_text_all_pages(file_bytes)
+    if teks_native and len(teks_native.strip()) > 20:
+        nama_kapal_raw = _cari(
+            r"Nama Sarana Pengangkut\s*:\s*([A-Z][A-Za-z0-9 .,\-]+?)\s+Pelabuhan",
+            teks_native
+        )
+        if nama_kapal_raw:
+            hasil['nama_kapal'] = nama_kapal_raw.strip()
+            return hasil
+
+    # Fallback: OCR (dokumen tanpa layer teks sama sekali)
     try:
-        teks = _ocr_all_pages(file_bytes)
+        teks_ocr = _ocr_all_pages(file_bytes)
     except Exception:
         hasil['nama_kapal'] = None
         return hasil
@@ -425,7 +525,7 @@ def extract_inward(file_bytes):
     # jadi "Pengangkul" dan titik dua jadi koma -- regex dibuat toleran)
     nama_kapal_raw = _cari(
         r"Nama Sarana Pengangku[tl]\S*\s*[:;.,]?\s*([A-Z][A-Za-z0-9 .,\-]+?)(?:\s{2,}|\n|Pelabuhan)",
-        teks
+        teks_ocr
     )
     if nama_kapal_raw:
         # OCR kadang menyisipkan koma di antara "MV" dan nama kapal (mis.
@@ -439,78 +539,103 @@ def extract_inward(file_bytes):
 # =============================================================================
 # 7. LAPORAN PENIMBUNAN MV -- perlu OCR (hasil scan/foto)
 # =============================================================================
+def _ocr_baris_dengan_koordinat(file_bytes, resolution=200):
+    """Menjalankan OCR dan mengembalikan list baris terekonstruksi lengkap
+    dengan koordinat vertikalnya (top), bukan cuma teks polos. Setiap baris
+    adalah dict {'top': int, 'text': str}, diurutkan berdasarkan top.
+
+    Dipakai sebagai alternatif _ocr_all_pages() untuk dokumen yang label dan
+    value-nya perlu dipasangkan berdasarkan KEDEKATAN POSISI VERTIKAL,
+    karena urutan baris hasil OCR (top-to-bottom, left-to-right per blok)
+    terbukti TIDAK SELALU merefleksikan urutan logis label->value pada
+    dokumen dengan layout kolom (kadang label & value jadi satu baris utuh,
+    kadang terpisah blok kolom kiri/kanan -- variasinya tidak konsisten
+    antar dokumen meski templatenya sama)."""
+    if not _OCR_AVAILABLE:
+        raise RuntimeError(
+            "Modul OCR (pytesseract/Pillow) tidak tersedia di lingkungan ini."
+        )
+    from collections import defaultdict
+
+    semua_baris = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            im = page.to_image(resolution=resolution)
+            pil_img = im.original
+            data = pytesseract.image_to_data(pil_img, lang='eng', output_type=pytesseract.Output.DICT)
+            n = len(data['text'])
+            kelompok_baris = defaultdict(list)
+            for i in range(n):
+                t = data['text'][i].strip()
+                if not t:
+                    continue
+                key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+                kelompok_baris[key].append((data['left'][i], t, data['top'][i]))
+            for key in kelompok_baris:
+                kata_terurut = sorted(kelompok_baris[key])
+                top_baris = kata_terurut[0][2]
+                teks_baris = " ".join(w[1] for w in kata_terurut)
+                semua_baris.append({'top': top_baris, 'text': teks_baris})
+
+    semua_baris.sort(key=lambda b: b['top'])
+    return semua_baris
+
+
+def _cari_value_terdekat(baris_list, label_key, toleransi_top=10):
+    """Mencari baris label yang cocok (startswith, case-insensitive) dengan
+    label_key, lalu mengembalikan VALUE-nya: bagian setelah ':' pada baris
+    yang sama (kalau label & value menyatu 1 baris fisik), ATAU teks baris
+    LAIN dengan 'top' paling dekat (dalam toleransi_top px) yang diawali
+    ':'/'>'/';' (kalau value ada di baris/kolom terpisah). Mengembalikan
+    None kalau label atau value tidak ditemukan."""
+    baris_label = None
+    for b in baris_list:
+        if b['text'].lower().startswith(label_key.lower()):
+            baris_label = b
+            break
+    if baris_label is None:
+        return None
+
+    # Kasus 1: value menyatu di baris yang sama, mis. "Kecamatan : Gresik"
+    sisa_setelah_label = baris_label['text'][len(label_key):]
+    m_sama_baris = re.search(r"[:>;]\s*(\S.*)$", sisa_setelah_label)
+    if m_sama_baris:
+        return m_sama_baris.group(1).strip()
+
+    # Kasus 2: value ada di baris terpisah dengan top paling dekat, mis.
+    # label di top=422 ("Nama Perusahaan Importir"), value di top=428
+    # (": PT. Petrokimia Gresik") -- kolom kanan/baris terpisah.
+    top_label = baris_label['top']
+    kandidat_value = [
+        b for b in baris_list
+        if b is not baris_label
+        and abs(b['top'] - top_label) <= toleransi_top
+        and re.match(r"^[:>;]\s*\S", b['text'])
+    ]
+    if not kandidat_value:
+        return None
+    # Ambil yang top-nya PALING DEKAT ke label (untuk jaga-jaga kalau ada >1 kandidat)
+    baris_value = min(kandidat_value, key=lambda b: abs(b['top'] - top_label))
+    return re.sub(r"^[:>;]\s*", "", baris_value['text']).strip()
+
+
 def extract_laporan_penimbunan(file_bytes):
     hasil = {}
     try:
-        teks = _ocr_all_pages(file_bytes)
+        baris_list = _ocr_baris_dengan_koordinat(file_bytes)
     except Exception:
         for k in ('agent', 'gudang_timbun', 'start_bongkar', 'selesai_bongkar'):
             hasil[k] = None
         return hasil
 
-    # OCR pada dokumen ini membaca SELURUH label dulu secara berurutan (satu
-    # per baris), baru SELURUH isinya secara berurutan juga (satu per baris,
-    # diawali ':') -- bukan berpasangan label-lalu-isi per baris seperti
-    # dokumen native. Jadi label ke-N dipasangkan dengan isi ke-N berdasarkan
-    # urutan kemunculan masing-masing, bukan dicari lewat regex "label...isi".
-    baris_list = [b.strip() for b in teks.split("\n")]
+    # AGENT = "Nama Pengangkut/kuasanya"
+    hasil['agent'] = _cari_value_terdekat(baris_list, "Nama Pengangkut")
 
-    urutan_label = [
-        "Nama Perusahaan Importir",
-        "Alamat Perusahaan Importir",
-        "Nama Tempat Penimbunan",
-        "Alamat Tempat Penimbunan",
-        "Desa / Kelurahan",
-        "Kecamatan",
-        "Kabupaten / Kota",
-        "Provinsi",
-        "Nama sarana pengangkut",  # dan no. Voy/flight
-        "Nama Pengangkut",  # /kuasanya
-        "Tanggal kedatangan sarana pengangkut",
-        "Nomor dan tanggal Inward Manifest",
-        "Tanggal dimulai",  # s.d selesai pengawasan
-    ]
+    # GUDANG TIMBUN = "Nama Tempat Penimbunan"
+    hasil['gudang_timbun'] = _cari_value_terdekat(baris_list, "Nama Tempat Penimbunan")
 
-    # Kumpulkan baris label (yang cocok salah satu urutan_label, berurutan
-    # sesuai kemunculan di dokumen) dan baris value (dimulai dengan ':' atau
-    # OCR-typo umum seperti '>' menggantikan ':') secara terpisah.
-    label_ditemukan = []
-    for baris in baris_list:
-        if not baris:
-            continue
-        for label_key in urutan_label:
-            if baris.lower().startswith(label_key.lower()):
-                label_ditemukan.append(label_key)
-                break
-        else:
-            continue
-        if len(label_ditemukan) >= len(urutan_label):
-            break
-
-    nilai_ditemukan = []
-    mulai_ambil_value = False
-    for baris in baris_list:
-        if not baris:
-            continue
-        if not mulai_ambil_value:
-            # Value pertama dimulai setelah label TERAKHIR yang dikenali
-            if baris.lower().startswith(urutan_label[-1].lower()):
-                mulai_ambil_value = True
-            continue
-        if re.match(r"^[:>]\s*", baris):
-            nilai = re.sub(r"^[:>]\s*", "", baris).strip()
-            nilai_ditemukan.append(nilai)
-            if len(nilai_ditemukan) >= len(urutan_label):
-                break
-        elif baris.lower().startswith("data barang"):
-            break
-
-    peta_label_ke_nilai = dict(zip(label_ditemukan, nilai_ditemukan))
-
-    hasil['agent'] = peta_label_ke_nilai.get("Nama Pengangkut")
-    hasil['gudang_timbun'] = peta_label_ke_nilai.get("Nama Tempat Penimbunan")
-
-    tanggal_range = peta_label_ke_nilai.get("Tanggal dimulai")
+    # START/SELESAI BONGKAR = "Tanggal dimulai s.d selesai pengawasan"
+    tanggal_range = _cari_value_terdekat(baris_list, "Tanggal dimulai")
     if tanggal_range:
         tanggal_ditemukan = re.findall(r"(\d{2}-\d{2}-\d{4})", tanggal_range)
         if len(tanggal_ditemukan) >= 1:
