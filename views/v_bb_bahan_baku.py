@@ -20,6 +20,7 @@ from openpyxl.chart.legend import LegendEntry
 
 from utils import MAPPING_SINGKATAN
 import gdocs_export
+import gemini_bb_resume
 
 BULAN_INDO = {
     1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
@@ -237,7 +238,7 @@ def _load_harga_perolehan(load_data, db_value, start_date, end_date):
 
 
 # =============================================================================
-# RESUME OTOMATIS GENERIK (menggantikan hitung_resume_ammonia, hitung_resume_dap, dst)
+# RESUME OTOMATIS GENERIK (fallback template, dipakai kalau Resume AI gagal)
 # =============================================================================
 def _get_nama_minggu(dt):
     if dt.day <= 7:
@@ -252,10 +253,12 @@ def _get_nama_minggu(dt):
 
 def hitung_resume_generik(df_plot, y_col, config):
     """
-    Fungsi resume otomatis generik untuk semua bahan baku.
-    Perbedaan narasi antar bahan baku (threshold, kata tren, kalimat dampak)
-    di-drive lewat `config` (lihat BAHAN_BAKU_CONFIG di atas), bukan lewat
-    duplikasi fungsi per bahan baku.
+    Fungsi resume otomatis generik berbasis template (FALLBACK).
+    Sejak integrasi Gemini AI, resume utama yang ditampilkan ke user dibuat
+    lewat `gemini_bb_resume.generate_resume_ai`. Fungsi template ini tetap
+    dipertahankan sebagai fallback pada proses batch export, supaya kalau
+    API AI gagal untuk salah satu bahan baku, dokumen kompilasi tetap bisa
+    selesai dibuat (lihat `_proses_batch_bahan_baku`).
 
     Catatan: `df_plot` yang diterima di sini HARUS sudah tidak mengandung baris
     Harga Perolehan (label_komparasi == LABEL_HARGA_PEROLEHAN), karena resume
@@ -639,8 +642,27 @@ def _proses_batch_bahan_baku(bb_key, start_date, end_date, jenis_harga, load_dat
     df_pivot = df_display.pivot_table(index='label_komparasi', columns='tanggal_terbit', values='harga_range', aggfunc=lambda x: ' '.join(x)).sort_index(axis=1, ascending=False).iloc[:, :3]
     kolom_tanggal = [f"{d.day:02d} {BULAN_INDO[d.month]} {d.year}" for d in df_pivot.columns]
 
-    # 6. Generate Komponen Final
-    list_resume_otomatis = hitung_resume_generik(df_plot_komparasi, y_col, config)
+    # 6. Generate Resume (AI, dengan fallback ke resume template jika gagal)
+    #
+    # Proses batch mencakup BEBERAPA bahan baku sekaligus (bukan cuma satu yang
+    # sedang aktif di layar), sehingga tidak memakai session_state resume dari
+    # halaman utama (yang scope-nya cuma untuk 1 bahan baku aktif). Resume AI
+    # di sini SELALU digenerate saat proses batch berjalan.
+    try:
+        list_resume_otomatis = gemini_bb_resume.generate_resume_ai(
+            df_plot_komparasi=df_plot_komparasi,
+            y_col=y_col,
+            label_bb=label_bb,
+            jenis_harga=jenis_harga,
+            config=config,
+        )
+    except Exception as e:
+        # Kalau AI gagal untuk salah satu bahan baku di batch, jangan gagalkan
+        # seluruh proses kompilasi -- fallback ke resume template lama supaya
+        # dokumen tetap lengkap, dan tandai poin pertamanya sebagai peringatan.
+        list_resume_otomatis = hitung_resume_generik(df_plot_komparasi, y_col, config)
+        list_resume_otomatis.insert(0, f"[Catatan: resume AI gagal dibuat ({e}), memakai resume otomatis standar.]")
+
     chart_image_bytes = gdocs_export.render_chart_matplotlib(
         df_plot_chart=df_plot_chart, y_col=y_col, y_label=y_label, jenis_harga=jenis_harga, 
         label_bb=label_bb, warna_map=warna_map, label_harga_perolehan=gdocs_export_label_hp
@@ -904,7 +926,7 @@ def render(load_data, global_context):
             df_plot = df_plot.sort_values('tanggal_terbit')
 
             # Simpan salinan df_plot SEBELUM Harga Perolehan ditambahkan, untuk dipakai
-            # oleh tabel "Detail Histori Data", resume otomatis, dan Excel export.
+            # oleh tabel "Detail Histori Data", resume AI, dan Excel export.
             # Dengan begitu ketiganya tetap murni bicara soal komparasi Majalah - Incoterm.
             df_plot_komparasi = df_plot.copy()
 
@@ -1065,11 +1087,63 @@ def render(load_data, global_context):
 """
             st.markdown(styled_html, unsafe_allow_html=True)
 
-            list_resume_otomatis = hitung_resume_generik(df_plot_komparasi, y_col, config)
+            # ================= RESUME AI (Gemini) - on demand, bukan otomatis =================
+            # Resume TIDAK digenerate otomatis saat halaman dimuat/dirender ulang -- hanya saat
+            # user menekan tombol "Generate Resume AI", atau otomatis sekali ketika user langsung
+            # menekan "Generate Docs" tanpa pernah generate resume sebelumnya (lihat blok tombol
+            # di bawah). Key session_state di-scope per bahan baku + rentang filter yang aktif,
+            # supaya kalau user ganti tanggal/komparasi, resume lama (yang sudah tidak relevan
+            # dengan data baru) tidak ikut terbawa dan dikira masih valid.
+            resume_state_key = f"resume_ai_{suffix}_{start_date}_{end_date}_{jenis_harga}"
 
             st.markdown("##### *Resume :*")
-            for poin in list_resume_otomatis:
-                st.markdown(f"- {poin}")
+
+            resume_tersimpan = st.session_state.get(resume_state_key)
+
+            if resume_tersimpan:
+                for poin in resume_tersimpan:
+                    st.markdown(f"- {poin}")
+                col_regen, _ = st.columns([1, 3])
+                with col_regen:
+                    if st.button(
+                        ":material/refresh: Generate Ulang Resume AI",
+                        key=f"regen_resume_{suffix}",
+                        use_container_width=True,
+                    ):
+                        with st.spinner("Menyusun ulang resume dengan AI, mohon tunggu..."):
+                            try:
+                                hasil_resume = gemini_bb_resume.generate_resume_ai(
+                                    df_plot_komparasi=df_plot_komparasi,
+                                    y_col=y_col,
+                                    label_bb=label_bb,
+                                    jenis_harga=jenis_harga,
+                                    config=config,
+                                )
+                                st.session_state[resume_state_key] = hasil_resume
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal menghasilkan resume AI: {e}")
+            else:
+                st.info("Resume belum dibuat. Klik tombol di bawah untuk menghasilkan resume dengan AI.")
+                if st.button(
+                    ":material/auto_awesome: Generate Resume AI",
+                    key=f"gen_resume_{suffix}",
+                    use_container_width=False,
+                ):
+                    with st.spinner("Menyusun resume dengan AI, mohon tunggu..."):
+                        try:
+                            hasil_resume = gemini_bb_resume.generate_resume_ai(
+                                df_plot_komparasi=df_plot_komparasi,
+                                y_col=y_col,
+                                label_bb=label_bb,
+                                jenis_harga=jenis_harga,
+                                config=config,
+                            )
+                            st.session_state[resume_state_key] = hasil_resume
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal menghasilkan resume AI: {e}")
+
             st.markdown("<br>", unsafe_allow_html=True)
 
             st.markdown("""
@@ -1103,6 +1177,22 @@ def render(load_data, global_context):
                 ):
                     with st.spinner("Membuat dokumen Google Docs, mohon tunggu sebentar..."):
                         try:
+                            # Pakai resume AI yang sudah ada di session_state kalau sudah pernah
+                            # digenerate untuk kombinasi filter saat ini (tidak digenerate ulang,
+                            # tinggal dipakai apa adanya). Kalau belum ada, generate dulu di sini
+                            # (sekali), lalu simpan ke session_state juga supaya tampilan resume
+                            # di halaman langsung ikut ter-update tanpa perlu generate dua kali.
+                            resume_untuk_docs = st.session_state.get(resume_state_key)
+                            if not resume_untuk_docs:
+                                resume_untuk_docs = gemini_bb_resume.generate_resume_ai(
+                                    df_plot_komparasi=df_plot_komparasi,
+                                    y_col=y_col,
+                                    label_bb=label_bb,
+                                    jenis_harga=jenis_harga,
+                                    config=config,
+                                )
+                                st.session_state[resume_state_key] = resume_untuk_docs
+
                             chart_image_bytes = gdocs_export.render_chart_matplotlib(
                                 df_plot_chart=df_plot_chart,
                                 y_col=y_col,
@@ -1120,7 +1210,7 @@ def render(load_data, global_context):
                                 image_bytes=chart_image_bytes,
                                 df_pivot=df_pivot,
                                 kolom_tanggal=kolom_tanggal,
-                                list_resume=list_resume_otomatis,
+                                list_resume=resume_untuk_docs,
                             )
                             st.success("Dokumen Google Docs berhasil dibuat!")
                             st.link_button(":material/open_in_new: Buka Google Docs", doc_url, use_container_width=False)
