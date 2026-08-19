@@ -643,12 +643,21 @@ def generate_google_doc(
         }
     })
 
-    # Tebalkan baris judul saja
+    # Tebalkan baris judul
     requests.append({
         "updateTextStyle": {
             "range": {"startIndex": 1, "endIndex": 1 + len(judul)},
             "textStyle": {"bold": True, "fontSize": {"magnitude": 16, "unit": "PT"}},
             "fields": "bold,fontSize",
+        }
+    })
+    
+    # Rata tengah Judul
+    requests.append({
+        "updateParagraphStyle": {
+            "range": {"startIndex": 1, "endIndex": 1 + len(judul) + 2},
+            "paragraphStyle": {"alignment": "CENTER"},
+            "fields": "alignment"
         }
     })
 
@@ -674,19 +683,28 @@ def generate_google_doc(
     doc_setelah_gambar = docs_service.documents().get(documentId=document_id).execute()
     end_index = doc_setelah_gambar["body"]["content"][-1]["endIndex"] - 1
 
-    n_rows = len(df_pivot) + 2  # +2 untuk 2 baris header (Referensi/Harga USD/MT, lalu tanggal)
-    n_cols = len(kolom_tanggal) + 1  # +1 untuk kolom "Referensi"
+    n_rows = len(df_pivot) + 2  
+    n_cols = len(kolom_tanggal) + 1  
+    
+    teks_histori = "\nDetail Histori Data (3 Periode Terakhir)\n"
 
     requests_tabel = [
         {
             "insertText": {
                 "location": {"index": end_index},
-                "text": "\nDetail Histori Data (3 Periode Terakhir)\n",
+                "text": teks_histori,
+            }
+        },
+        {
+            "updateParagraphStyle": {
+                "range": {"startIndex": end_index + 1, "endIndex": end_index + len(teks_histori)},
+                "paragraphStyle": {"alignment": "CENTER"},
+                "fields": "alignment"
             }
         },
         {
             "insertTable": {
-                "location": {"index": end_index + 1 + len("Detail Histori Data (3 Periode Terakhir)\n")},
+                "location": {"index": end_index + len(teks_histori)},
                 "rows": n_rows,
                 "columns": n_cols,
             }
@@ -931,12 +949,34 @@ def generate_google_doc(
     doc_akhir = docs_service.documents().get(documentId=document_id).execute()
     end_index_final = doc_akhir["body"]["content"][-1]["endIndex"] - 1
 
-    teks_resume = "\nResume:\n" + "\n".join([f"•  {poin}" for poin in list_resume]) + "\n"
+    teks_resume_title = "\nResume:\n"
+    teks_resume_body = "\n".join([f"•  {poin}" for poin in list_resume]) + "\n"
+    teks_resume = teks_resume_title + teks_resume_body
+
+    req_resume = [
+        {
+            "insertText": {"location": {"index": end_index_final}, "text": teks_resume}
+        },
+        {
+            # Miringkan tulisan "Resume:"
+            "updateTextStyle": {
+                "range": {"startIndex": end_index_final + 1, "endIndex": end_index_final + 8}, 
+                "textStyle": {"italic": True},
+                "fields": "italic"
+            }
+        },
+        {
+            # Rata kiri-kanan (Justify) isi resume
+            "updateParagraphStyle": {
+                "range": {"startIndex": end_index_final + len(teks_resume_title), "endIndex": end_index_final + len(teks_resume)},
+                "paragraphStyle": {"alignment": "JUSTIFIED"}, # PERBAIKAN DI SINI
+                "fields": "alignment"
+            }
+        }
+    ]
     docs_service.documents().batchUpdate(
         documentId=document_id,
-        body={"requests": [{
-            "insertText": {"location": {"index": end_index_final}, "text": teks_resume}
-        }]}
+        body={"requests": req_resume}
     ).execute()
 
     # 8. Bersihkan file gambar sementara (Docs sudah meng-copy gambarnya ke dalam dokumen)
@@ -999,7 +1039,14 @@ def generate_google_doc_batch(
                 "updateTextStyle": {
                     "range": {"startIndex": 1, "endIndex": 1 + len(judul)},
                     "textStyle": {"bold": True, "fontSize": {"magnitude": 18, "unit": "PT"}},
-                    "fields": "bold,fontSize",
+                    "fields": "bold,fontSize"
+                }
+            },
+            {
+                "updateParagraphStyle": {
+                    "range": {"startIndex": 1, "endIndex": 1 + len(judul) + 2},
+                    "paragraphStyle": {"alignment": "CENTER"},
+                    "fields": "alignment"
                 }
             }
         ]}
@@ -1021,13 +1068,20 @@ def generate_google_doc_batch(
         # A. Sisipkan Judul Bahan Baku & Gambar
         doc_current = docs_service.documents().get(documentId=document_id).execute()
         end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
+        
+        teks_judul_bb = f"\n{idx+1}. Komparasi Harga {label_bb}\n\n"
 
         req_header_img = [
-            {"insertText": {"location": {"index": end_idx}, "text": f"\n{idx+1}. Komparasi Harga {label_bb}\n\n"}},
+            {"insertText": {"location": {"index": end_idx}, "text": teks_judul_bb}},
             {"updateTextStyle": {
                 "range": {"startIndex": end_idx + 1, "endIndex": end_idx + 1 + len(f"{idx+1}. Komparasi Harga {label_bb}")},
                 "textStyle": {"bold": True, "fontSize": {"magnitude": 14, "unit": "PT"}},
                 "fields": "bold,fontSize"
+            }},
+            {"updateParagraphStyle": {
+                "range": {"startIndex": end_idx + 1, "endIndex": end_idx + len(teks_judul_bb)},
+                "paragraphStyle": {"alignment": "CENTER"},
+                "fields": "alignment"
             }},
             {"insertInlineImage": {
                 "location": {"index": end_idx + 1 + len(f"{idx+1}. Komparasi Harga {label_bb}\n")},
@@ -1043,9 +1097,16 @@ def generate_google_doc_batch(
         
         n_rows = len(df_pivot) + 2
         n_cols = len(kolom_tanggal) + 1
+        teks_histori = "\nDetail Histori Data (3 Periode Terakhir)\n"
+        
         req_tabel = [
-            {"insertText": {"location": {"index": end_idx}, "text": "\nDetail Histori Data (3 Periode Terakhir)\n"}},
-            {"insertTable": {"location": {"index": end_idx + len("\nDetail Histori Data (3 Periode Terakhir)\n")}, "rows": n_rows, "columns": n_cols}}
+            {"insertText": {"location": {"index": end_idx}, "text": teks_histori}},
+            {"updateParagraphStyle": {
+                "range": {"startIndex": end_idx + 1, "endIndex": end_idx + len(teks_histori)},
+                "paragraphStyle": {"alignment": "CENTER"},
+                "fields": "alignment"
+            }},
+            {"insertTable": {"location": {"index": end_idx + len(teks_histori)}, "rows": n_rows, "columns": n_cols}}
         ]
         docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_tabel}).execute()
 
@@ -1164,8 +1225,25 @@ def generate_google_doc_batch(
         # D. Sisipkan Resume
         doc_current = docs_service.documents().get(documentId=document_id).execute()
         end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
-        teks_resume = "\nResume:\n" + "\n".join([f"•  {poin}" for poin in list_resume]) + "\n\n"
-        docs_service.documents().batchUpdate(documentId=document_id, body={"requests": [{"insertText": {"location": {"index": end_idx}, "text": teks_resume}}]}).execute()
+        
+        teks_resume_title = "\nResume:\n"
+        teks_resume_body = "\n".join([f"•  {poin}" for poin in list_resume]) + "\n\n"
+        teks_resume = teks_resume_title + teks_resume_body
+        
+        req_resume = [
+            {"insertText": {"location": {"index": end_idx}, "text": teks_resume}},
+            {"updateTextStyle": {
+                "range": {"startIndex": end_idx + 1, "endIndex": end_idx + 8},
+                "textStyle": {"italic": True},
+                "fields": "italic"
+            }},
+            {"updateParagraphStyle": {
+                "range": {"startIndex": end_idx + len(teks_resume_title), "endIndex": end_idx + len(teks_resume)},
+                "paragraphStyle": {"alignment": "JUSTIFIED"}, # PERBAIKAN DI SINI
+                "fields": "alignment"
+            }}
+        ]
+        docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_resume}).execute()
 
         # Hapus gambar sementara
         _hapus_file_drive(drive_service, temp_image_id)
