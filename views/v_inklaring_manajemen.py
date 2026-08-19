@@ -707,39 +707,42 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             )
         else:
             st.markdown("##### Upload Dokumen")
+            st.caption("Field bertanda **\\*** wajib diupload; sisanya opsional.")
             col_up1, col_up2 = st.columns(2)
 
             with col_up1:
+                # Dokumen wajib ditaruh paling atas di kolom kiri, diberi tanda *
                 file_pib = st.file_uploader(
-                    "1. PIB Nopen", type=["pdf"], key="upload_pib_nopen",
-                    help="Sumber: AJU PIB, Tgl PIB, Pemasok, Pengirim, Komoditi, Asal Negara, "
+                    "1. PIB Nopen *", type=["pdf"], key="upload_pib_nopen",
+                    help="Wajib. Sumber: AJU PIB, Tgl PIB, Pemasok, Pengirim, Komoditi, Asal Negara, "
                          "Port of Load, HS, Bea Masuk, PPN, PPH, BM%, Invoice, Kurs, No/Tgl Pen PIB"
                 )
                 file_inward = st.file_uploader(
-                    "2. INWARD (BC 1.1)", type=["pdf"], key="upload_inward",
-                    help="Sumber: Nama Kapal (dibaca lewat OCR)"
+                    "2. INWARD (BC 1.1) *", type=["pdf"], key="upload_inward",
+                    help="Wajib. Sumber: Nama Kapal (dibaca lewat OCR)"
                 )
                 file_laporan_penimbunan = st.file_uploader(
-                    "3. Laporan Penimbunan MV", type=["pdf"], key="upload_laporan_penimbunan",
-                    help="Sumber: Agent, Gudang Timbun, Start/Selesai Bongkar (dibaca lewat OCR)"
+                    "3. Laporan Penimbunan MV *", type=["pdf"], key="upload_laporan_penimbunan",
+                    help="Wajib. Sumber: Agent, Gudang Timbun, Start/Selesai Bongkar (dibaca lewat OCR)"
                 )
-                file_spjm = st.file_uploader(
-                    "4. SPJM", type=["pdf"], key="upload_spjm",
-                    help="Sumber: SPJM (tanggal penerbitan surat)"
+                file_sptnp = st.file_uploader(
+                    "4. SPTNP *", type=["pdf"], key="upload_sptnp",
+                    help="Wajib. Sumber: No/Tgl SPTNP, Nilai SPTNP"
                 )
 
             with col_up2:
+                # Dokumen opsional
+                file_spjm = st.file_uploader(
+                    "5. SPJM", type=["pdf"], key="upload_spjm",
+                    help="Opsional. Sumber: SPJM (tanggal penerbitan surat)"
+                )
                 file_skep = st.file_uploader(
-                    "5. SKEP", type=["pdf"], key="upload_skep",
-                    help="Sumber: SKEP BC (tanggal pojok kanan atas)"
+                    "6. SKEP", type=["pdf"], key="upload_skep",
+                    help="Opsional. Sumber: SKEP BC (tanggal pojok kanan atas)"
                 )
                 file_sppb = st.file_uploader(
-                    "6. SPPB", type=["pdf"], key="upload_sppb",
-                    help="Sumber: No/Tgl SPPB, Tgl ETA (pendekatan), Quantity (MT)"
-                )
-                file_sptnp = st.file_uploader(
-                    "7. SPTNP", type=["pdf"], key="upload_sptnp",
-                    help="Sumber: No/Tgl SPTNP, Nilai SPTNP"
+                    "7. SPPB", type=["pdf"], key="upload_sppb",
+                    help="Opsional. Sumber: No/Tgl SPPB, Tgl ETA (pendekatan), Quantity (MT)"
                 )
 
             semua_file = {
@@ -751,15 +754,38 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 'sppb': file_sppb,
                 'sptnp': file_sptnp,
             }
-            jumlah_terupload = sum(1 for f in semua_file.values() if f is not None)
-            st.caption(f"Terupload: {jumlah_terupload}/7 dokumen")
+            # Dokumen wajib: PIB Nopen, INWARD, Laporan Penimbunan MV, SPTNP.
+            # Sisanya (SPJM, SKEP, SPPB) opsional -- kalau tidak diupload,
+            # field yang bersumber darinya cukup dikosongkan dan diisi manual
+            # di form nanti.
+            DOKUMEN_WAJIB = ['pib_nopen', 'inward', 'laporan_penimbunan', 'sptnp']
+            LABEL_DOKUMEN = {
+                'pib_nopen': 'PIB Nopen',
+                'inward': 'INWARD (BC 1.1)',
+                'laporan_penimbunan': 'Laporan Penimbunan MV',
+                'spjm': 'SPJM',
+                'skep': 'SKEP',
+                'sppb': 'SPPB',
+                'sptnp': 'SPTNP',
+            }
 
-            tombol_disabled = jumlah_terupload < 7
+            dokumen_wajib_belum_upload = [
+                LABEL_DOKUMEN[k] for k in DOKUMEN_WAJIB if semua_file.get(k) is None
+            ]
+            jumlah_terupload = sum(1 for f in semua_file.values() if f is not None)
+            st.caption(f"Terupload: {jumlah_terupload}/7 dokumen (wajib: PIB Nopen, INWARD, Laporan Penimbunan MV, SPTNP — sisanya opsional)")
+
+            tombol_disabled = len(dokumen_wajib_belum_upload) > 0
+            if tombol_disabled:
+                help_text = "Dokumen wajib belum lengkap: " + ", ".join(dokumen_wajib_belum_upload)
+            else:
+                help_text = None
+
             if st.button(
                 "🔍 Ekstrak Data dari PDF",
                 type="primary",
                 disabled=tombol_disabled,
-                help="Upload ketujuh dokumen terlebih dahulu" if tombol_disabled else None,
+                help=help_text,
             ):
                 file_bytes_dict = {
                     nama: f.getvalue() for nama, f in semua_file.items() if f is not None

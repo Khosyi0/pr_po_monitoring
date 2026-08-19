@@ -243,39 +243,136 @@ def _format_nilai_untuk_sheet(val):
     return val
  
  
+def _cari_baris_existing_di_sheet(sheets_service, aju_pib_target):
+    """
+    Mencari baris di sheet Inklaring yang kolom C (AJU PIB)-nya sama persis
+    dengan aju_pib_target. AJU PIB dipakai sebagai kunci pencarian karena
+    selalu unik per dokumen PIB (setara primary key di tabel spreadsheet),
+    berbeda dengan Tgl PIB yang bisa berulang untuk banyak dokumen di
+    tanggal yang sama.
+
+    Mengembalikan nomor baris (1-based, sesuai baris asli di sheet) kalau
+    ditemukan, atau None kalau tidak ada baris dengan AJU PIB tsb.
+    """
+    aju_pib_target = str(aju_pib_target).strip()
+    if not aju_pib_target:
+        return None
+
+    hasil = sheets_service.spreadsheets().values().get(
+        spreadsheetId=INKLARING_SPREADSHEET_ID,
+        range=f"'{INKLARING_SHEET_NAME}'!C:C",
+    ).execute()
+    kolom_aju_pib = hasil.get("values", [])
+
+    for idx, baris in enumerate(kolom_aju_pib, start=1):
+        nilai_sel = baris[0].strip() if baris else ""
+        if nilai_sel == aju_pib_target:
+            return idx
+    return None
+
+
 def append_row_inklaring_ke_sheet(row_dict):
     """
-    Menambahkan satu baris data Inklaring baru ke Google Sheet sumber
-    ("2026 - BB/BD/BP"), di baris kosong pertama setelah baris terakhir yang
-    terisi. Kolom hasil rumus (No, NO AJU, TOTAL, dst -- lihat
-    INKLARING_SHEET_COLUMN_ORDER) SENGAJA dikosongkan, karena spreadsheet
-    punya rumusnya sendiri di kolom tsb.
- 
+    Menyimpan satu baris data Inklaring ke Google Sheet sumber
+    ("2026 - BB/BD/BP"), dengan logika UPSERT berbasis AJU PIB (kolom C):
+
+    - Kalau AJU PIB pada row_dict SUDAH ADA di sheet (dicari lewat kolom C,
+      karena AJU PIB setara primary key -- selalu unik, berbeda dari Tgl PIB
+      yang bisa berulang) -> baris yang sudah ada di-UPDATE dengan data baru.
+    - Kalau belum ada -> ditambahkan sebagai baris baru (append) di baris
+      kosong pertama setelah baris terakhir yang terisi, seperti sebelumnya.
+
+    Kolom hasil rumus (No, NO AJU, TOTAL, dst -- lihat
+    INKLARING_SHEET_COLUMN_ORDER) SENGAJA dikosongkan/tidak disentuh, karena
+    spreadsheet punya rumusnya sendiri di kolom tsb (baik saat insert baris
+    baru maupun saat update baris existing -- rumus yang sudah ada di baris
+    tsb tidak akan ditimpa karena kita tidak mengirim value apa pun untuk
+    kolom-kolom itu).
+
     row_dict: dict dengan key = nama field internal (sama seperti
     EDITABLE_DB_COLUMNS di v_inklaring_detail.py, mis. 'tgl_pib', 'aju_pib',
     'sap', dst), value = nilai mentah (boleh date/datetime/None/str/angka).
- 
+
     Melempar Exception kalau gagal (pemanggil wajib menangkapnya sendiri agar
     kegagalan tulis-ke-Sheets tidak membatalkan data yang sudah tersimpan di
     PostgreSQL -- lihat pemakaian di v_inklaring_detail.py).
     """
     sheets_service = _get_sheets_service()
- 
+
     baris_untuk_sheet = []
     for field_name in INKLARING_SHEET_COLUMN_ORDER:
         if field_name is None:
             baris_untuk_sheet.append("")
         else:
             baris_untuk_sheet.append(_format_nilai_untuk_sheet(row_dict.get(field_name)))
- 
-    range_target = f"'{INKLARING_SHEET_NAME}'!A:A"
-    body = {"values": [baris_untuk_sheet]}
- 
-    sheets_service.spreadsheets().values().append(
+
+    aju_pib_baru = row_dict.get('aju_pib')
+    nomor_baris_existing = _cari_baris_existing_di_sheet(sheets_service, aju_pib_baru)
+
+    if nomor_baris_existing is not None:
+        # --- UPDATE baris yang sudah ada ---
+        # Hanya menimpa kolom A s.d. kolom terakhir di INKLARING_SHEET_COLUMN_ORDER
+        # (A..AU), termasuk kolom ber-rumus yang kita kirim string kosong --
+        # ini AMAN karena update dengan sel kosong tidak menghapus rumus:
+        # Sheets API values().update dengan valueInputOption USER_ENTERED
+        # tetap akan menimpa sel rumus dengan string kosong kalau dikirim
+        # eksplisit. Untuk menjaga rumus tetap utuh, kolom bertanda None
+        # DILEWATI (tidak ikut ditulis) saat update baris existing.
+        _update_baris_existing_di_sheet(sheets_service, nomor_baris_existing, row_dict)
+    else:
+        # --- INSERT baris baru (append), seperti sebelumnya ---
+        range_target = f"'{INKLARING_SHEET_NAME}'!A:A"
+        body = {"values": [baris_untuk_sheet]}
+
+        sheets_service.spreadsheets().values().append(
+            spreadsheetId=INKLARING_SPREADSHEET_ID,
+            range=range_target,
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body=body,
+        ).execute()
+
+
+def _index_ke_huruf_kolom(index_0based):
+    """Konversi index kolom 0-based (0=A, 1=B, ...) ke huruf kolom Sheets
+    (A, B, ..., Z, AA, AB, ...)."""
+    huruf = ""
+    n = index_0based + 1
+    while n > 0:
+        n, sisa = divmod(n - 1, 26)
+        huruf = chr(65 + sisa) + huruf
+    return huruf
+
+
+def _update_baris_existing_di_sheet(sheets_service, nomor_baris, row_dict):
+    """
+    Update baris existing di nomor_baris (1-based), HANYA untuk kolom yang
+    punya field_name (bukan None) di INKLARING_SHEET_COLUMN_ORDER -- kolom
+    ber-rumus (No, NO AJU, TOTAL, dst) SENGAJA tidak disertakan dalam range
+    yang diupdate, supaya rumus yang sudah ada di baris tsb tidak tertimpa/
+    terhapus.
+
+    Karena kolom rumus tersebar di antara kolom data (tidak selalu
+    berurutan), update dilakukan per-cell lewat batchUpdate values (satu
+    request per kolom data), bukan satu range kontigu.
+    """
+    data_updates = []
+    for idx, field_name in enumerate(INKLARING_SHEET_COLUMN_ORDER):
+        if field_name is None:
+            continue  # lewati kolom rumus, jangan ditimpa
+        huruf_kolom = _index_ke_huruf_kolom(idx)
+        nilai = _format_nilai_untuk_sheet(row_dict.get(field_name))
+        data_updates.append({
+            "range": f"'{INKLARING_SHEET_NAME}'!{huruf_kolom}{nomor_baris}",
+            "values": [[nilai]],
+        })
+
+    body = {
+        "valueInputOption": "USER_ENTERED",
+        "data": data_updates,
+    }
+    sheets_service.spreadsheets().values().batchUpdate(
         spreadsheetId=INKLARING_SPREADSHEET_ID,
-        range=range_target,
-        valueInputOption="USER_ENTERED",
-        insertDataOption="INSERT_ROWS",
         body=body,
     ).execute()
 
