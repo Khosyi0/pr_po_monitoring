@@ -446,7 +446,7 @@ def render_chart_matplotlib(df_plot_chart, y_col, y_label, jenis_harga, label_bb
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b %Y"))
     plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="top", fontsize=18)
 
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.55), ncol=2, fontsize=20, frameon=False)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=2, fontsize=20, frameon=False)
     fig.tight_layout()
 
     buf = io.BytesIO()
@@ -694,8 +694,9 @@ def generate_google_doc(
     image_bytes, df_pivot, kolom_tanggal, list_resume,
 ):
     """
-    Membuat 1 Google Doc baru berisi: judul, gambar chart, tabel histori data,
-    dan resume otomatis. Mengembalikan URL dokumen yang bisa dibuka siapa saja
+    Membuat 1 Google Doc baru berisi: judul, tabel histori data, gambar chart,
+    dan resume otomatis. Urutan tampil dokumen: Judul -> Tabel -> Gambar Chart
+    -> Resume. Mengembalikan URL dokumen yang bisa dibuka siapa saja
     (anyone with link can view).
 
     df_pivot     : sama seperti dipakai generate_excel_export (index=label_komparasi,
@@ -725,12 +726,9 @@ def generate_google_doc(
         fields="id, parents",
     ).execute()
 
-    # 3. Upload gambar chart sebagai file sementara di Drive (dibutuhkan Docs API)
-    temp_image_id, image_uri = _upload_image_ke_drive_sementara(
-        drive_service, image_bytes, f"_temp_chart_{document_id}.png"
-    )
-
-    # 4. Susun request Docs API: judul, gambar, tabel, resume
+    # 3. Susun request Docs API: judul (size 11, rata kiri) -- TANPA gambar di
+    # sini, gambar chart akan disisipkan BELAKANGAN (setelah tabel), sesuai
+    # urutan tampil baru: Judul -> Tabel -> Gambar Chart.
     requests = []
 
     requests.append({
@@ -740,34 +738,21 @@ def generate_google_doc(
         }
     })
 
-    # Tebalkan baris judul
+    # Ukuran & style judul
     requests.append({
         "updateTextStyle": {
             "range": {"startIndex": 1, "endIndex": 1 + len(judul)},
-            "textStyle": {"bold": True, "fontSize": {"magnitude": 16, "unit": "PT"}},
+            "textStyle": {"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
             "fields": "bold,fontSize",
         }
     })
-    
-    # Rata tengah Judul
+
+    # Rata kiri judul
     requests.append({
         "updateParagraphStyle": {
             "range": {"startIndex": 1, "endIndex": 1 + len(judul) + 2},
-            "paragraphStyle": {"alignment": "CENTER"},
+            "paragraphStyle": {"alignment": "START"},
             "fields": "alignment"
-        }
-    })
-
-    insert_index = 1 + len(judul) + 2  # setelah judul + 2 karakter newline
-
-    requests.append({
-        "insertInlineImage": {
-            "location": {"index": insert_index},
-            "uri": image_uri,
-            "objectSize": {
-                "height": {"magnitude": 300, "unit": "PT"},
-                "width": {"magnitude": 480, "unit": "PT"},
-            },
         }
     })
 
@@ -775,33 +760,19 @@ def generate_google_doc(
         documentId=document_id, body={"requests": requests}
     ).execute()
 
-    # 5. Sisipkan judul tabel + tabel histori data (request terpisah karena butuh
-    #    index posisi terbaru setelah gambar disisipkan)
-    doc_setelah_gambar = docs_service.documents().get(documentId=document_id).execute()
-    end_index = doc_setelah_gambar["body"]["content"][-1]["endIndex"] - 1
+    # 4. Sisipkan tabel histori data LANGSUNG setelah judul (tanpa teks
+    # "Detail Histori Data (3 Periode Terakhir)"), karena urutan tampil yang
+    # diinginkan adalah: Judul -> Tabel -> Gambar Chart.
+    doc_setelah_judul = docs_service.documents().get(documentId=document_id).execute()
+    end_index = doc_setelah_judul["body"]["content"][-1]["endIndex"] - 1
 
-    n_rows = len(df_pivot) + 2  
-    n_cols = len(kolom_tanggal) + 1  
-    
-    teks_histori = "\nDetail Histori Data (3 Periode Terakhir)\n"
+    n_rows = len(df_pivot) + 2
+    n_cols = len(kolom_tanggal) + 1
 
     requests_tabel = [
         {
-            "insertText": {
-                "location": {"index": end_index},
-                "text": teks_histori,
-            }
-        },
-        {
-            "updateParagraphStyle": {
-                "range": {"startIndex": end_index + 1, "endIndex": end_index + len(teks_histori)},
-                "paragraphStyle": {"alignment": "CENTER"},
-                "fields": "alignment"
-            }
-        },
-        {
             "insertTable": {
-                "location": {"index": end_index + len(teks_histori)},
+                "location": {"index": end_index},
                 "rows": n_rows,
                 "columns": n_cols,
             }
@@ -811,7 +782,7 @@ def generate_google_doc(
         documentId=document_id, body={"requests": requests_tabel}
     ).execute()
 
-    # 6. Isi tiap sel tabel. Struktur tabel di Docs API butuh index tiap sel
+    # 5. Isi tiap sel tabel. Struktur tabel di Docs API butuh index tiap sel
     #    yang dihitung ulang dari dokumen terbaru (paling aman: ambil ulang
     #    struktur tabel setelah insertTable, lalu isi dari sel PALING AKHIR
     #    ke awal supaya index sel sebelumnya tidak bergeser).
@@ -824,7 +795,7 @@ def generate_google_doc(
             tabel_element_start_index = elem["startIndex"]
 
     if tabel_element is not None:
-        # 6.0. Atur lebar tiap kolom LEBIH DULU (sebelum isi teks), supaya
+        # 5.0. Atur lebar tiap kolom LEBIH DULU (sebelum isi teks), supaya
         # perhitungan wrap Docs sudah memakai lebar final saat teks dimasukkan.
         # Lebar kolom "Referensi" dihitung dari label yang BENAR-BENAR dipakai
         # di df_pivot ini (mis. "Fertecon - SEA FOB", "Argus FMB - East Asia
@@ -878,7 +849,7 @@ def generate_google_doc(
                 documentId=document_id, body={"requests": requests_isi}
             ).execute()
 
-        # 6a. Rata tengah SECARA VERTIKAL untuk seluruh sel tabel (header maupun
+        # 5a. Rata tengah SECARA VERTIKAL untuk seluruh sel tabel (header maupun
         # data), supaya teks tidak menempel ke bagian atas sel. Ini dilakukan
         # untuk SELURUH tabel sebelum merge, karena merge hanya mengubah
         # rowSpan/columnSpan dan tidak mempengaruhi contentAlignment yang sudah
@@ -910,7 +881,7 @@ def generate_google_doc(
             }]}
         ).execute()
 
-        # 6b. Styling header tabel: merge sel "Referensi" (2 baris) & "Harga USD/MT"
+        # 5b. Styling header tabel: merge sel "Referensi" (2 baris) & "Harga USD/MT"
         # (merentang semua kolom tanggal), lalu beri background biru muda, bold,
         # dan rata tengah pada seluruh baris header (2 baris pertama).
         HEADER_BG_COLOR = {"red": 0.741, "green": 0.843, "blue": 0.933}  # biru muda ala #BDD7EE
@@ -971,7 +942,7 @@ def generate_google_doc(
             documentId=document_id, body={"requests": requests_style}
         ).execute()
 
-        # 6c. Bold + rata tengah untuk teks di baris header & rata tengah untuk kolom harga,
+        # 5c. Bold + rata tengah untuk teks di baris header & rata tengah untuk kolom harga,
         # serta font size khusus tabel (dilakukan SETELAH merge, karena index paragraph
         # di dalam sel perlu diambil ulang dari struktur tabel terbaru pasca-merge).
         doc_setelah_merge = docs_service.documents().get(documentId=document_id).execute()
@@ -992,7 +963,7 @@ def generate_google_doc(
                             continue
                         para_start = content_elem["startIndex"]
                         para_end = content_elem["endIndex"]
-                        
+
                         # Rata tengah paragraf untuk semua sel header
                         requests_text_style.append({
                             "updateParagraphStyle": {
@@ -1001,7 +972,7 @@ def generate_google_doc(
                                 "fields": "alignment",
                             }
                         })
-                        
+
                         # Bold teks (kalau ada isinya, endIndex > startIndex+1 karena newline)
                         if para_end - 1 > para_start:
                             requests_text_style.append({
@@ -1023,7 +994,7 @@ def generate_google_doc(
                             continue
                         para_start = content_elem["startIndex"]
                         para_end = content_elem["endIndex"]
-                        
+
                         # Rata tengah paragraf untuk kolom berisi angka harga
                         requests_text_style.append({
                             "updateParagraphStyle": {
@@ -1042,6 +1013,34 @@ def generate_google_doc(
                 documentId=document_id, body={"requests": requests_text_style}
             ).execute()
 
+    # 6. Sisipkan gambar chart SETELAH tabel (sesuai urutan tampil baru:
+    # Judul -> Tabel -> Gambar Chart). Upload gambar ke Drive dilakukan di
+    # sini (bukan lebih awal), supaya urutan insert-nya memang belakangan,
+    # mengikuti posisi barunya di dokumen.
+    temp_image_id, image_uri = _upload_image_ke_drive_sementara(
+        drive_service, image_bytes, f"_temp_chart_{document_id}.png"
+    )
+
+    doc_sebelum_gambar = docs_service.documents().get(documentId=document_id).execute()
+    end_index_gambar = doc_sebelum_gambar["body"]["content"][-1]["endIndex"] - 1
+
+    requests_gambar = [
+        {"insertText": {"location": {"index": end_index_gambar}, "text": "\n"}},
+        {
+            "insertInlineImage": {
+                "location": {"index": end_index_gambar + 1},
+                "uri": image_uri,
+                "objectSize": {
+                    "height": {"magnitude": 300, "unit": "PT"},
+                    "width": {"magnitude": 480, "unit": "PT"},
+                },
+            }
+        },
+    ]
+    docs_service.documents().batchUpdate(
+        documentId=document_id, body={"requests": requests_gambar}
+    ).execute()
+
     # 7. Sisipkan resume di akhir dokumen
     doc_akhir = docs_service.documents().get(documentId=document_id).execute()
     end_index_final = doc_akhir["body"]["content"][-1]["endIndex"] - 1
@@ -1057,7 +1056,7 @@ def generate_google_doc(
         {
             # Miringkan tulisan "Resume:"
             "updateTextStyle": {
-                "range": {"startIndex": end_index_final + 1, "endIndex": end_index_final + 8}, 
+                "range": {"startIndex": end_index_final + 1, "endIndex": end_index_final + 8},
                 "textStyle": {"italic": True},
                 "fields": "italic"
             }
@@ -1066,7 +1065,7 @@ def generate_google_doc(
             # Rata kiri-kanan (Justify) isi resume
             "updateParagraphStyle": {
                 "range": {"startIndex": end_index_final + len(teks_resume_title), "endIndex": end_index_final + len(teks_resume)},
-                "paragraphStyle": {"alignment": "JUSTIFIED"}, # PERBAIKAN DI SINI
+                "paragraphStyle": {"alignment": "JUSTIFIED"},
                 "fields": "alignment"
             }
         }
@@ -1093,6 +1092,9 @@ def generate_google_doc_batch(
 ):
     """
     Membuat 1 Google Doc yang berisi kompilasi beberapa bahan baku secara berurutan.
+    Untuk tiap bahan baku, urutan tampil: Judul bahan baku -> Tabel -> Gambar
+    Chart -> Resume.
+
     list_data_batch adalah list of dictionary dengan format:
     {
         "label_bb": str,
@@ -1157,53 +1159,38 @@ def generate_google_doc_batch(
         list_resume = data_bb["list_resume"]
         image_bytes = data_bb["image_bytes"]
 
-        # Upload gambar ke Drive (sementara)
-        temp_image_id, image_uri = _upload_image_ke_drive_sementara(
-            drive_service, image_bytes, f"_temp_batch_{idx}_{document_id}.png"
-        )
-
-        # A. Sisipkan Judul Bahan Baku & Gambar
+        # A. Sisipkan Judul Bahan Baku (size 11, rata kiri) -- HANYA judul dulu,
+        # gambar chart akan disisipkan BELAKANGAN (setelah tabel), karena urutan
+        # tampil yang diinginkan adalah: Judul -> Tabel -> Gambar Chart.
         doc_current = docs_service.documents().get(documentId=document_id).execute()
         end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
-        
-        teks_judul_bb = f"\n{idx+1}. Komparasi Harga {label_bb}\n\n"
 
-        req_header_img = [
+        teks_judul_bb = f"\n{idx+1}. Komparasi Harga {label_bb}\n"
+
+        req_header = [
             {"insertText": {"location": {"index": end_idx}, "text": teks_judul_bb}},
             {"updateTextStyle": {
                 "range": {"startIndex": end_idx + 1, "endIndex": end_idx + 1 + len(f"{idx+1}. Komparasi Harga {label_bb}")},
-                "textStyle": {"bold": True, "fontSize": {"magnitude": 14, "unit": "PT"}},
+                "textStyle": {"bold": True, "fontSize": {"magnitude": 11, "unit": "PT"}},
                 "fields": "bold,fontSize"
             }},
             {"updateParagraphStyle": {
                 "range": {"startIndex": end_idx + 1, "endIndex": end_idx + len(teks_judul_bb)},
-                "paragraphStyle": {"alignment": "CENTER"},
+                "paragraphStyle": {"alignment": "START"},
                 "fields": "alignment"
             }},
-            {"insertInlineImage": {
-                "location": {"index": end_idx + 1 + len(f"{idx+1}. Komparasi Harga {label_bb}\n")},
-                "uri": image_uri,
-                "objectSize": {"height": {"magnitude": 300, "unit": "PT"}, "width": {"magnitude": 480, "unit": "PT"}}
-            }}
         ]
-        docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_header_img}).execute()
+        docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_header}).execute()
 
-        # B. Sisipkan Tabel
+        # B. Sisipkan Tabel (tanpa teks "Detail Histori Data (3 Periode Terakhir)")
         doc_current = docs_service.documents().get(documentId=document_id).execute()
         end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
-        
+
         n_rows = len(df_pivot) + 2
         n_cols = len(kolom_tanggal) + 1
-        teks_histori = "\nDetail Histori Data (3 Periode Terakhir)\n"
-        
+
         req_tabel = [
-            {"insertText": {"location": {"index": end_idx}, "text": teks_histori}},
-            {"updateParagraphStyle": {
-                "range": {"startIndex": end_idx + 1, "endIndex": end_idx + len(teks_histori)},
-                "paragraphStyle": {"alignment": "CENTER"},
-                "fields": "alignment"
-            }},
-            {"insertTable": {"location": {"index": end_idx + len(teks_histori)}, "rows": n_rows, "columns": n_cols}}
+            {"insertTable": {"location": {"index": end_idx}, "rows": n_rows, "columns": n_cols}}
         ]
         docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_tabel}).execute()
 
@@ -1319,7 +1306,27 @@ def generate_google_doc_batch(
             if req_text_center:
                 docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_text_center}).execute()
 
-        # D. Sisipkan Resume
+        # D. Sisipkan Gambar Chart (SETELAH tabel, sesuai urutan tampil baru:
+        # Judul -> Tabel -> Gambar Chart). Gambar diupload ke Drive di sini
+        # (bukan di langkah A) supaya urutan insert-nya memang belakangan.
+        temp_image_id, image_uri = _upload_image_ke_drive_sementara(
+            drive_service, image_bytes, f"_temp_batch_{idx}_{document_id}.png"
+        )
+
+        doc_current = docs_service.documents().get(documentId=document_id).execute()
+        end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
+
+        req_gambar = [
+            {"insertText": {"location": {"index": end_idx}, "text": "\n"}},
+            {"insertInlineImage": {
+                "location": {"index": end_idx + 1},
+                "uri": image_uri,
+                "objectSize": {"height": {"magnitude": 300, "unit": "PT"}, "width": {"magnitude": 480, "unit": "PT"}}
+            }}
+        ]
+        docs_service.documents().batchUpdate(documentId=document_id, body={"requests": req_gambar}).execute()
+
+        # E. Sisipkan Resume
         doc_current = docs_service.documents().get(documentId=document_id).execute()
         end_idx = doc_current["body"]["content"][-1]["endIndex"] - 1
         
@@ -1336,7 +1343,7 @@ def generate_google_doc_batch(
             }},
             {"updateParagraphStyle": {
                 "range": {"startIndex": end_idx + len(teks_resume_title), "endIndex": end_idx + len(teks_resume)},
-                "paragraphStyle": {"alignment": "JUSTIFIED"}, # PERBAIKAN DI SINI
+                "paragraphStyle": {"alignment": "JUSTIFIED"},
                 "fields": "alignment"
             }}
         ]
