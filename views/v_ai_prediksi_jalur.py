@@ -175,11 +175,11 @@ def render(**kwargs):
                                     </div>
                                 """, unsafe_allow_html=True)
 
-                    st.markdown("##### 🚀 Model 1: Gradient Boosting *(model utama, akurasi lebih tinggi)*")
+                    st.markdown("##### Model 1: Gradient Boosting *(model utama, akurasi lebih tinggi)*")
                     render_hasil_model(pred_gb, proba_gb, "Gradient Boosting", "MODEL UTAMA")
 
                     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-                    st.markdown("##### 🌳 Model 2: Decision Tree *(model pembanding, mudah diaudit/dijelaskan)*")
+                    st.markdown("##### Model 2: Decision Tree *(model pembanding, mudah diaudit/dijelaskan)*")
                     render_hasil_model(pred_dt, proba_dt, "Decision Tree", "PEMBANDING")
 
                     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
@@ -229,7 +229,7 @@ def render(**kwargs):
 
         met_col1, met_col2 = st.columns(2, gap="large")
         with met_col1:
-            st.markdown("**🚀 Gradient Boosting** *(model utama)*")
+            st.markdown("**Gradient Boosting** *(model utama)*")
             g1, g2, g3 = st.columns(3)
             g1.metric(label="Akurasi", value="72.7%")
             g2.metric(label="Balanced Acc.", value="69.6%")
@@ -239,7 +239,7 @@ def render(**kwargs):
             g5.metric(label="Precision (Merah)", value="62.8%")
 
         with met_col2:
-            st.markdown("**🌳 Decision Tree** *(model pembanding)*")
+            st.markdown("**Decision Tree** *(model pembanding)*")
             d1, d2, d3 = st.columns(3)
             d1.metric(label="Akurasi", value="62.6%")
             d2.metric(label="Balanced Acc.", value="62.0%")

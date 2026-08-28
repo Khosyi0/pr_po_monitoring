@@ -38,7 +38,7 @@ from auth import render_login, get_current_user, is_admin, logout, render_user_i
 from views import v_summary, v_profile_departemen, v_isu
 
 # Views - Admin Menu
-from views import v_manajemen_user, v_manajemen_data, v_changelog
+from views import v_manajemen_user, v_manajemen_data, v_changelog, v_reminder_vendor
 
 # Views - AI (Uji Coba)
 from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediksi_sips
@@ -240,6 +240,7 @@ def _render_isu():                      v_isu.render(**st.session_state.get('_su
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_data():           v_manajemen_data.render(**st.session_state.get('_summary_view_args', {}))
 def _render_changelog():                v_changelog.render()
+def _render_reminder_vendor():          v_reminder_vendor.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_jalur():        v_ai_prediksi_jalur.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_keterlambatan(): v_ai_prediksi_keterlambatan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_sips():         v_ai_prediksi_sips.render(**st.session_state.get('_summary_view_args', {}))
@@ -278,6 +279,7 @@ if is_admin():
     admin_pages = [
         st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:"),
         st.Page(_render_manajemen_data, title="Manajemen Data", icon=":material/database:"),
+        st.Page(_render_reminder_vendor, title="PO Outstanding - Reminder Email", icon=":material/mail:"),  # >>> TAMBAHAN BARU
         st.Page(_render_changelog, title="Log Perubahan", icon=":material/history:")
     ]
 
@@ -380,7 +382,7 @@ with st.sidebar:
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"} 
-ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
+ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan", "PO Outstanding - Reminder Email"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring"}
