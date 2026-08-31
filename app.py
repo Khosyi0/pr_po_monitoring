@@ -50,7 +50,7 @@ from views import v_sap_dashboard, v_sap_detail, v_sap_evaluasi, v_sap_kinerja_p
 from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 
 # Views - Inklaring Barang Impor
-from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_waktu
+from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_waktu, v_inklaring_kedatangan_bb
 
 # Views - Bahan Baku
 from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock
@@ -256,6 +256,7 @@ def _render_sips_alert():               v_sips_alert.render(**st.session_state.g
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_manajemen():      v_inklaring_manajemen.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
+def _render_inklaring_kedatangan_bb():  v_inklaring_kedatangan_bb.render()
 def _render_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
 def _render_manajemen_harga_majalah_bb(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
 def _render_kondisi_stock_bb():         v_bb_kondisi_stock.render(**st.session_state.get('_bb_view_args', {}))
@@ -327,6 +328,7 @@ inklaring_pages = [
 ]
 if is_admin():
     inklaring_pages.insert(1, st.Page(_render_inklaring_manajemen, title="Manajemen Inklaring Data", icon=":material/unknown_document:"))
+    inklaring_pages.append(st.Page(_render_inklaring_kedatangan_bb, title="Rencana Kedatangan Bahan Baku", icon=":material/local_shipping:"))
 
 # Halaman Bahan Baku
 current_user_data = get_current_user()
@@ -385,7 +387,7 @@ SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"}
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan", "PO Outstanding - Reminder Email"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
-INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring"}
+INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring", "Rencana Kedatangan Bahan Baku"}
 BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB"}
 LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
@@ -397,6 +399,7 @@ is_sips      = current_page in SIPS_TITLES
 is_inklaring = current_page in INKLARING_TITLES
 is_bb        = current_page in BB_TITLES
 is_lainnya   = current_page in LAINNYA_TITLES
+is_kedatangan_bb = (current_page == "Rencana Kedatangan Bahan Baku")
 
 # Tutup changelog otomatis saat navigasi
 if 'last_page' not in st.session_state:
@@ -717,7 +720,7 @@ elif st.session_state.filter_mode == 'sidebar' and is_bb:
     st.sidebar.info("📌 Filter majalah, incoterm, dan durasi waktu tersedia di dalam expander pada bagian atas masing-masing halaman.")
     st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-elif st.session_state.filter_mode == 'sidebar' and is_inklaring:
+elif st.session_state.filter_mode == 'sidebar' and is_inklaring and not is_kedatangan_bb:
     st.sidebar.markdown("""
     <p title='Info Filter Tanggal:&#10;• Data Inklaring: rentang Tgl ETA (Pemberitahuan Impor Barang)'
        style='font-size:14px; font-weight:600; color:var(--text-color);
@@ -738,6 +741,10 @@ elif st.session_state.filter_mode == 'sidebar' and is_inklaring:
     if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="inklaring_refresh"):
         st.cache_data.clear()
         st.rerun()
+
+elif st.session_state.filter_mode == 'sidebar' and is_kedatangan_bb:
+    st.sidebar.info("📌 Halaman ini memiliki filter & upload tersendiri di dalam tab masing-masing.")
+    st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary and not is_admin_pg:
     try:
