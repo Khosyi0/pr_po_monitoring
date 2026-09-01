@@ -270,6 +270,55 @@ def _cari_baris_existing_di_sheet(sheets_service, aju_pib_target):
             return idx
     return None
 
+# Kolom-kolom yang HANYA diisi manual di spreadsheet dan TIDAK PERNAH
+# dihasilkan oleh pdf_extractor_inklaring.py manapun. Dipakai untuk
+# auto-fill form "Tambah Data Baru" di v_inklaring_manajemen.py supaya field
+# semacam SAP/LN tidak perlu diketik ulang kalau AJU PIB yang sama sudah
+# pernah dicatat manual di sheet sebelumnya.
+KOLOM_MANUAL_SAJA = ['sap', 'ln']
+
+
+def cari_data_manual_by_aju_pib(aju_pib):
+    """
+    Mencari baris di sheet Inklaring berdasarkan AJU PIB (kolom C, dicocokkan
+    PERSIS/exact match), lalu mengembalikan HANYA kolom-kolom yang memang
+    diisi manual di spreadsheet (lihat KOLOM_MANUAL_SAJA, mis. SAP dan LN) --
+    bukan seluruh baris, karena field lain sudah lebih akurat kalau berasal
+    dari hasil ekstraksi PDF.
+
+    Mengembalikan dict {field_name: value} kalau baris ditemukan DAN
+    setidaknya satu kolom manual terisi, atau {} (dict kosong) kalau baris
+    tidak ditemukan / semua kolom manual kosong. Tidak pernah melempar
+    exception ke pemanggil -- kegagalan apapun (auth, network, dsb) di-catch
+    dan dianggap "tidak ada data", supaya proses ekstraksi PDF tetap bisa
+    lanjut walau lookup sheet ini gagal.
+    """
+    try:
+        sheets_service = _get_sheets_service()
+        nomor_baris = _cari_baris_existing_di_sheet(sheets_service, aju_pib)
+        if nomor_baris is None:
+            return {}
+
+        # Ambil hanya kolom yang dibutuhkan (rentang huruf kolom dari
+        # KOLOM_MANUAL_SAJA), bukan seluruh baris A:AU, supaya lebih ringan.
+        hasil = {}
+        for field_name in KOLOM_MANUAL_SAJA:
+            idx = INKLARING_SHEET_COLUMN_ORDER.index(field_name)
+            huruf_kolom = _index_ke_huruf_kolom(idx)
+            resp = sheets_service.spreadsheets().values().get(
+                spreadsheetId=INKLARING_SPREADSHEET_ID,
+                range=f"'{INKLARING_SHEET_NAME}'!{huruf_kolom}{nomor_baris}",
+            ).execute()
+            nilai_rows = resp.get("values", [])
+            if nilai_rows and nilai_rows[0]:
+                nilai = str(nilai_rows[0][0]).strip()
+                if nilai:
+                    hasil[field_name] = nilai
+
+        return hasil
+    except Exception:
+        return {}
+
 
 def append_row_inklaring_ke_sheet(row_dict):
     """

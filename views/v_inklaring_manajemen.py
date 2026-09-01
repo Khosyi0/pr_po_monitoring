@@ -797,6 +797,22 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                     for nama_dok, pesan_error in errors_ekstraksi.items():
                         st.warning(f"Gagal memproses dokumen '{nama_dok}': {pesan_error}")
 
+                # Lengkapi field yang HANYA diisi manual di spreadsheet (SAP, LN) kalau
+                # AJU PIB hasil ekstraksi PDF sudah pernah tercatat sebelumnya di sheet
+                # Inklaring. Tidak menimpa field yang sudah terisi dari PDF -- lookup ini
+                # murni pelengkap untuk kolom yang memang tidak pernah dihasilkan PDF.
+                aju_pib_hasil = hasil_ekstraksi.get('aju_pib')
+                if aju_pib_hasil and gdocs_export is not None and hasattr(gdocs_export, "cari_data_manual_by_aju_pib"):
+                    with st.spinner("Mencari data pelengkap (SAP, LN) di spreadsheet..."):
+                        data_manual = gdocs_export.cari_data_manual_by_aju_pib(aju_pib_hasil)
+                    for field_name, nilai in data_manual.items():
+                        hasil_ekstraksi[field_name] = nilai
+                    if data_manual:
+                        st.info(
+                            f"Ditemukan data pelengkap di spreadsheet untuk AJU PIB '{aju_pib_hasil}': "
+                            + ", ".join(f"{COLUMN_LABELS.get(k, k)} = {v}" for k, v in data_manual.items())
+                        )
+
                 if hasil_ekstraksi:
                     st.session_state['inklaring_pdf_extracted'] = hasil_ekstraksi
                     st.success(f"Berhasil mengekstrak {len(hasil_ekstraksi)} field. Periksa dan koreksi form di bawah, lalu simpan.")
