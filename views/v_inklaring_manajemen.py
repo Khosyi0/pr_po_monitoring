@@ -662,7 +662,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                         else:
                             try:
                                 with st.spinner("Menyalin data ke Google Sheet..."):
-                                    gdocs_export.append_row_inklaring_ke_sheet(values)
+                                    gdocs_export.append_row_inklaring_ke_sheet(new_row)
                                 st.success("Data juga berhasil disalin ke Google Sheet '2026 - BB/BD/BP'.")
                             except Exception as e:
                                 st.warning(

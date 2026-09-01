@@ -210,15 +210,15 @@ def _build_email_html(vendor_name, df_selected, tanggal_surat_label):
                 </p>
                 <p>
                     Surat Klarifikasi tersebut dapat dikirimkan melalui <strong>Email</strong>
-                    expeditinglaporan2020@gmail.com dan kami terima <strong>paling lambat 3 (tiga) hari kerja</strong>
+                    <strong>expeditinglaporan2020@gmail.com</strong> dan kami terima <strong>paling lambat 3 (tiga) hari kerja</strong>
                     sejak pemberitahuan ini dikirimkan, dengan mencantumkan
                     <strong>alasan keterlambatan dan tanggal pasti penyelesaian/pengiriman</strong>.
                 </p>
                 <p>
                     Perlu kami sampaikan bahwa tingkat pemenuhan dan ketepatan waktu pengiriman akan menjadi
                     bagian dari evaluasi kinerja vendor dan pertimbangan dalam proses pengadaan berikutnya.
-                    Adapun diperlukan penjelasan lebih lanjut dapat menghubungi nomor WhatsApp
-                    +62 811-3076-2493 (Admin Pengadaan Barang).
+                    Adapun diperlukan penjelasan lebih lanjut dapat menghubungi <strong>Nomor WhatsApp
+                    +62 811-3076-2493 (Admin Pengadaan Barang).</strong>
                 </p>
                 <p>
                     Demikian disampaikan untuk menjadi perhatian dan segera ditindaklanjuti.
