@@ -726,8 +726,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                     help="Wajib. Sumber: Agent, Gudang Timbun, Start/Selesai Bongkar (dibaca lewat OCR)"
                 )
                 file_sptnp = st.file_uploader(
-                    "4. SPTNP *", type=["pdf"], key="upload_sptnp",
-                    help="Wajib. Sumber: No/Tgl SPTNP, Nilai SPTNP"
+                    "4. SPTNP", type=["pdf"], key="upload_sptnp",
+                    help="Opsional. Sumber: No/Tgl SPTNP, Nilai SPTNP"
                 )
 
             with col_up2:
@@ -758,7 +758,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             # Sisanya (SPJM, SKEP, SPPB) opsional -- kalau tidak diupload,
             # field yang bersumber darinya cukup dikosongkan dan diisi manual
             # di form nanti.
-            DOKUMEN_WAJIB = ['pib_nopen', 'inward', 'laporan_penimbunan', 'sptnp']
+            DOKUMEN_WAJIB = ['pib_nopen', 'inward', 'laporan_penimbunan']
             LABEL_DOKUMEN = {
                 'pib_nopen': 'PIB Nopen',
                 'inward': 'INWARD (BC 1.1)',
@@ -773,7 +773,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 LABEL_DOKUMEN[k] for k in DOKUMEN_WAJIB if semua_file.get(k) is None
             ]
             jumlah_terupload = sum(1 for f in semua_file.values() if f is not None)
-            st.caption(f"Terupload: {jumlah_terupload}/7 dokumen (wajib: PIB Nopen, INWARD, Laporan Penimbunan MV, SPTNP — sisanya opsional)")
+            st.caption(f"Terupload: {jumlah_terupload}/7 dokumen (wajib: PIB Nopen, INWARD, Laporan Penimbunan MV — sisanya opsional)")
 
             tombol_disabled = len(dokumen_wajib_belum_upload) > 0
             if tombol_disabled:
