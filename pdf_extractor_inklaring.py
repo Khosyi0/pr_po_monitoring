@@ -295,7 +295,7 @@ def extract_pib_nopen(file_bytes):
     hasil = {}
 
     # Tgl PIB & AJU PIB : "Nomor Pengajuan :00002001000020250207005447 Tanggal Pengajuan :10-02-2025"
-    hasil['aju_pib'] = _cari(r"Nomor Pengajuan\s*:\s*(\d+)", teks)
+    hasil['aju_pib'] = _cari(r"Nomor Pengajuan\s*:\s*(\S+)", teks)
     tgl_pib_raw = _cari(r"Tanggal Pengajuan\s*:\s*(\d{2}-\d{2}-\d{4})", teks)
     hasil['tgl_pib'] = _parse_tanggal_ddmmyyyy(tgl_pib_raw)
 
