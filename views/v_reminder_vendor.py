@@ -217,8 +217,8 @@ def _build_email_html(vendor_name, df_selected, tanggal_surat_label):
                 <p>
                     Perlu kami sampaikan bahwa tingkat pemenuhan dan ketepatan waktu pengiriman akan menjadi
                     bagian dari evaluasi kinerja vendor dan pertimbangan dalam proses pengadaan berikutnya.
-                    Adapun diperlukan penjelasan lebih lanjut dapat menghubungi <strong>Nomor WhatsApp
-                    +62 811-3076-2493 (Admin Pengadaan Barang).</strong>
+                    Adapun diperlukan penjelasan lebih lanjut dapat menghubungi <strong>Nomor WhatsApp Admin Pengadaan Barang: 
+                    +62 811-3076-2493 (Chat Only).</strong>
                 </p>
                 <p>
                     Demikian disampaikan untuk menjadi perhatian dan segera ditindaklanjuti.
