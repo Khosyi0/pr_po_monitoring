@@ -17,6 +17,8 @@ Catatan:
 - Satu kali proses hanya untuk SATU vendor (submit ulang untuk vendor lain).
 - Kredensial SMTP diinput manual setiap sesi, TIDAK disimpan ke database
   atau session state permanen -- sesuai kesepakatan awal.
+- Email dikirim sebagai multipart/alternative (plain-text + HTML) untuk
+  membantu deliverability / mengurangi risiko masuk folder spam.
 """
 
 import streamlit as st
@@ -116,8 +118,17 @@ def _get_po_by_vendor(load_data, vendor_code):
 
 
 # =============================================================================
-# HELPER: Bangun isi email (HTML)
+# HELPER: Bangun isi email (HTML & plain-text)
 # =============================================================================
+
+def _resolve_vendor_display(vendor_name):
+    """Nama vendor ditampilkan tebal; awalan 'PT' hanya ditambahkan otomatis
+    jika nama vendor pada data belum diawali 'PT' (menghindari 'PT PT ...')."""
+    vendor_name_clean = (vendor_name or "").strip()
+    if vendor_name_clean.upper().startswith("PT"):
+        return vendor_name_clean
+    return f"PT {vendor_name_clean}"
+
 
 def _build_email_html(vendor_name, df_selected, tanggal_surat_label):
     rows_html = ""
@@ -136,13 +147,7 @@ def _build_email_html(vendor_name, df_selected, tanggal_surat_label):
         </tr>
         """
 
-    # Nama vendor ditampilkan tebal; awalan "PT" hanya ditambahkan otomatis
-    # jika nama vendor pada data belum diawali "PT" (menghindari "PT PT ...").
-    vendor_name_clean = (vendor_name or "").strip()
-    if vendor_name_clean.upper().startswith("PT"):
-        vendor_display = vendor_name_clean
-    else:
-        vendor_display = f"PT {vendor_name_clean}"
+    vendor_display = _resolve_vendor_display(vendor_name)
 
     html = f"""
     <!DOCTYPE html>
@@ -239,19 +244,121 @@ def _build_email_html(vendor_name, df_selected, tanggal_surat_label):
     """
     return html
 
-def _send_email(smtp_host, smtp_port, sender_email, sender_password, to_email, subject, html_body,
-                 sender_display_name="Pengadaan Barang Petro"):
+
+def _build_email_plaintext(vendor_name, df_selected, tanggal_surat_label):
+    """Versi teks biasa (tanpa HTML) dari isi surat, dengan informasi yang
+    sama persis seperti versi HTML. Dikirim sebagai bagian 'plain' pada
+    email multipart/alternative -- membantu deliverability (mengurangi
+    risiko masuk folder spam) dan menjadi fallback bagi klien email yang
+    tidak menampilkan HTML."""
+    vendor_display = _resolve_vendor_display(vendor_name)
+
+    lines = []
+    lines.append("SURAT PERMINTAAN KLARIFIKASI ATAS KETERLAMBATAN PEMENUHAN PO")
+    lines.append("")
+    lines.append(f"Hari/Tanggal : {tanggal_surat_label}")
+    lines.append("Perihal      : Klarifikasi dan Tindak Lanjut PO Outstanding")
+    lines.append("")
+    lines.append("Kepada Yth.")
+    lines.append(vendor_display)
+    lines.append("di Tempat")
+    lines.append("")
+    lines.append("Dengan hormat,")
+    lines.append("")
+    lines.append(
+        f"Berdasarkan hasil monitoring atas realisasi Purchase Order (PO) yang telah "
+        f"diterbitkan kepada {vendor_display}, kami menemukan masih terdapat sejumlah PO "
+        f"yang belum terealisasi dan/atau masih berstatus Outstanding, sebagaimana daftar berikut :"
+    )
+    lines.append("")
+
+    # Tabel PO dalam bentuk teks rata (fixed-width) agar tetap terbaca rapi
+    # di klien email yang hanya menampilkan plain-text.
+    header = ["No.", "No. PO", "Item", "Deskripsi", "Tgl PO", "Delivery Date", "Telat"]
+    table_rows = [header]
+    for i, (_, row) in enumerate(df_selected.iterrows(), start=1):
+        doc_date = pd.to_datetime(row['document_date']).strftime('%d-%m-%Y') if pd.notna(row['document_date']) else "-"
+        del_date = pd.to_datetime(row['delivery_date']).strftime('%d-%m-%Y') if pd.notna(row['delivery_date']) else "-"
+        telat = f"{int(row['pending_time'])} hari" if pd.notna(row['pending_time']) else "-"
+        table_rows.append([
+            str(i),
+            str(row['purchasing_document']),
+            str(row['item']),
+            str(row['short_text'] or '-'),
+            doc_date,
+            del_date,
+            telat,
+        ])
+
+    col_widths = [max(len(str(r[c])) for r in table_rows) for c in range(len(header))]
+    for r in table_rows:
+        line = "  ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(r))
+        lines.append(line)
+    lines.append("")
+
+    lines.append(
+        "Sehubungan dengan hal tersebut, kami meminta untuk segera memberikan Surat "
+        "klarifikasi tertulis atas PO yang masih outstanding untuk masing-masing PO."
+    )
+    lines.append("")
+    lines.append(
+        "Surat Klarifikasi tersebut dapat dikirimkan melalui Email "
+        "expeditinglaporan2020@gmail.com dan kami terima paling lambat 3 (tiga) hari kerja "
+        "sejak pemberitahuan ini dikirimkan, dengan mencantumkan alasan keterlambatan dan "
+        "tanggal pasti penyelesaian/pengiriman."
+    )
+    lines.append("")
+    lines.append(
+        "Perlu kami sampaikan bahwa tingkat pemenuhan dan ketepatan waktu pengiriman akan "
+        "menjadi bagian dari evaluasi kinerja vendor dan pertimbangan dalam proses pengadaan "
+        "berikutnya. Adapun diperlukan penjelasan lebih lanjut dapat menghubungi Nomor WhatsApp "
+        "Admin Pengadaan Barang: +62 811-3076-2493 (Chat Only)."
+    )
+    lines.append("")
+    lines.append("Demikian disampaikan untuk menjadi perhatian dan segera ditindaklanjuti.")
+    lines.append("")
+    lines.append("Hormat kami,")
+    lines.append("")
+    lines.append("PT PETROKIMIA GRESIK")
+    lines.append("Pgs. VP Pengadaan Barang")
+    lines.append("")
+    lines.append("")
+    lines.append("Mochammad Fais")
+    lines.append("AVP Pengadaan Barang Alat Pabrik & TA")
+
+    return "\n".join(lines)
+
+
+def _send_email(smtp_host, smtp_port, sender_email, sender_password, to_email, subject,
+                 html_body, plain_body, sender_display_name="Pengadaan Barang Petro", cc_email=None):
+    # multipart/alternative: klien email akan memilih salah satu bagian untuk
+    # ditampilkan (umumnya HTML jika didukung), tapi keberadaan versi plain-text
+    # membantu deliverability / mengurangi risiko email dianggap spam.
     msg = MIMEMultipart('alternative')
     msg['From'] = formataddr((sender_display_name, sender_email))
     msg['To'] = to_email
     msg['Subject'] = subject
+
+    # Header 'Cc' hanya untuk DITAMPILKAN di email penerima (agar mereka tahu
+    # siapa saja yang di-cc). Ini tidak otomatis membuat SMTP mengirim ke
+    # alamat tsb -- alamat cc tetap harus ditambahkan eksplisit ke daftar
+    # penerima (`all_recipients`) di server.sendmail() di bawah.
+    cc_list = [e.strip() for e in (cc_email or "").split(",") if e.strip()]
+    if cc_list:
+        msg['Cc'] = ", ".join(cc_list)
+
+    # Bagian plain-text HARUS ditempel lebih dulu, baru HTML -- sesuai urutan
+    # preferensi standar multipart/alternative (bagian terakhir = paling disukai).
+    msg.attach(MIMEText(plain_body, 'plain'))
     msg.attach(MIMEText(html_body, 'html'))
+
+    all_recipients = [to_email] + cc_list
 
     server = smtplib.SMTP(smtp_host, int(smtp_port))
     try:
         server.starttls()
         server.login(sender_email, sender_password)
-        server.sendmail(sender_email, to_email, msg.as_string())
+        server.sendmail(sender_email, all_recipients, msg.as_string())
     finally:
         server.quit()
 
@@ -410,6 +517,7 @@ def _tab_kirim_reminder(load_data):
     tanggal_surat_label = f"{nama_hari} / {tanggal_surat.day} {nama_bulan} {tanggal_surat.year}"
 
     html_body = _build_email_html(vendor_name, df_selected, tanggal_surat_label)
+    plain_body = _build_email_plaintext(vendor_name, df_selected, tanggal_surat_label)
 
     with st.expander(":material/visibility: Lihat Preview Isi Email", expanded=True):
         st.components.v1.html(html_body, height=450, scrolling=True)
@@ -425,7 +533,12 @@ def _tab_kirim_reminder(load_data):
         col1, col2 = st.columns(2)
         with col1:
             smtp_host = st.text_input("SMTP Host", value="smtp.gmail.com", key="rv_smtp_host")
-            sender_email = st.text_input("Email Pengirim (Gmail)", value="", placeholder="nama@gmail.com", key="rv_sender_email")
+            sender_email = st.text_input(
+                "Email Pengirim (Gmail)",
+                value="expeditinglaporan2020@gmail.com",
+                placeholder="nama@gmail.com",
+                key="rv_sender_email"
+            )
         with col2:
             smtp_port = st.text_input("SMTP Port", value="587", key="rv_smtp_port")
             sender_password = st.text_input(
@@ -437,14 +550,24 @@ def _tab_kirim_reminder(load_data):
                 key="rv_sender_password"
             )
 
+        cc_email = st.text_input(
+            "CC",
+            value="alpata@petrokimia-gresik.com, daanbarum@petrokimia-gresik.com",
+            help="Alamat yang akan menerima salinan (CC) email ini. Bisa diisi lebih dari satu, "
+                 "dipisahkan koma. Kosongkan jika tidak perlu CC.",
+            key="rv_cc_email"
+        )
+
         st.caption(
             ":material/lock: Kredensial ini hanya dipakai untuk sesi pengiriman saat ini dan tidak disimpan di manapun."
         )
 
-        confirm = st.checkbox(
-            f"Saya sudah memeriksa preview email dan yakin ingin mengirim ke **{vendor_email or '(email belum ada)'}**.",
-            key="rv_confirm_send"
-        )
+        confirm_text = f"Saya sudah memeriksa preview email dan yakin ingin mengirim ke **{vendor_email or '(email belum ada)'}**"
+        if cc_email.strip():
+            confirm_text += f" (CC: **{cc_email.strip()}**)"
+        confirm_text += "."
+
+        confirm = st.checkbox(confirm_text, key="rv_confirm_send")
 
         submitted = st.form_submit_button(
             ":material/send: Kirim Email ke Vendor",
@@ -471,9 +594,12 @@ def _tab_kirim_reminder(load_data):
                         to_email=vendor_email,
                         subject=subject,
                         html_body=html_body,
+                        plain_body=plain_body,
                         sender_display_name="Pengadaan Barang Petrokimia Gresik",
+                        cc_email=cc_email,
                     )
-                    st.success(f":material/check_circle: Email berhasil dikirim ke {vendor_name} ({vendor_email})!")
+                    cc_note = f" (CC: {cc_email.strip()})" if cc_email.strip() else ""
+                    st.success(f":material/check_circle: Email berhasil dikirim ke {vendor_name} ({vendor_email}){cc_note}!")
                     st.balloons()
                 except smtplib.SMTPAuthenticationError:
                     st.error(
@@ -496,7 +622,7 @@ def _tab_kirim_reminder(load_data):
 def _tab_import_data():
     st.markdown(
         "<p style='font-size:14px; opacity:0.7; margin-top:4px; margin-bottom:20px;'>"
-        "Upload file Excel PO Outstanding (Sheet1) untuk memperbarui data yang dipakai "
+        "Upload file Excel PO Outstanding (Perlu Email) untuk memperbarui data yang dipakai "
         "pada tab <b>Kirim Reminder</b>. Data lama akan <b>diganti total</b> dengan data "
         "dari file terbaru -- PO yang sudah tidak outstanding otomatis hilang dari sistem."
         "</p>",
@@ -524,7 +650,7 @@ def _tab_import_data():
     """, unsafe_allow_html=True)
 
     st.info(
-        ":material/info: Pastikan file Excel yang diupload memiliki sheet bernama **'Sheet1'** "
+        ":material/info: Pastikan file Excel yang diupload memiliki sheet bernama **'Perlu Email'** "
         "dengan kolom-kolom sesuai format PO Outstanding (Purchasing Document, Item, "
         "Vendor Code, Vendor Name, Vendor email, Document Date, Delivery Date, dsb)."
     )
@@ -561,7 +687,7 @@ def _tab_import_data():
                     os.remove(file_path)
 
     file_po = st.file_uploader(
-        "Upload File PO Outstanding (.xlsx) — data diambil dari sheet 'Sheet1'",
+        "Upload File PO Outstanding (.xlsx) — data diambil dari sheet 'Perlu Email'",
         type=["xlsx"],
         key="rv_uploader_po_outstanding"
     )
@@ -572,15 +698,15 @@ def _tab_import_data():
     if file_po:
         try:
             xl = pd.ExcelFile(file_po)
-            if "Sheet1" not in xl.sheet_names:
-                st.error(f":material/error: Sheet 'Sheet1' tidak ditemukan. Sheet yang ada: {xl.sheet_names}")
+            if "Perlu Email" not in xl.sheet_names:
+                st.error(f":material/error: Sheet 'Perlu Email' tidak ditemukan. Sheet yang ada: {xl.sheet_names}")
             else:
-                st.success(":material/check_circle: Sheet 'Sheet1' ditemukan.")
+                st.success(":material/check_circle: Sheet 'Perlu Email' ditemukan.")
                 if st.button("Jalankan ETL PO Outstanding", type="primary", icon=":material/cloud_upload:", key="rv_btn_etl"):
                     po_path = "temp_po_outstanding.xlsx"
                     with open(po_path, "wb") as f:
                         f.write(file_po.getbuffer())
-                    _jalankan_etl_po_outstanding(po_path, "Sheet1", update_tgl_po)
+                    _jalankan_etl_po_outstanding(po_path, "Perlu Email", update_tgl_po)
         except Exception as e:
             st.error(f"Gagal membaca file: {e}")
 

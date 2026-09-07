@@ -1,6 +1,6 @@
 """
 etl_po_outstanding.py - ETL untuk Modul PO Outstanding (Reminder Email Vendor)
-Membaca file Excel PO Outstanding (Sheet1), membersihkan format angka dan
+Membaca file Excel PO Outstanding (Perlu Email), membersihkan format angka dan
 tanggal, membuang kolom/baris bukan-data, lalu MENGGANTI TOTAL isi tabel
 po_outstanding di PostgreSQL (TRUNCATE + INSERT).
 
@@ -21,7 +21,7 @@ import os
 
 class Config:
     PO_OUTSTANDING_FILE = None
-    SHEET_NAME = "Sheet1"
+    SHEET_NAME = "Perlu Email"
 
 
 def db_get_engine():
