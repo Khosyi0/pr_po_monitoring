@@ -6,20 +6,23 @@ dengan resume yang ditulis oleh LLM (Gemini) supaya bahasanya lebih natural
 dan enak dibaca atasan, tapi tetap akurat terhadap data.
 
 Prinsip desain:
-1. KONTEKS DIBATASI 3 BULAN TERAKHIR
-   Model hanya diberi tahu data 3 bulan terakhir (dihitung dari tanggal
-   terbit paling baru yang ada pada rentang filter user), supaya narasinya
-   fokus membicarakan tren jangka pendek/menengah -- bukan seluruh histori
-   yang bisa membingungkan konteks.
+1. KONTEKS DIBATASI 3 PERIODE PUBLIKASI TERAKHIR
+   Model hanya diberi tahu data pada 3 tanggal publikasi TERAKHIR yang ada
+   pada df_plot_komparasi (dihitung dari seluruh referensi, bukan per
+   referensi), persis sama dengan data yang tampil di tabel "Detail Histori
+   Data (3 Periode Terakhir)" pada dokumen -- supaya narasi resume selalu
+   konsisten dengan tabel yang dilihat pembaca, bukan mengacu ke rentang
+   waktu yang berbeda (mis. 3 bulan) yang bisa membuat resume menyebut
+   angka/tanggal yang tidak ada di tabel.
 
-2. DATA TERAKHIR TETAP DIPERTAHANKAN WALAU DI LUAR 3 BULAN
-   Kalau suatu referensi (Majalah - Incoterm) TIDAK punya rilis harga sama
-   sekali dalam 3 bulan terakhir (mis. publikasinya jarang / sudah lama tidak
-   update), titik data TERAKHIR yang tersedia (walau lebih lama dari 3 bulan)
-   tetap disertakan ke konteks, supaya AI tidak menganggap referensi tsb
-   tidak punya data sama sekali. Ini sama seperti perilaku lama di
-   `hitung_resume_generik` yang menyebutkan "referensi X terakhir rilis pada
-   tanggal Y" ketika Y sudah lebih dari 14 hari dari T0.
+2. REFERENSI YANG TIDAK PUNYA DATA DI 3 PERIODE TSB
+   Kalau suatu referensi (Majalah - Incoterm) TIDAK punya rilis harga pada
+   salah satu dari 3 tanggal publikasi acuan (mis. publikasinya jarang /
+   sudah lama tidak update), titik data TERAKHIR yang tersedia (walau lebih
+   lama dari 3 periode acuan) tetap disertakan ke konteks, supaya AI tidak
+   menganggap referensi tsb tidak punya data sama sekali. Ini sama seperti
+   perilaku lama di `hitung_resume_generik` yang menyebutkan "referensi X
+   terakhir rilis pada tanggal Y".
 
 3. TIDAK ADA PANGGILAN OTOMATIS SAAT HALAMAN DIMUAT
    Modul ini HANYA dipanggil ketika user menekan tombol "Generate Resume AI"
@@ -41,7 +44,11 @@ BULAN_INDO = {
     7: 'Juli', 8: 'Agustus', 9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
 }
 
-JUMLAH_BULAN_KONTEKS = 3
+# Jumlah tanggal publikasi terakhir yang dipakai sebagai konteks resume --
+# HARUS sama dengan jumlah kolom periode pada tabel "Detail Histori Data"
+# di dokumen (saat ini 3 periode terakhir), supaya narasi resume selalu
+# konsisten dengan tabel yang tampil.
+JUMLAH_PERIODE_KONTEKS = 3
 
 # Model Gemini yang dipakai. gemini-2.5-flash dipilih karena cepat & murah,
 # cukup untuk tugas menulis ringkasan naratif pendek berbasis data terstruktur.
@@ -56,17 +63,20 @@ def _format_tanggal_indo(dt):
     return f"{dt.day:02d} {BULAN_INDO[dt.month]} {dt.year}"
 
 
-def _susun_konteks_3_bulan(df_plot, y_col):
+def _susun_konteks_periode_terakhir(df_plot, y_col):
     """
     Menyusun ringkasan data historis per referensi (label_komparasi), dibatasi
-    3 bulan terakhir dari tanggal terbit paling baru di df_plot.
+    HANYA pada JUMLAH_PERIODE_KONTEKS tanggal publikasi TERAKHIR yang ada di
+    seluruh df_plot -- persis sama dengan tanggal-tanggal yang dipakai pada
+    tabel "Detail Histori Data (3 Periode Terakhir)" di dokumen.
 
     Untuk tiap referensi:
-      - Ambil semua titik data dalam jendela 3 bulan terakhir (urut tanggal).
-      - Kalau TIDAK ADA titik data sama sekali dalam jendela tsb, tetap
-        sertakan titik data TERAKHIR yang tersedia (di luar jendela), dengan
-        catatan eksplisit bahwa data tsb "terakhir tersedia" -- supaya AI
-        tahu itu bukan data terkini tapi tetap relevan disebutkan.
+      - Ambil titik data pada tanggal-tanggal publikasi acuan tsb (kalau ada).
+      - Kalau referensi tsb TIDAK punya rilis pada satu pun dari tanggal
+        publikasi acuan (mis. publikasinya jarang), tetap sertakan titik data
+        TERAKHIR yang tersedia (di luar tanggal-tanggal acuan), dengan catatan
+        eksplisit bahwa data tsb "terakhir tersedia" -- supaya AI tahu itu
+        bukan data pada periode acuan tapi tetap relevan disebutkan.
 
     df_plot HARUS sudah tidak mengandung baris Harga Perolehan (kalau ada,
     filter dulu sebelum memanggil fungsi ini), karena resume ini murni bicara
@@ -74,15 +84,15 @@ def _susun_konteks_3_bulan(df_plot, y_col):
 
     Mengembalikan dict:
     {
-        "tanggal_acuan": Timestamp,   # T0, tanggal terbit paling baru di seluruh df_plot
-        "batas_3_bulan": Timestamp,
+        "tanggal_acuan": Timestamp,        # tanggal publikasi paling baru di seluruh df_plot
+        "tanggal_periode_acuan": [Timestamp, ...],  # N tanggal publikasi terakhir (urut lama->baru)
         "referensi": [
             {
                 "label": str,
-                "dalam_jendela": bool,   # True kalau ada data dlm 3 bulan terakhir
+                "dalam_periode_acuan": bool,   # True kalau ada data pada tanggal2 acuan
                 "titik_data": [ {"tanggal": "dd Mon yyyy", "harga": float}, ... ],
-                # kalau dalam_jendela == False, titik_data cuma berisi 1 entry
-                # (titik data terakhir yang tersedia, di luar jendela)
+                # kalau dalam_periode_acuan == False, titik_data cuma berisi 1 entry
+                # (titik data terakhir yang tersedia, di luar tanggal2 acuan)
             },
             ...
         ]
@@ -95,31 +105,39 @@ def _susun_konteks_3_bulan(df_plot, y_col):
     df_plot['tanggal_terbit'] = pd.to_datetime(df_plot['tanggal_terbit'])
 
     tanggal_acuan = df_plot['tanggal_terbit'].max()
-    batas_3_bulan = tanggal_acuan - pd.DateOffset(months=JUMLAH_BULAN_KONTEKS)
+
+    # N tanggal publikasi UNIK terakhir di seluruh dataset (bukan per
+    # referensi), sama seperti kolom-kolom periode pada tabel "Detail Histori
+    # Data (3 Periode Terakhir)" -- diurutkan lama -> baru untuk narasi yang
+    # kronologis.
+    semua_tanggal_unik = sorted(df_plot['tanggal_terbit'].unique())
+    tanggal_periode_acuan = semua_tanggal_unik[-JUMLAH_PERIODE_KONTEKS:]
+    set_tanggal_periode_acuan = set(tanggal_periode_acuan)
 
     daftar_referensi = []
     for label, df_label in df_plot.groupby('label_komparasi'):
         df_label = df_label.sort_values('tanggal_terbit')
-        df_dalam_jendela = df_label[df_label['tanggal_terbit'] >= batas_3_bulan]
+        df_dalam_periode = df_label[df_label['tanggal_terbit'].isin(set_tanggal_periode_acuan)]
 
-        if not df_dalam_jendela.empty:
+        if not df_dalam_periode.empty:
             titik_data = [
                 {"tanggal": _format_tanggal_indo(row['tanggal_terbit']), "harga": round(float(row[y_col]), 2)}
-                for _, row in df_dalam_jendela.iterrows()
+                for _, row in df_dalam_periode.iterrows()
             ]
             daftar_referensi.append({
                 "label": label,
-                "dalam_jendela": True,
+                "dalam_periode_acuan": True,
                 "titik_data": titik_data,
             })
         else:
-            # Tidak ada rilis dalam 3 bulan terakhir -> tetap pertahankan
-            # titik data TERAKHIR yang tersedia (walau lebih lama), supaya
-            # AI tidak kehilangan konteks referensi ini sama sekali.
+            # Tidak ada rilis pada tanggal-tanggal periode acuan -> tetap
+            # pertahankan titik data TERAKHIR yang tersedia (walau lebih
+            # lama), supaya AI tidak kehilangan konteks referensi ini sama
+            # sekali.
             baris_terakhir = df_label.iloc[-1]
             daftar_referensi.append({
                 "label": label,
-                "dalam_jendela": False,
+                "dalam_periode_acuan": False,
                 "titik_data": [{
                     "tanggal": _format_tanggal_indo(baris_terakhir['tanggal_terbit']),
                     "harga": round(float(baris_terakhir[y_col]), 2),
@@ -128,25 +146,27 @@ def _susun_konteks_3_bulan(df_plot, y_col):
 
     return {
         "tanggal_acuan": tanggal_acuan,
-        "batas_3_bulan": batas_3_bulan,
+        "tanggal_periode_acuan": tanggal_periode_acuan,
         "referensi": daftar_referensi,
     }
 
 
 def _bangun_prompt(label_bb, jenis_harga, konteks, config):
-    """Menyusun prompt teks untuk Gemini dari hasil _susun_konteks_3_bulan."""
+    """Menyusun prompt teks untuk Gemini dari hasil _susun_konteks_periode_terakhir."""
     tanggal_acuan_str = _format_tanggal_indo(konteks["tanggal_acuan"])
-    batas_str = _format_tanggal_indo(konteks["batas_3_bulan"])
+    daftar_tanggal_periode_str = ", ".join(
+        _format_tanggal_indo(t) for t in konteks["tanggal_periode_acuan"]
+    )
 
     bagian_data = []
     for ref in konteks["referensi"]:
-        if ref["dalam_jendela"]:
+        if ref["dalam_periode_acuan"]:
             titik_str = "; ".join(f"{t['tanggal']}: USD {t['harga']}/MT" for t in ref["titik_data"])
-            bagian_data.append(f"- {ref['label']} (data dalam 3 bulan terakhir): {titik_str}")
+            bagian_data.append(f"- {ref['label']} (data pada periode acuan): {titik_str}")
         else:
             t = ref["titik_data"][0]
             bagian_data.append(
-                f"- {ref['label']} (TIDAK ADA rilis baru dalam 3 bulan terakhir; "
+                f"- {ref['label']} (TIDAK ADA rilis pada periode acuan; "
                 f"data terakhir yang tersedia): {t['tanggal']}: USD {t['harga']}/MT"
             )
 
@@ -161,17 +181,17 @@ def _bangun_prompt(label_bb, jenis_harga, konteks, config):
     prompt = f"""Kamu adalah analis harga komoditas bahan baku pupuk. Tulis resume tren harga pasar untuk bahan baku "{label_bb}" (jenis harga: {jenis_harga}) dalam Bahasa Indonesia, berdasarkan data berikut.
 
 Tanggal acuan (data terbaru): {tanggal_acuan_str}
-Jendela data utama: 3 bulan terakhir (sejak {batas_str} sampai {tanggal_acuan_str})
+Periode acuan (persis sama dengan tabel "Detail Histori Data" pada dokumen): {daftar_tanggal_periode_str}
 
-Data per referensi (Majalah - Incoterm):
+Data per referensi (Majalah - Incoterm), HANYA mencakup periode acuan di atas:
 {teks_data}
 
 Instruksi penulisan:
 1. Tulis dalam bentuk poin-poin (bullet), MAKSIMAL 4 poin, masing-masing 1-3 kalimat.
-2. Fokus membahas tren pergerakan harga dalam 3 bulan terakhir: naik/turun/stabil, seberapa signifikan, dan konteks singkat penyebab jika bisa disimpulkan dari data (tanpa mengarang angka atau berita eksternal yang tidak ada di data).
+2. Fokus membahas tren pergerakan harga PADA PERIODE ACUAN DI ATAS SAJA: naik/turun/stabil, seberapa signifikan, dan konteks singkat penyebab jika bisa disimpulkan dari data (tanpa mengarang angka, tanggal, atau berita eksternal yang tidak ada di data). JANGAN merujuk ke tren jangka panjang atau tanggal di luar periode acuan yang diberikan.
 3. Gaya bahasa naratif, profesional, TIDAK kaku/template, enak dibaca oleh manajemen. Hindari mengulang struktur kalimat yang sama persis di tiap poin.
-4. Kalau ada referensi yang tidak punya rilis baru dalam 3 bulan terakhir, sebutkan itu di salah satu poin secara singkat (mis. "referensi X terakhir merilis harga pada tanggal Y"), tapi jangan jadikan itu poin utama.
-5. Jangan gunakan angka yang tidak ada di data di atas. Semua klaim harus bisa ditelusuri ke data yang diberikan.
+4. Kalau ada referensi yang tidak punya rilis pada periode acuan, sebutkan itu di salah satu poin secara singkat (mis. "referensi X terakhir merilis harga pada tanggal Y"), tapi jangan jadikan itu poin utama.
+5. Jangan gunakan angka atau tanggal yang tidak ada di data di atas. Semua klaim harus bisa ditelusuri ke data yang diberikan.
 6. {konteks_dampak}
 7. JANGAN gunakan markdown heading, JANGAN beri judul "Resume:", langsung mulai dari poin pertama.
 
@@ -213,8 +233,10 @@ def _parse_response_json(teks_response):
 
 def generate_resume_ai(df_plot_komparasi, y_col, label_bb, jenis_harga, config):
     """
-    Fungsi utama: menyusun konteks 3 bulan terakhir dari df_plot_komparasi,
-    memanggil Gemini API, dan mengembalikan list string poin-poin resume.
+    Fungsi utama: menyusun konteks 3 periode publikasi terakhir dari
+    df_plot_komparasi (selaras dengan tabel "Detail Histori Data (3 Periode
+    Terakhir)" di dokumen), memanggil Gemini API, dan mengembalikan list
+    string poin-poin resume.
 
     df_plot_komparasi : DataFrame hasil filter komparasi Majalah-Incoterm
                          (TANPA baris Harga Perolehan), kolom minimal:
@@ -232,7 +254,7 @@ def generate_resume_ai(df_plot_komparasi, y_col, label_bb, jenis_harga, config):
     if df_plot_komparasi.empty:
         return ["Data tidak tersedia untuk periode ini."]
 
-    konteks = _susun_konteks_3_bulan(df_plot_komparasi, y_col)
+    konteks = _susun_konteks_periode_terakhir(df_plot_komparasi, y_col)
     if konteks is None:
         return ["Data tidak tersedia untuk periode ini."]
 
