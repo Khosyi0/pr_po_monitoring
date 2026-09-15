@@ -187,7 +187,7 @@ Data per referensi (Majalah - Incoterm), HANYA mencakup periode acuan di atas:
 {teks_data}
 
 Instruksi penulisan:
-1. Tulis dalam bentuk poin-poin (bullet), MAKSIMAL 4 poin, masing-masing 1-3 kalimat.
+1. Tulis dalam bentuk poin-poin (bullet), MAKSIMAL 3 poin, masing-masing 1-3 kalimat.
 2. Fokus membahas tren pergerakan harga PADA PERIODE ACUAN DI ATAS SAJA: naik/turun/stabil, seberapa signifikan, dan konteks singkat penyebab jika bisa disimpulkan dari data (tanpa mengarang angka, tanggal, atau berita eksternal yang tidak ada di data). JANGAN merujuk ke tren jangka panjang atau tanggal di luar periode acuan yang diberikan.
 3. Gaya bahasa naratif, profesional, TIDAK kaku/template, enak dibaca oleh manajemen. Hindari mengulang struktur kalimat yang sama persis di tiap poin.
 4. Kalau ada referensi yang tidak punya rilis pada periode acuan, sebutkan itu di salah satu poin secara singkat (mis. "referensi X terakhir merilis harga pada tanggal Y"), tapi jangan jadikan itu poin utama.
