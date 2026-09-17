@@ -840,15 +840,17 @@ def render(**kwargs):
         elif tipe_etl == "Kondisi Stock BB":
 
             # 1. FUNGSI HELPER
-            def _jalankan_etl_kondisi_stock_bb(file_path, tahun_data):
+            def _jalankan_etl_kondisi_stock_bb(file_path, rencana_bb_path, tahun_data):
                 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
                 import etl_kondisi_stock_bb as etl_ksb  # type: ignore
 
-                etl_ksb.Config.EXCEL_FILE  = file_path
-                etl_ksb.Config.SHEET_PUPUK = 'Pupuk'
-                etl_ksb.Config.SHEET_BB    = 'Bahan Baku'
-                etl_ksb.Config.TAHUN_DATA  = tahun_data
-                etl_ksb.db_get_engine      = _get_engine
+                etl_ksb.Config.EXCEL_FILE      = file_path
+                etl_ksb.Config.SHEET_PUPUK     = 'Pupuk'
+                etl_ksb.Config.SHEET_BB        = 'Bahan Baku'
+                etl_ksb.Config.SHEET_CHART     = 'Stock Chart'
+                etl_ksb.Config.RENCANA_BB_FILE = rencana_bb_path  # None kalau tidak diupload
+                etl_ksb.Config.TAHUN_DATA      = tahun_data
+                etl_ksb.db_get_engine          = _get_engine
 
                 terminal = st.empty()
                 capture_ksb = StreamlitCapture(terminal)
@@ -867,6 +869,8 @@ def render(**kwargs):
                     finally:
                         if os.path.exists(file_path):
                             os.remove(file_path)
+                        if rencana_bb_path and os.path.exists(rencana_bb_path):
+                            os.remove(rencana_bb_path)
 
             # 2. LOGIKA ANTARMUKA / UI MODUL KONDISI STOCK BB
             st.info(
@@ -880,23 +884,35 @@ def render(**kwargs):
                 options=list(range(tahun_sekarang - 2, tahun_sekarang + 2)),
                 index=2,  # default ke tahun berjalan
                 key="sel_tahun_ksb",
-                help="Tahun data yang direkap di dalam file (bukan tahun hari ini). Dicek manual karena rekapan bisa dimulai dari bulan berapa saja tiap tahunnya."
+                help="Tahun data yang direkap di dalam file (bukan tahun hari ini). Dicek manual karena rekapan bisa dimulai dari bulan berapa saja tiap tahunnya. Tahun ini juga dipakai untuk mencari sheet 'Data BB <tahun>' di file Rencana Kebutuhan BB."
             )
 
             metode_input = st.radio("Metode Input Data", ["Upload File Manual", "Tarik Langsung dari Google Sheets"], horizontal=True, key="rad_ksb")
 
             if metode_input == "Upload File Manual":
                 file_ksb = st.file_uploader(
-                    "Upload File Excel — harus ada sheet 'Pupuk' dan 'Bahan Baku'",
+                    "Upload File Utama — harus ada sheet 'Pupuk' dan 'Bahan Baku'",
                     type=["xlsx"],
                     key="uploader_ksb"
+                )
+                file_rencana_bb = st.file_uploader(
+                    f"Upload File Rencana Kebutuhan BB — harus ada sheet 'Data BB {tahun_data_ksb}' (opsional)",
+                    type=["xlsx"],
+                    key="uploader_rencana_bb"
                 )
                 if file_ksb:
                     if st.button("Jalankan ETL Kondisi Stock BB", type="primary", icon=":material/cloud_upload:"):
                         ksb_path = "temp_kondisi_stock_bb.xlsx"
                         with open(ksb_path, "wb") as f:
                             f.write(file_ksb.getbuffer())
-                        _jalankan_etl_kondisi_stock_bb(ksb_path, tahun_data_ksb)
+
+                        rencana_bb_path = None
+                        if file_rencana_bb:
+                            rencana_bb_path = "temp_rencana_bb.xlsx"
+                            with open(rencana_bb_path, "wb") as f:
+                                f.write(file_rencana_bb.getbuffer())
+
+                        _jalankan_etl_kondisi_stock_bb(ksb_path, rencana_bb_path, tahun_data_ksb)
 
             else:
                 st.info("Pastikan Google Sheet memiliki akses 'Anyone with the link can view' agar sistem bisa mengunduhnya. Sheet 'Pupuk' dan 'Bahan Baku' harus ada di dalamnya.")
@@ -907,10 +923,16 @@ def render(**kwargs):
                     placeholder="Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                     key="txt_sheet_ksb"
                 )
+                sheet_id_rencana_bb = st.text_input(
+                    f"ID Google Sheet (Rencana Kebutuhan BB, sheet 'Data BB {tahun_data_ksb}') — opsional",
+                    value="",
+                    placeholder="Kosongkan kalau tidak ingin sinkronisasi Rencana Kebutuhan BB",
+                    key="txt_sheet_rencana_bb"
+                )
 
                 if st.button("Tarik Data & Jalankan ETL Kondisi Stock BB", type="primary", icon=":material/cloud_download:"):
                     if not sheet_id_ksb:
-                        st.error("Masukkan ID Google Sheet terlebih dahulu!")
+                        st.error("Masukkan ID Google Sheet Kondisi Stock BB terlebih dahulu!")
                     else:
                         with st.spinner("Mengunduh data dari Google Sheets..."):
                             import requests
@@ -923,8 +945,19 @@ def render(**kwargs):
                                     with open(ksb_path, "wb") as f:
                                         f.write(response.content)
 
+                                    rencana_bb_path = None
+                                    if sheet_id_rencana_bb:
+                                        export_url_rbb = f"https://docs.google.com/spreadsheets/d/{sheet_id_rencana_bb}/export?format=xlsx"
+                                        response_rbb = requests.get(export_url_rbb)
+                                        if response_rbb.status_code == 200:
+                                            rencana_bb_path = "temp_rencana_bb_gsheet.xlsx"
+                                            with open(rencana_bb_path, "wb") as f:
+                                                f.write(response_rbb.content)
+                                        else:
+                                            st.warning(f"Gagal mengunduh file Rencana Kebutuhan BB (status {response_rbb.status_code}) -- lanjut tanpa data ini.")
+
                                     st.success("File berhasil diunduh. Memulai proses ETL...")
-                                    _jalankan_etl_kondisi_stock_bb(ksb_path, tahun_data_ksb)
+                                    _jalankan_etl_kondisi_stock_bb(ksb_path, rencana_bb_path, tahun_data_ksb)
                                 else:
                                     st.error(f"Gagal mengunduh file. Status code: {response.status_code}. Pastikan ID benar dan akses terbuka.")
                             except Exception as e:
@@ -945,7 +978,7 @@ def render(**kwargs):
     
     st.warning("Fitur ini akan menghapus seluruh data transaksi dari database secara permanen. Gunakan hanya jika Anda perlu mengulang proses upload (ETL) dari awal atau membersihkan data yang salah.")
     
-    col_del1, col_del2, col_del3, col_del4, col_del5 = st.columns(5)
+    col_del1, col_del2, col_del3, col_del4, col_del5, col_del6 = st.columns(6)
     
     with col_del1:
         with st.expander("🗑️ Hapus Data SAP"):
@@ -1044,6 +1077,44 @@ def render(**kwargs):
                             with engine.begin() as conn:
                                 conn.execute(text("TRUNCATE TABLE kondisi_stock_bb_raw RESTART IDENTITY CASCADE;"))
                             st.success("SELURUH data Kondisi Stock BB (semua tahun) berhasil dikosongkan!")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus data: {e}")
+
+    with col_del6:
+        with st.expander("🗑️ Hapus Rencana BB"):
+            st.write("Menghapus data Rencana Kebutuhan BB per tahun tertentu (data tahun lain tidak terpengaruh), atau kosongkan seluruhnya.")
+            tahun_sekarang_del_rbb = datetime.today().year
+            pilihan_hapus_rbb = st.radio(
+                "Cakupan hapus",
+                ["Hapus tahun tertentu", "Hapus SEMUA tahun"],
+                key="radio_hapus_rbb",
+                horizontal=False
+            )
+            if pilihan_hapus_rbb == "Hapus tahun tertentu":
+                tahun_hapus_rbb = st.selectbox(
+                    "Pilih tahun yang akan dihapus",
+                    options=list(range(tahun_sekarang_del_rbb - 3, tahun_sekarang_del_rbb + 2)),
+                    index=3,
+                    key="sel_tahun_hapus_rbb"
+                )
+            confirm_rbb = st.checkbox("Saya yakin", key="confirm_rbb")
+            if st.button("Hapus Rencana BB", type="primary", disabled=not confirm_rbb, use_container_width=True):
+                with st.spinner("Menghapus data Rencana Kebutuhan BB..."):
+                    try:
+                        engine = _get_engine()
+                        if pilihan_hapus_rbb == "Hapus tahun tertentu":
+                            with engine.begin() as conn:
+                                deleted = conn.execute(
+                                    text("DELETE FROM rencana_bb_raw WHERE tahun_data = :tahun"),
+                                    {'tahun': tahun_hapus_rbb}
+                                ).rowcount
+                            st.success(f"Data Rencana Kebutuhan BB tahun {tahun_hapus_rbb} berhasil dihapus ({deleted} baris)!")
+                        else:
+                            with engine.begin() as conn:
+                                conn.execute(text("TRUNCATE TABLE rencana_bb_raw RESTART IDENTITY CASCADE;"))
+                            st.success("SELURUH data Rencana Kebutuhan BB (semua tahun) berhasil dikosongkan!")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:
