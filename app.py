@@ -53,7 +53,7 @@ from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
 from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_waktu, v_inklaring_kedatangan_bb
 
 # Views - Bahan Baku
-from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock
+from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock, v_bb_manajemen_stock
 
 # Views - Lainnya
 from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
@@ -257,9 +257,10 @@ def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.sessio
 def _render_inklaring_manajemen():      v_inklaring_manajemen.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_kedatangan_bb():  v_inklaring_kedatangan_bb.render()
-def _render_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
-def _render_manajemen_harga_majalah_bb(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
-def _render_kondisi_stock_bb():         v_bb_kondisi_stock.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_manajemen_harga_majalah(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_kondisi_stock():         v_bb_kondisi_stock.render(**st.session_state.get('_bb_view_args', {}))
+def _render_bb_manajemen_stock():       v_bb_manajemen_stock.render(**st.session_state.get('_bb_view_args', {}))
 def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
 def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
@@ -335,18 +336,23 @@ current_user_data = get_current_user()
 is_admin_bb = (current_user_data.get('role') == 'admin_bb') if current_user_data else False
 
 bb_pages = [
-    st.Page(_render_bahan_baku, title="Harga Bahan Baku", icon=":material/science:"),
+    st.Page(_render_bb_bahan_baku, title="Harga Bahan Baku", icon=":material/science:"),
 ]
 
 # Tambahkan is_admin_bb pada kondisi ini
 if is_admin() or is_admin_bb:
     bb_pages.append(
-        st.Page(_render_manajemen_harga_majalah_bb, title="Manajemen Harga Majalah BB", icon=":material/edit_document:")
+        st.Page(_render_bb_manajemen_harga_majalah, title="Manajemen Harga Majalah BB", icon=":material/edit_document:")
     )
 
 bb_pages.append(
-    st.Page(_render_kondisi_stock_bb, title="Kondisi Stock BB", icon=":material/inventory:")
+    st.Page(_render_bb_kondisi_stock, title="Kondisi Stock BB", icon=":material/inventory:")
 )
+
+if is_admin() or is_admin_bb:
+    bb_pages.append(
+        st.Page(_render_bb_manajemen_stock, title="Manajemen Kondisi Stock BB", icon=":material/edit_document:")
+    )
 
 nav_dict.update({
     "SIPS": sips_pages,
@@ -388,7 +394,7 @@ ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan", "PO Out
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring", "Rencana Kedatangan Bahan Baku"}
-BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB"}
+BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB", "Manajemen Kondisi Stock BB"}
 LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
 
 current_page = pg.title
