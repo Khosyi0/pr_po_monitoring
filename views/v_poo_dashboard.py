@@ -85,6 +85,18 @@ POO_DASHBOARD_CSS = """
     font-size: 14px; font-weight: 700; letter-spacing: 0.04em;
     text-transform: uppercase; color: var(--text-color); margin: 18px 0 8px 4px;
 }
+
+/* Posisi tombol popover di dalam kartu KPI (mengikuti pola v_sips_dashboard.py) */
+div[data-testid="stHorizontalBlock"] > div {
+    position: relative;
+}
+div[data-testid="stPopover"] {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    z-index: 10;
+}
 </style>
 """
 
@@ -251,10 +263,31 @@ def _tab_dashboard(load_data):
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown(_card("inventory", "Total Item PO (Semua)", _fmt(total_item), "border-blue"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Total Item PO (Semua)**: Jumlah seluruh baris PO+Item yang pernah "
+                "tercatat di database (tabel `po_all_raw`), termasuk yang sudah berstatus "
+                "Clear maupun yang masih outstanding.\n\n"
+                "**Formula:**\n```\nTotal Item PO = COUNT(*) dari po_all_raw\n```"
+            )
     with c2:
         st.markdown(_card("check_circle", "Sudah Clear", _fmt(total_clear), "border-green"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Sudah Clear**: Jumlah PO+Item yang tercatat permanen di "
+                "`po_clear_history` -- yaitu PO+Item yang pernah terdeteksi memenuhi salah "
+                "satu kondisi Clear (Keterangan/Rencana Kirim terisi, atau Status Jawaban "
+                "= 'Sudah Ada Jawaban'). Sekali tercatat Clear, PO+Item ini tidak akan "
+                "pernah dihitung lagi sebagai outstanding di upload bulan berikutnya."
+            )
     with c3:
         st.markdown(_card("hourglass", "Belum Clear (Outstanding)", _fmt(total_belum_clear), "border-orange"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Belum Clear (Outstanding)**: Jumlah PO+Item yang belum tercatat di "
+                "`po_clear_history` -- artinya item ini masih aktif dipantau.\n\n"
+                "**Formula:**\n```\nBelum Clear = Total Item PO - Sudah Clear\n```"
+            )
 
     st.caption("Breakdown Item PO Belum Clear berdasarkan lama keterlambatan:")
     cols_klas = st.columns(len(urutan_klasifikasi))
@@ -274,19 +307,64 @@ def _tab_dashboard(load_data):
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown(_card("mail", "Perlu Di-Remind", _fmt(total_perlu_remind), "border-red"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Perlu Di-Remind**: Dari PO+Item yang Belum Clear, dihitung yang "
+                "keterlambatannya lebih dari 7 hari DAN belum ada jawaban 'Sudah Ada "
+                "Jawaban' dari vendor.\n\n"
+                "**Formula:**\n```\nPerlu Di-Remind = COUNT(Belum Clear\n"
+                "  WHERE pending_time > 7\n"
+                "  AND status_jawaban != 'Sudah Ada Jawaban')\n```\n\n"
+                "Catatan: angka ini tidak mensyaratkan alamat email vendor terisi "
+                "(berbeda dari tab **Perlu Email**, yang juga mensyaratkan email tersedia)."
+            )
     with c2:
         st.markdown(_card("send", "Sudah Di-Email", _fmt(total_sudah_email), "border-green"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Sudah Di-Email**: Dari PO+Item yang Belum Clear, dihitung yang kolom "
+                "**Status Email** di sheet ALL sudah bernilai 'Sudah di-Email'.\n\n"
+                "**Formula:**\n```\nSudah Di-Email = COUNT(Belum Clear\n"
+                "  WHERE status_email = 'Sudah di-Email')\n```"
+            )
     with c3:
         st.markdown(_card("send", "Belum Di-Email", _fmt(total_belum_email), "border-orange"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Belum Di-Email**: Dari PO+Item yang Belum Clear, dihitung yang kolom "
+                "**Status Email** BUKAN 'Sudah di-Email' (termasuk kosong atau nilai lain).\n\n"
+                "**Formula:**\n```\nBelum Di-Email = Belum Clear - Sudah Di-Email\n```"
+            )
 
     _row_label("Balasan Vendor")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown(_card("reply", "Sudah Ada Jawaban", _fmt(total_sudah_jawab), "border-green"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Sudah Ada Jawaban**: Dari PO+Item yang Belum Clear, dihitung yang "
+                "**Status Jawaban** = 'Sudah Ada Jawaban'.\n\n"
+                "Catatan: angka ini normalnya kecil/nol, karena begitu status jawaban "
+                "menjadi 'Sudah Ada Jawaban', PO+Item tersebut seharusnya langsung "
+                "tercatat Clear pada upload berikutnya dan pindah keluar dari kelompok "
+                "Belum Clear."
+            )
     with c2:
         st.markdown(_card("reply", "Belum Ada Jawaban", _fmt(total_belum_jawab), "border-orange"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Belum Ada Jawaban**: Dari PO+Item yang Belum Clear, dihitung yang "
+                "**Status Jawaban** = 'Belum Ada Jawaban'."
+            )
     with c3:
         st.markdown(_card("alert", "Tidak Dapat Terkirim", _fmt(total_tidak_terkirim), "border-red"), unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info(
+                "**Tidak Dapat Terkirim**: Dari PO+Item yang Belum Clear, dihitung yang "
+                "**Status Jawaban** = 'Tidak Dapat Terkirim' (misal karena alamat email "
+                "vendor tidak valid/bounce). Untuk kriteria filter 'Perlu Email', status "
+                "ini diperlakukan sama seperti 'Belum Ada Jawaban'."
+            )
 
     st.markdown("<hr style='margin: 24px 0 8px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
