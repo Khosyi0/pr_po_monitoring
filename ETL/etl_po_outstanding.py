@@ -109,19 +109,49 @@ def run_etl():
         "Bagian": "bagian",
     }
 
+    # ---------------------------------------------------------------------
+    # Pencocokan header TOLERAN terhadap perbedaan kecil (spasi ganda,
+    # spasi di sekitar '/', kapitalisasi, spasi di awal/akhir). Header Excel
+    # sering sedikit berbeda antar bulan (misal "Keterangan/Rencana Kirim"
+    # vs "Keterangan / Rencana Kirim") walau maksudnya sama -- exact match
+    # akan gagal diam-diam dan mengosongkan seluruh kolom itu tanpa error.
+    # ---------------------------------------------------------------------
+    def _normalize_header(h):
+        import re
+        h = str(h).strip().lower()
+        h = re.sub(r'\s*/\s*', '/', h)   # "a / b" atau "a/ b" -> "a/b"
+        h = re.sub(r'\s+', ' ', h)        # spasi ganda -> satu spasi
+        return h
+
+    kolom_asli_di_file = list(df.columns)
+    normalized_to_actual = {_normalize_header(c): c for c in kolom_asli_di_file}
+
     kolom_wajib = ["Purchasing Document", "Item"]
-    kolom_hilang = [k for k in kolom_wajib if k not in df.columns]
+    kolom_hilang = [
+        k for k in kolom_wajib
+        if _normalize_header(k) not in normalized_to_actual
+    ]
     if kolom_hilang:
         print(f"ERROR: Kolom wajib tidak ditemukan di sheet: {kolom_hilang}")
-        print(f"       Kolom yang tersedia: {list(df.columns)}")
+        print(f"       Kolom yang tersedia: {kolom_asli_di_file}")
         return False
 
-    # Ambil hanya kolom yang memang ada di file (jaga-jaga kalau ada header
-    # yang belum konsisten antar bulan), lalu rename.
-    kolom_tersedia = {k: v for k, v in column_mapping.items() if k in df.columns}
-    kolom_tidak_ketemu = [k for k in column_mapping if k not in df.columns]
+    # Bangun pemetaan (nama kolom ASLI di file -> nama kolom db) memakai
+    # perbandingan yang sudah dinormalisasi, tapi rename tetap pakai nama
+    # kolom asli persis seperti tertulis di file (supaya df[...] tidak error).
+    kolom_tersedia = {}
+    kolom_tidak_ketemu = []
+    for header_target, kolom_db in column_mapping.items():
+        norm_target = _normalize_header(header_target)
+        if norm_target in normalized_to_actual:
+            nama_asli_di_file = normalized_to_actual[norm_target]
+            kolom_tersedia[nama_asli_di_file] = kolom_db
+        else:
+            kolom_tidak_ketemu.append(header_target)
+
     if kolom_tidak_ketemu:
         print(f"[!] Kolom berikut tidak ditemukan di file dan akan dikosongkan: {kolom_tidak_ketemu}")
+        print(f"    (Header yang tersedia di file: {kolom_asli_di_file})")
 
     df_clean = df[list(kolom_tersedia.keys())].rename(columns=kolom_tersedia)
 
