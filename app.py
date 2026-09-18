@@ -15,6 +15,7 @@ import warnings
 import base64
 import os
 from zoneinfo import ZoneInfo
+from PIL import Image
 
 warnings.filterwarnings('ignore')
 
@@ -30,7 +31,15 @@ _ICON_PATH = "assets/Dashboard_icon.png"
 _icon_b64  = _load_icon_b64(_ICON_PATH)
 
 from config_db import load_data, get_setting
-from utils import inject_css, build_filter_conditions, build_bagian_conditions, build_dept_cond, build_pg_cond, render_filter_bar, inject_scroll_to_top
+from utils import (
+    inject_css, 
+    build_filter_conditions, 
+    build_bagian_conditions, 
+    build_dept_cond, 
+    build_pg_cond, 
+    render_filter_bar, 
+    inject_scroll_to_top
+)
 from context_builder import build_global_context, SEARCH_INDEX
 from auth import render_login, get_current_user, is_admin, logout, render_user_info_sidebar
 
@@ -38,7 +47,7 @@ from auth import render_login, get_current_user, is_admin, logout, render_user_i
 from views import v_summary, v_profile_departemen, v_isu
 
 # Views - Admin Menu
-from views import v_manajemen_user, v_manajemen_data, v_changelog, v_reminder_vendor
+from views import v_manajemen_user, v_manajemen_data, v_changelog
 
 # Views - AI (Uji Coba)
 from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediksi_sips
@@ -55,14 +64,13 @@ from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_wakt
 # Views - Bahan Baku
 from views import v_bb_bahan_baku, v_bb_manajemen_harga_majalah, v_bb_kondisi_stock, v_bb_manajemen_stock
 
-# Views - Lainnya
-from views import v_monitoring_jaminan_pelaksanaan, v_monitoring_sparepart_ln, v_searching_ex_po, v_monitoring_kontrak
+# Views - PO Outstanding
+from views import v_poo_reminder_vendor, v_poo_dashboard
 
 # =============================================================================
 # PAGE CONFIGURATION
 # =============================================================================
 
-from PIL import Image
 _page_icon = Image.open(_ICON_PATH) if os.path.exists(_ICON_PATH) else "📊"
 
 st.set_page_config(
@@ -221,7 +229,8 @@ def dialog_search():
                                     if p.title == res['page_title']:
                                         target_page_obj = p
                                         break
-                                if target_page_obj: break
+                                if target_page_obj: 
+                                    break
                             
                             if target_page_obj:
                                 st.switch_page(target_page_obj)
@@ -240,7 +249,6 @@ def _render_isu():                      v_isu.render(**st.session_state.get('_su
 def _render_manajemen_user():           v_manajemen_user.render(**st.session_state.get('_summary_view_args', {}))
 def _render_manajemen_data():           v_manajemen_data.render(**st.session_state.get('_summary_view_args', {}))
 def _render_changelog():                v_changelog.render()
-def _render_reminder_vendor():          v_reminder_vendor.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_jalur():        v_ai_prediksi_jalur.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_keterlambatan(): v_ai_prediksi_keterlambatan.render(**st.session_state.get('_summary_view_args', {}))
 def _render_ai_prediksi_sips():         v_ai_prediksi_sips.render(**st.session_state.get('_summary_view_args', {}))
@@ -257,14 +265,12 @@ def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.sessio
 def _render_inklaring_manajemen():      v_inklaring_manajemen.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_kedatangan_bb():  v_inklaring_kedatangan_bb.render()
-def _render_bb_bahan_baku():               v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
+def _render_poo_reminder_vendor():      v_poo_reminder_vendor.render(**st.session_state.get('_summary_view_args', {}))
+def _render_poo_dashboard():            v_poo_dashboard.render(**st.session_state.get('_summary_view_args', {}))
+def _render_bb_bahan_baku():            v_bb_bahan_baku.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_manajemen_harga_majalah(): v_bb_manajemen_harga_majalah.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_kondisi_stock():         v_bb_kondisi_stock.render(**st.session_state.get('_bb_view_args', {}))
 def _render_bb_manajemen_stock():       v_bb_manajemen_stock.render(**st.session_state.get('_bb_view_args', {}))
-def _render_monitoring_jaminan_pelaksanaan(): v_monitoring_jaminan_pelaksanaan.render(**st.session_state.get('_summary_view_args', {}))
-def _render_monitoring_sparepart_ln():  v_monitoring_sparepart_ln.render(**st.session_state.get('_summary_view_args', {}))
-def _render_searching_ex_po():          v_searching_ex_po.render(**st.session_state.get('_summary_view_args', {}))
-def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session_state.get('_summary_view_args', {}))
 
 # =============================================================================
 # NAVIGATION: grouped dict agar muncul section header sebagai toggle
@@ -273,7 +279,7 @@ def _render_monitoring_kontrak():       v_monitoring_kontrak.render(**st.session
 summary_pages = [
     st.Page(_render_summary, title="Executive Summary", icon=":material/monitoring:"),
     st.Page(_render_profile_departemen, title="Profile Departemen", icon=":material/domain:"),
-    st.Page(_render_isu,     title="Isu",               icon=":material/report_problem:"),
+    st.Page(_render_isu,     title="Isu",                icon=":material/report_problem:"),
 ]
 
 admin_pages = []
@@ -281,7 +287,6 @@ if is_admin():
     admin_pages = [
         st.Page(_render_manajemen_user, title="Manajemen User", icon=":material/manage_accounts:"),
         st.Page(_render_manajemen_data, title="Manajemen Data", icon=":material/database:"),
-        st.Page(_render_reminder_vendor, title="PO Outstanding - Reminder Email", icon=":material/mail:"),  # >>> TAMBAHAN BARU
         st.Page(_render_changelog, title="Log Perubahan", icon=":material/history:")
     ]
 
@@ -331,6 +336,14 @@ if is_admin():
     inklaring_pages.insert(1, st.Page(_render_inklaring_manajemen, title="Manajemen Inklaring Data", icon=":material/unknown_document:"))
     inklaring_pages.append(st.Page(_render_inklaring_kedatangan_bb, title="Rencana Kedatangan Bahan Baku", icon=":material/local_shipping:"))
 
+# Halaman PO Outstanding
+poo_pages = []
+if is_admin():
+    poo_pages = [
+        st.Page(_render_poo_dashboard, title="Monitoring PO Outstanding", icon=":material/dashboard:"),
+        st.Page(_render_poo_reminder_vendor, title="PO Outstanding - Reminder Email", icon=":material/mail:"),
+    ]
+
 # Halaman Bahan Baku
 current_user_data = get_current_user()
 is_admin_bb = (current_user_data.get('role') == 'admin_bb') if current_user_data else False
@@ -339,7 +352,6 @@ bb_pages = [
     st.Page(_render_bb_bahan_baku, title="Harga Bahan Baku", icon=":material/science:"),
 ]
 
-# Tambahkan is_admin_bb pada kondisi ini
 if is_admin() or is_admin_bb:
     bb_pages.append(
         st.Page(_render_bb_manajemen_harga_majalah, title="Manajemen Harga Majalah BB", icon=":material/edit_document:")
@@ -361,15 +373,8 @@ nav_dict.update({
     "SAP": sap_pages
 })
 
-# Tambahkan navigasi khusus admin untuk modul yang masih under maintenance
-if is_admin():
-    nav_dict["Lainnya"] = [
-        st.Page(_render_monitoring_jaminan_pelaksanaan,          title="Monitoring Jaminan Pelaksanaan",          icon=":material/assignment:"),
-        st.Page(_render_monitoring_sparepart_ln, title="Monitoring Sparepart LN",        icon=":material/local_shipping:"),
-        st.Page(_render_searching_ex_po,         title="Searching Ex PO",                icon=":material/manage_search:"),
-        st.Page(_render_monitoring_kontrak,      title="Monitoring Kontrak",             icon=":material/contract:"),
-    ]
-
+if poo_pages:
+    nav_dict["PO Outstanding"] = poo_pages
 
 # == SIDEBAR HEADER: MAIN MENU + SEARCH =======================================
 with st.sidebar:
@@ -390,12 +395,12 @@ with st.sidebar:
 
 # Deteksi sistem aktif dari judul halaman yang sedang dibuka
 SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"} 
-ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan", "PO Outstanding - Reminder Email"}
+ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
 SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring", "Rencana Kedatangan Bahan Baku"}
 BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB", "Manajemen Kondisi Stock BB"}
-LAINNYA_TITLES   = {"Monitoring Sparepart LN", "Searching Ex PO", "Monitoring Kontrak", "Monitoring Jaminan Pelaksanaan"}
+POO_TITLES       = {"PO Outstanding - Reminder Email", "Monitoring PO Outstanding"}
 
 current_page = pg.title
 is_summary   = current_page in SUMMARY_TITLES
@@ -404,7 +409,7 @@ is_ai        = current_page in AI_TITLES
 is_sips      = current_page in SIPS_TITLES
 is_inklaring = current_page in INKLARING_TITLES
 is_bb        = current_page in BB_TITLES
-is_lainnya   = current_page in LAINNYA_TITLES
+is_poo       = current_page in POO_TITLES
 is_kedatangan_bb = (current_page == "Rencana Kedatangan Bahan Baku")
 
 # Tutup changelog otomatis saat navigasi
@@ -418,22 +423,14 @@ if current_page != st.session_state.last_page:
 # CSS: section headers menjadi toggle pill
 # =============================================================================
 
-# Pill aktif: disesuaikan dengan posisi urutan di sidebar berdasarkan hak akses admin
-if is_admin():
-    if is_summary:        active_div = "1"
-    elif is_admin_pg:     active_div = "2"
-    elif is_ai:           active_div = "3"
-    elif is_sips:         active_div = "4"
-    elif is_inklaring:    active_div = "5"
-    elif is_bb:           active_div = "6"
-    elif is_lainnya:      active_div = "8"
-    else:                 active_div = "7" # SAP
-else:
-    if is_summary:        active_div = "1"
-    elif is_sips:         active_div = "2"
-    elif is_inklaring:    active_div = "3"
-    elif is_bb:           active_div = "4"
-    else:                 active_div = "5" # SAP
+# Pill aktif: disesuaikan dengan posisi urutan di sidebar berdasarkan susunan nav_dict
+section_keys = list(nav_dict.keys())
+active_div = "1"
+for idx, sec in enumerate(section_keys, start=1):
+    pages_in_sec = [p.title for p in nav_dict[sec]]
+    if current_page in pages_in_sec:
+        active_div = str(idx)
+        break
 
 st.markdown(f"""
 <style>
@@ -558,25 +555,18 @@ st.components.v1.html("""
         var headerEnd = doc.getElementById('custom-sidebar-header-end');
         
         if (nav && headerEnd) {
-            // Dapatkan div.element-container yang membungkus marker kita
             var headerContainer = headerEnd.closest('.element-container');
-            
-            // Jika elemen ditemukan dan navigasi belum dipindahkan ke bawahnya
             if (headerContainer && nav.previousElementSibling !== headerContainer) {
-                // Pindahkan blok navigasi persis di Bawah headerContainer
                 headerContainer.parentNode.insertBefore(nav, headerContainer.nextSibling);
             }
         } else {
-            // Coba lagi jika DOM belum selesai dimuat sepenuhnya
             setTimeout(reorderSidebar, 200);
         }
     }
 
-    // Jalankan kedua fungsi
     setTimeout(makeHeadersClickable, 300);
     setTimeout(reorderSidebar, 300);
     
-    // Pastikan tetap berjalan saat halama selesai loading (SPA behavior)
     window.addEventListener('load', function() { 
         setTimeout(makeHeadersClickable, 300); 
         setTimeout(reorderSidebar, 300);
@@ -667,7 +657,7 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 # == Toggle filter mode + header ==============================================
-if not is_summary and not is_admin_pg:
+if not is_summary and not is_admin_pg and not is_ai and not is_poo:
     _mode_label = "⬆ Top Bar" if st.session_state.filter_mode == 'sidebar' else "⬅ Sidebar"
     _mode_help  = "Pindahkan filter ke atas halaman" if st.session_state.filter_mode == 'sidebar' else "Pindahkan filter ke sidebar"
 
@@ -715,193 +705,23 @@ if not is_summary and not is_admin_pg:
                         unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FILTERS SAP / SIPS / INKLARING / BB: hanya tampil jika mode sidebar
+# FILTERS: hanya tampil jika mode sidebar
 # ══════════════════════════════════════════════════════════════════════════════
 
-if st.session_state.filter_mode == 'sidebar' and is_lainnya:
-    st.sidebar.info("📌 Halaman ini belum memiliki filter. Sumber data dan parameter filter akan ditentukan setelah implementasi visualisasi selesai.")
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
+if st.session_state.filter_mode == 'sidebar':
 
-elif st.session_state.filter_mode == 'sidebar' and is_bb:
-    st.sidebar.info("📌 Filter majalah, incoterm, dan durasi waktu tersedia di dalam expander pada bagian atas masing-masing halaman.")
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
+    if is_bb:
+        st.sidebar.info("📌 Filter majalah, incoterm, dan durasi waktu tersedia di dalam expander pada bagian atas masing-masing halaman.")
+        st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-elif st.session_state.filter_mode == 'sidebar' and is_inklaring and not is_kedatangan_bb:
-    st.sidebar.markdown("""
-    <p title='Info Filter Tanggal:&#10;• Data Inklaring: rentang Tgl ETA (Pemberitahuan Impor Barang)'
-       style='font-size:14px; font-weight:600; color:var(--text-color);
-              margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-             fill="currentColor" viewBox="0 0 16 16">
-            <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
-                     0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
-                     1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
-                     1 0 0 0 1-1V4z"/>
-        </svg>
-        Date Range ⓘ
-    </p>
-    """, unsafe_allow_html=True)
-    inklaring_date_from = st.sidebar.date_input("Inklaring From", value=default_start_date, key="inklaring_sidebar_from")
-    inklaring_date_to   = st.sidebar.date_input("Inklaring To", value=DATA_UPDATE_INKLARING, key="inklaring_sidebar_to")
+    elif is_kedatangan_bb:
+        st.sidebar.info("📌 Halaman ini memiliki filter & upload tersendiri di dalam tab masing-masing.")
+        st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-    if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="inklaring_refresh"):
-        st.cache_data.clear()
-        st.rerun()
-
-elif st.session_state.filter_mode == 'sidebar' and is_kedatangan_bb:
-    st.sidebar.info("📌 Halaman ini memiliki filter & upload tersendiri di dalam tab masing-masing.")
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-
-elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summary and not is_admin_pg:
-    try:
-        departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
-        bagian_data  = load_data("""
-            SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete WHERE bagian_pr IS NOT NULL AND bagian_pr != 'UNKNOWN'
-            UNION
-            SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete WHERE bagian_po IS NOT NULL AND bagian_po != 'UNKNOWN'
-            ORDER BY 1
-        """)
-        p_group_data = load_data("""
-            SELECT DISTINCT purchasing_group FROM purchase_requisitions WHERE purchasing_group IS NOT NULL
-            UNION
-            SELECT DISTINCT purchasing_group FROM purchase_orders WHERE purchasing_group IS NOT NULL
-            ORDER BY 1
-        """)
-
-        options_bagian  = ['All'] + bagian_data['bagian'].tolist()
-        options_p_group = ['All'] + p_group_data['purchasing_group'].tolist()
-
-        def update_bagian_logic():
-            cur, prv = st.session_state.get('filter_bagian', []), st.session_state.get('prev_filter_bagian', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.filter_bagian = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_bagian = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.filter_bagian = ['All']
-            st.session_state.prev_filter_bagian = st.session_state.filter_bagian
-
-        def update_dept_logic():
-            cur, prv = st.session_state.get('filter_dept', []), st.session_state.get('prev_filter_dept', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.filter_dept = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_dept = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.filter_dept = ['All']
-            st.session_state.prev_filter_dept = st.session_state.filter_dept
-
-        def update_pgroup_logic():
-            cur, prv = st.session_state.get('filter_pgroup', []), st.session_state.get('prev_filter_pgroup', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.filter_pgroup = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.filter_pgroup = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.filter_pgroup = ['All']
-            st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
-
-        if not st.session_state.get('filter_dept'):
-            st.session_state.filter_dept = ['All']
-        if not st.session_state.get('filter_pgroup'):
-            st.session_state.filter_pgroup = ['All']
-        if not st.session_state.get('filter_bagian'):
-            st.session_state.filter_bagian = ['All']
-
-        _dept_opts = ['All'] + departments['department_code'].tolist()
-        if not any(v in _dept_opts for v in st.session_state.get('filter_dept', [])):
-            st.session_state.filter_dept = ['All']
-        if not any(v in options_p_group for v in st.session_state.get('filter_pgroup', [])):
-            st.session_state.filter_pgroup = ['All']
-        if not any(v in options_bagian for v in st.session_state.get('filter_bagian', [])):
-            st.session_state.filter_bagian = ['All']
-
-        # == Department ========================================================
+    elif is_inklaring:
         st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:0 0 2px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M3 0a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3v-3.5a.5.5 0 0 1
-                         .5-.5h3a.5.5 0 0 1 .5.5V16h3a1 1 0 0 0 1-1V1a1 1 0 0
-                         0-1-1zm1 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5
-                         0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1
-                         a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z
-                         m3.5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0
-                         0 1-.5-.5v-1a.5.5 0 0 1 .5-.5"/>
-            </svg>
-            Department
-        </p>
-        """, unsafe_allow_html=True)
-        _dept_default = [v for v in st.session_state.get('filter_dept', []) if v in _dept_opts] or ['All']
-        _dept_sel = st.sidebar.multiselect(
-            "Department",
-            options=_dept_opts,
-            default=_dept_default,
-            on_change=update_dept_logic,
-            key="filter_dept",
-            label_visibility="collapsed"
-        )
-        selected_department = st.session_state.get('filter_dept', ['All']) or ['All']
-        exclude_dept = False
-        if 'All' not in selected_department and selected_department:
-            exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
-
-        # == Purchasing Group ==================================================
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 2px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
-                         0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355
-                         .68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1
-                         1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
-            </svg>
-            Purchasing Group
-        </p>
-        """, unsafe_allow_html=True)
-        _pg_default = [v for v in st.session_state.get('filter_pgroup', []) if v in options_p_group] or ['All']
-        _pg_sel = st.sidebar.multiselect(
-            "Purchasing Group",
-            options=options_p_group,
-            default=_pg_default,
-            on_change=update_pgroup_logic,
-            key="filter_pgroup",
-            label_visibility="collapsed"
-        )
-        selected_p_group = st.session_state.get('filter_pgroup', ['All']) or ['All']
-        exclude_purchasing_group = False
-        if 'All' not in selected_p_group and selected_p_group:
-            exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
-
-        # == Bagian ============================================================
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
-                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
-                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
-                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
-                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
-                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
-                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
-                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
-                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
-                         A1.5 1.5 0 0 1 12.5 11z"/>
-            </svg>
-            Bagian
-        </p>
-        """, unsafe_allow_html=True)
-        _bagian_default = [v for v in st.session_state.get('filter_bagian', []) if v in options_bagian] or ['All']
-        st.sidebar.pills(
-            "Bagian",
-            options=options_bagian,
-            default=_bagian_default,
-            selection_mode="multi",
-            key="filter_bagian",
-            on_change=update_bagian_logic,
-            label_visibility="collapsed"
-        )
-        selected_bagian = st.session_state.get('filter_bagian', ['All']) or ['All']
-
-        # == Date Range ========================================================
-        st.sidebar.markdown("""
-        <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered'
-            style='font-size:14px; font-weight:600; color:var(--text-color);
+        <p title='Info Filter Tanggal:&#10;• Data Inklaring: rentang Tgl ETA (Pemberitahuan Impor Barang)'
+           style='font-size:14px; font-weight:600; color:var(--text-color);
                   margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
                  fill="currentColor" viewBox="0 0 16 16">
@@ -913,192 +733,364 @@ elif st.session_state.filter_mode == 'sidebar' and not is_sips and not is_summar
             Date Range ⓘ
         </p>
         """, unsafe_allow_html=True)
-        date_from = st.sidebar.date_input("SAP From", value=default_start_date)
-        date_to   = st.sidebar.date_input("SAP To",   value=DATA_UPDATE_SAP)
+        inklaring_date_from = st.sidebar.date_input("Inklaring From", value=default_start_date, key="inklaring_sidebar_from")
+        inklaring_date_to   = st.sidebar.date_input("Inklaring To", value=DATA_UPDATE_INKLARING, key="inklaring_sidebar_to")
 
-        if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
+        if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="inklaring_refresh"):
             st.cache_data.clear()
             st.rerun()
 
-    except Exception as e:
-        st.sidebar.error(f"Error loading filters: {e}")
-
-elif st.session_state.filter_mode == 'sidebar' and is_sips:
-    try:
-        if 'All' not in sips_selected_bagian and sips_selected_bagian:
-            bagian_sql = "', '".join(sips_selected_bagian)
-            nama_data = load_data(f"""
-                SELECT DISTINCT se.nama
-                FROM sips_employees se
-                JOIN karyawan_bagian_history kbh ON kbh.nik = se.nik
-                WHERE kbh.bagian IN ('{bagian_sql}')
-                ORDER BY se.nama
-            """)
-        else:
-            nama_data = load_data("""
-                SELECT DISTINCT se.nama
-                FROM sips_employees se
-                WHERE EXISTS (
-                    SELECT 1 FROM karyawan_bagian_history kbh WHERE kbh.nik = se.nik
-                )
-                ORDER BY se.nama
-            """)
-
-        options_nama = ['All'] + nama_data['nama'].tolist()
-
-        def update_nama_logic():
-            cur, prv = st.session_state.get('sips_filter_nama', []), st.session_state.get('sips_prev_nama', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_nama = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_nama = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.sips_filter_nama = ['All']
-            st.session_state.sips_prev_nama = st.session_state.sips_filter_nama
-
-        if not st.session_state.get('sips_filter_nama'):
-            st.session_state.sips_filter_nama = ['All']
-        if not st.session_state.get('sips_filter_bagian'):
-            st.session_state.sips_filter_bagian = ['All']
-        if not st.session_state.get('sips_filter_pgroup'):
-            st.session_state.sips_filter_pgroup = ['All']
-
-        # == Filter Nama =======================================================
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2
-                         2 0 0 1 4 0m4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3
-                         6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68
-                         10.289 10 8 10s-3.516.68-4.168 1.332c-.678.678-.83
-                         1.418-.832 1.664z"/>
-            </svg>
-            Nama
-        </p>
-        """, unsafe_allow_html=True)
-        _nama_default = [v for v in st.session_state.get('sips_filter_nama', []) if v in options_nama] or ['All']
-        sips_selected_nama = st.sidebar.multiselect(
-            "Nama",
-            options=options_nama,
-            default=_nama_default,
-            key="sips_filter_nama",
-            on_change=update_nama_logic,
-            label_visibility="collapsed"
-        )
-        if not sips_selected_nama:
-            sips_selected_nama = ['All']
-
-        bagian_data = load_data("""
-            SELECT DISTINCT bagian FROM karyawan_bagian_history
-            WHERE bagian IS NOT NULL ORDER BY bagian
-        """)
-        options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
-
-        def update_bagian_sips_logic():
-            cur, prv = st.session_state.get('sips_filter_bagian', []), st.session_state.get('sips_prev_bagian', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.sips_filter_bagian = ['All']
-            st.session_state.sips_filter_nama = ['All']
-            st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
-
-        # == Filter Purchasing Group SIPS ======================================
+    elif is_sips:
         try:
-            pg_sips_data = load_data("""
-                SELECT DISTINCT purchasing_group FROM sips_data
-                WHERE purchasing_group IS NOT NULL ORDER BY purchasing_group
+            if 'All' not in sips_selected_bagian and sips_selected_bagian:
+                bagian_sql = "', '".join(sips_selected_bagian)
+                nama_data = load_data(f"""
+                    SELECT DISTINCT se.nama
+                    FROM sips_employees se
+                    JOIN karyawan_bagian_history kbh ON kbh.nik = se.nik
+                    WHERE kbh.bagian IN ('{bagian_sql}')
+                    ORDER BY se.nama
+                """)
+            else:
+                nama_data = load_data("""
+                    SELECT DISTINCT se.nama
+                    FROM sips_employees se
+                    WHERE EXISTS (
+                        SELECT 1 FROM karyawan_bagian_history kbh WHERE kbh.nik = se.nik
+                    )
+                    ORDER BY se.nama
+                """)
+
+            options_nama = ['All'] + nama_data['nama'].tolist()
+
+            def update_nama_logic():
+                cur, prv = st.session_state.get('sips_filter_nama', []), st.session_state.get('sips_prev_nama', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_nama = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_nama = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.sips_filter_nama = ['All']
+                st.session_state.sips_prev_nama = st.session_state.sips_filter_nama
+
+            if not st.session_state.get('sips_filter_nama'):
+                st.session_state.sips_filter_nama = ['All']
+            if not st.session_state.get('sips_filter_bagian'):
+                st.session_state.sips_filter_bagian = ['All']
+            if not st.session_state.get('sips_filter_pgroup'):
+                st.session_state.sips_filter_pgroup = ['All']
+
+            # == Filter Nama =======================================================
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2
+                             2 0 0 1 4 0m4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3
+                             6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68
+                             10.289 10 8 10s-3.516.68-4.168 1.332c-.678.678-.83
+                             1.418-.832 1.664z"/>
+                </svg>
+                Nama
+            </p>
+            """, unsafe_allow_html=True)
+            _nama_default = [v for v in st.session_state.get('sips_filter_nama', []) if v in options_nama] or ['All']
+            sips_selected_nama = st.sidebar.multiselect(
+                "Nama",
+                options=options_nama,
+                default=_nama_default,
+                key="sips_filter_nama",
+                on_change=update_nama_logic,
+                label_visibility="collapsed"
+            )
+            if not sips_selected_nama:
+                sips_selected_nama = ['All']
+
+            bagian_data = load_data("""
+                SELECT DISTINCT bagian FROM karyawan_bagian_history
+                WHERE bagian IS NOT NULL ORDER BY bagian
             """)
-            options_pgroup_sips = ['All'] + pg_sips_data['purchasing_group'].tolist()
-        except Exception:
-            options_pgroup_sips = ['All']
+            options_bagian_sips = ['All'] + bagian_data['bagian'].tolist()
 
-        def update_pgroup_sips_logic():
-            cur, prv = st.session_state.get('sips_filter_pgroup', []), st.session_state.get('sips_prev_pgroup', [])
-            if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_pgroup = ['All']
-            elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_pgroup = [x for x in cur if x != 'All']
-            elif not cur:                             st.session_state.sips_filter_pgroup = ['All']
-            st.session_state.sips_prev_pgroup = st.session_state.sips_filter_pgroup
+            def update_bagian_sips_logic():
+                cur, prv = st.session_state.get('sips_filter_bagian', []), st.session_state.get('sips_prev_bagian', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_bagian = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_bagian = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.sips_filter_bagian = ['All']
+                st.session_state.sips_filter_nama = ['All']
+                st.session_state.sips_prev_bagian = st.session_state.sips_filter_bagian
 
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
-                         0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355
-                         .68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1
-                         1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
-            </svg>
-            Purchasing Group
-        </p>
-        """, unsafe_allow_html=True)
-        _pgsips_default = [v for v in st.session_state.get('sips_filter_pgroup', []) if v in options_pgroup_sips] or ['All']
-        sips_selected_pgroup = st.sidebar.multiselect(
-            "Purchasing Group SIPS",
-            options=options_pgroup_sips,
-            default=_pgsips_default,
-            key="sips_filter_pgroup",
-            on_change=update_pgroup_sips_logic,
-            label_visibility="collapsed"
-        )
-        if not sips_selected_pgroup:
-            sips_selected_pgroup = ['All']
+            # == Filter Purchasing Group SIPS ======================================
+            try:
+                pg_sips_data = load_data("""
+                    SELECT DISTINCT purchasing_group FROM sips_data
+                    WHERE purchasing_group IS NOT NULL ORDER BY purchasing_group
+                """)
+                options_pgroup_sips = ['All'] + pg_sips_data['purchasing_group'].tolist()
+            except Exception:
+                options_pgroup_sips = ['All']
 
-        # == Filter Bagian =====================================================
-        st.sidebar.markdown("""
-        <p style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
-                     0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
-                     a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
-                     1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
-                <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
-                         A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
-                         1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
-                         1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
-                         8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
-                         A1.5 1.5 0 0 1 12.5 11z"/>
-            </svg>
-            Bagian
-        </p>
-        """, unsafe_allow_html=True)
-        _bagian_sips_default = [v for v in st.session_state.get('sips_filter_bagian', []) if v in options_bagian_sips] or ['All']
-        sips_selected_bagian = st.sidebar.pills(
-            "Bagian SIPS",
-            options=options_bagian_sips,
-            default=_bagian_sips_default,
-            selection_mode="multi",
-            key="sips_filter_bagian",
-            on_change=update_bagian_sips_logic,
-            label_visibility="collapsed"
-        )
-        if not sips_selected_bagian:
-            sips_selected_bagian = ['All']
+            def update_pgroup_sips_logic():
+                cur, prv = st.session_state.get('sips_filter_pgroup', []), st.session_state.get('sips_prev_pgroup', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.sips_filter_pgroup = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.sips_filter_pgroup = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.sips_filter_pgroup = ['All']
+                st.session_state.sips_prev_pgroup = st.session_state.sips_filter_pgroup
 
-        st.sidebar.markdown("""
-        <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer'
-            style='font-size:14px; font-weight:600; color:var(--text-color);
-                  margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px; cursor:help;'>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                 fill="currentColor" viewBox="0 0 16 16">
-                <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
-                         0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
-                         1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
-                         1 0 0 0 1-1V4z"/>
-            </svg>
-            Date Range ⓘ
-        </p>
-        """, unsafe_allow_html=True)
-        sips_date_from = st.sidebar.date_input("SIPS From", value=default_start_date)
-        sips_date_to   = st.sidebar.date_input("SIPS To", value=DATA_UPDATE_SIPS)
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
+                             0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355
+                             .68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1
+                             1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
+                </svg>
+                Purchasing Group
+            </p>
+            """, unsafe_allow_html=True)
+            _pgsips_default = [v for v in st.session_state.get('sips_filter_pgroup', []) if v in options_pgroup_sips] or ['All']
+            sips_selected_pgroup = st.sidebar.multiselect(
+                "Purchasing Group SIPS",
+                options=options_pgroup_sips,
+                default=_pgsips_default,
+                key="sips_filter_pgroup",
+                on_change=update_pgroup_sips_logic,
+                label_visibility="collapsed"
+            )
+            if not sips_selected_pgroup:
+                sips_selected_pgroup = ['All']
 
-        if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="sips_refresh"):
-            st.cache_data.clear()
-            st.rerun()
+            # == Filter Bagian =====================================================
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:0 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
+                         0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
+                         a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
+                         1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
+                    <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
+                             A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
+                             1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
+                             1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
+                             8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
+                             A1.5 1.5 0 0 1 12.5 11z"/>
+                </svg>
+                Bagian
+            </p>
+            """, unsafe_allow_html=True)
+            _bagian_sips_default = [v for v in st.session_state.get('sips_filter_bagian', []) if v in options_bagian_sips] or ['All']
+            sips_selected_bagian = st.sidebar.pills(
+                "Bagian SIPS",
+                options=options_bagian_sips,
+                default=_bagian_sips_default,
+                selection_mode="multi",
+                key="sips_filter_bagian",
+                on_change=update_bagian_sips_logic,
+                label_visibility="collapsed"
+            )
+            if not sips_selected_bagian:
+                sips_selected_bagian = ['All']
 
-    except Exception as e:
-        st.sidebar.error(f"Error loading SIPS filters: {e}")
+            st.sidebar.markdown("""
+            <p title='Info Filter Tanggal:&#10;• Data SIPS: diambil dari Tanggal Disposisi Buyer'
+               style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; margin-top:6px; cursor:help;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
+                             0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
+                             1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
+                             1 0 0 0 1-1V4z"/>
+                </svg>
+                Date Range ⓘ
+            </p>
+            """, unsafe_allow_html=True)
+            sips_date_from = st.sidebar.date_input("SIPS From", value=default_start_date)
+            sips_date_to   = st.sidebar.date_input("SIPS To", value=DATA_UPDATE_SIPS)
+
+            if st.sidebar.button("Refresh Data", icon=":material/refresh:", key="sips_refresh"):
+                st.cache_data.clear()
+                st.rerun()
+
+        except Exception as e:
+            st.sidebar.error(f"Error loading SIPS filters: {e}")
+
+    elif not is_summary and not is_admin_pg and not is_ai and not is_poo:
+        try:
+            departments  = load_data("SELECT DISTINCT department_code FROM departments ORDER BY department_code")
+            bagian_data  = load_data("""
+                SELECT DISTINCT bagian_pr AS bagian FROM vw_pr_po_complete WHERE bagian_pr IS NOT NULL AND bagian_pr != 'UNKNOWN'
+                UNION
+                SELECT DISTINCT bagian_po AS bagian FROM vw_pr_po_complete WHERE bagian_po IS NOT NULL AND bagian_po != 'UNKNOWN'
+                ORDER BY 1
+            """)
+            p_group_data = load_data("""
+                SELECT DISTINCT purchasing_group FROM purchase_requisitions WHERE purchasing_group IS NOT NULL
+                UNION
+                SELECT DISTINCT purchasing_group FROM purchase_orders WHERE purchasing_group IS NOT NULL
+                ORDER BY 1
+            """)
+
+            options_bagian  = ['All'] + bagian_data['bagian'].tolist()
+            options_p_group = ['All'] + p_group_data['purchasing_group'].tolist()
+
+            def update_bagian_logic():
+                cur, prv = st.session_state.get('filter_bagian', []), st.session_state.get('prev_filter_bagian', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.filter_bagian = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.filter_bagian = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.filter_bagian = ['All']
+                st.session_state.prev_filter_bagian = st.session_state.filter_bagian
+
+            def update_dept_logic():
+                cur, prv = st.session_state.get('filter_dept', []), st.session_state.get('prev_filter_dept', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.filter_dept = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.filter_dept = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.filter_dept = ['All']
+                st.session_state.prev_filter_dept = st.session_state.filter_dept
+
+            def update_pgroup_logic():
+                cur, prv = st.session_state.get('filter_pgroup', []), st.session_state.get('prev_filter_pgroup', [])
+                if 'All' in cur and 'All' not in prv:   st.session_state.filter_pgroup = ['All']
+                elif 'All' in cur and len(cur) > 1:      st.session_state.filter_pgroup = [x for x in cur if x != 'All']
+                elif not cur:                               st.session_state.filter_pgroup = ['All']
+                st.session_state.prev_filter_pgroup = st.session_state.filter_pgroup
+
+            if not st.session_state.get('filter_dept'):
+                st.session_state.filter_dept = ['All']
+            if not st.session_state.get('filter_pgroup'):
+                st.session_state.filter_pgroup = ['All']
+            if not st.session_state.get('filter_bagian'):
+                st.session_state.filter_bagian = ['All']
+
+            _dept_opts = ['All'] + departments['department_code'].tolist()
+            if not any(v in _dept_opts for v in st.session_state.get('filter_dept', [])):
+                st.session_state.filter_dept = ['All']
+            if not any(v in options_p_group for v in st.session_state.get('filter_pgroup', [])):
+                st.session_state.filter_pgroup = ['All']
+            if not any(v in options_bagian for v in st.session_state.get('filter_bagian', [])):
+                st.session_state.filter_bagian = ['All']
+
+            # == Department ========================================================
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:0 0 2px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M3 0a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3v-3.5a.5.5 0 0 1
+                             .5-.5h3a.5.5 0 0 1 .5.5V16h3a1 1 0 0 0 1-1V1a1 1 0 0
+                             0-1-1zm1 2.5a.5.5 0 0 1 .5-.5h1a.5.5 0 0 1 .5.5v1a.5.5
+                             0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5zm3 0a.5.5 0 0 1 .5-.5h1
+                             a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0 0 1-.5-.5z
+                             m3.5-.5h1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-1a.5.5 0
+                             0 1-.5-.5v-1a.5.5 0 0 1 .5-.5"/>
+                </svg>
+                Department
+            </p>
+            """, unsafe_allow_html=True)
+            _dept_default = [v for v in st.session_state.get('filter_dept', []) if v in _dept_opts] or ['All']
+            _dept_sel = st.sidebar.multiselect(
+                "Department",
+                options=_dept_opts,
+                default=_dept_default,
+                on_change=update_dept_logic,
+                key="filter_dept",
+                label_visibility="collapsed"
+            )
+            selected_department = st.session_state.get('filter_dept', ['All']) or ['All']
+            exclude_dept = False
+            if 'All' not in selected_department and selected_department:
+                exclude_dept = st.sidebar.checkbox(":material/block: Exclude selected Department")
+
+            # == Purchasing Group ==================================================
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 2px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1zm4-6a3 3 0 1 0
+                             0-6 3 3 0 0 0 0 6m-5.784 6A2.24 2.24 0 0 1 5 13c0-1.355
+                             .68-2.75 1.936-3.72A6.3 6.3 0 0 0 5 9c-4 0-5 3-5 4s1
+                             1 1 1zM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5"/>
+                </svg>
+                Purchasing Group
+            </p>
+            """, unsafe_allow_html=True)
+            _pg_default = [v for v in st.session_state.get('filter_pgroup', []) if v in options_p_group] or ['All']
+            _pg_sel = st.sidebar.multiselect(
+                "Purchasing Group",
+                options=options_p_group,
+                default=_pg_default,
+                on_change=update_pgroup_logic,
+                key="filter_pgroup",
+                label_visibility="collapsed"
+            )
+            selected_p_group = st.session_state.get('filter_pgroup', ['All']) or ['All']
+            exclude_purchasing_group = False
+            if 'All' not in selected_p_group and selected_p_group:
+                exclude_purchasing_group = st.sidebar.checkbox(":material/block: Exclude selected Purchasing Group")
+
+            # == Bagian ============================================================
+            st.sidebar.markdown("""
+            <p style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 4px 0; display:flex; align-items:center; gap:6px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path fill-rule="evenodd" d="M6 3.5A1.5 1.5 0 0 1 7.5 2h1A1.5 1.5
+                         0 0 1 10 3.5v1A1.5 1.5 0 0 1 8.5 6v1H14a.5.5 0 0 1 .5.5v1
+                         a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0 1-1 0V8h-5v.5a.5.5 0 0
+                         1-1 0v-1A.5.5 0 0 1 2 7h5.5V6A1.5 1.5 0 0 1 6 4.5z"/>
+                    <path d="M2.5 9.5A1.5 1.5 0 0 1 4 8.5h1A1.5 1.5 0 0 1 6.5 10v1
+                             A1.5 1.5 0 0 1 5 12.5H4A1.5 1.5 0 0 1 2.5 11zm5 0A1.5
+                             1.5 0 0 1 9 8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0
+                             1 10 12.5H9A1.5 1.5 0 0 1 7.5 11zm5 0A1.5 1.5 0 0 1 14
+                             8.5h1a1.5 1.5 0 0 1 1.5 1.5v1A1.5 1.5 0 0 1 15 12.5h-1
+                             A1.5 1.5 0 0 1 12.5 11z"/>
+                </svg>
+                Bagian
+            </p>
+            """, unsafe_allow_html=True)
+            _bagian_default = [v for v in st.session_state.get('filter_bagian', []) if v in options_bagian] or ['All']
+            st.sidebar.pills(
+                "Bagian",
+                options=options_bagian,
+                default=_bagian_default,
+                selection_mode="multi",
+                key="filter_bagian",
+                on_change=update_bagian_logic,
+                label_visibility="collapsed"
+            )
+            selected_bagian = st.session_state.get('filter_bagian', ['All']) or ['All']
+
+            # == Date Range ========================================================
+            st.sidebar.markdown("""
+            <p title='Info Filter Tanggal:&#10;• PR SAP: 1st Full Release&#10;• PO SAP: Date Ordered'
+                style='font-size:14px; font-weight:600; color:var(--text-color);
+                      margin:8px 0 4px 0; display:flex; align-items:center; gap:6px; cursor:help;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                     fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2
+                             0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0
+                             1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1
+                             1 0 0 0 1-1V4z"/>
+                </svg>
+                Date Range ⓘ
+            </p>
+            """, unsafe_allow_html=True)
+            date_from = st.sidebar.date_input("SAP From", value=default_start_date)
+            date_to   = st.sidebar.date_input("SAP To",   value=DATA_UPDATE_SAP)
+
+            if st.sidebar.button("Refresh Data", icon=":material/refresh:"):
+                st.cache_data.clear()
+                st.rerun()
+
+        except Exception as e:
+            st.sidebar.error(f"Error loading filters: {e}")
+
+    else:
+        st.sidebar.info("📌 Halaman ini belum memiliki filter khusus.")
+        st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
 # == Tombol Logout + info user: selalu di paling bawah sidebar ===============
 st.sidebar.markdown("---")
@@ -1107,7 +1099,7 @@ if st.sidebar.button("Logout", use_container_width=True, key="btn_logout"):
     dialog_logout()
 
 # =============================================================================
-# DEFAULT FILTER VALUES  (dipakai untuk sistem yang TIDAK aktif saat ini)
+# DEFAULT FILTER VALUES (dipakai untuk sistem yang TIDAK aktif saat ini)
 # =============================================================================
 
 _default_start_date = datetime(current_year, 1, 1).date()
@@ -1170,8 +1162,8 @@ teks_filter_inklaring = f"""
 
 # == Bangun / refresh konteks global untuk Melati =============================
 global_context = build_global_context(
-    load_data      = load_data,
-    is_sips        = is_sips,
+    load_data          = load_data,
+    is_sips            = is_sips,
     # SAP aktif
     filter_conditions   = filter_conditions,
     bagian_pr_cond      = bagian_pr_cond,
@@ -1248,7 +1240,7 @@ st.session_state['_bb_view_args'] = dict(
 # FILTER BAR: top bar mode, dirender sekali sebelum konten halaman
 # =============================================================================
 
-if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_lainnya and not is_bb:
+if st.session_state.filter_mode == 'topbar' and not st.session_state.show_changelog and not is_summary and not is_admin_pg and not is_bb and not is_ai and not is_poo:
     if is_sips:
         render_filter_bar('sips', load_data)
         sips_date_from       = st.session_state.get('fb_sips_date_from',  sips_date_from)
@@ -1273,7 +1265,6 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
         ))
         
     elif is_inklaring:
-        # Menampilkan date picker secara mendatar untuk Top Bar khusus Inklaring
         st.markdown("<div style='background-color: var(--secondary-background-color); padding: 15px; border-radius: 10px; margin-bottom: 20px;'>", unsafe_allow_html=True)
         col1, col2, _ = st.columns([2, 2, 8])
         with col1:
@@ -1339,15 +1330,12 @@ if st.session_state.get('scroll_target'):
             var doc = window.parent.document;
             var headers = Array.from(doc.querySelectorAll('h1, h2, h3'));
             
-            // Pencarian case-insensitive agar lebih akurat
             var targetText = "{target_section}".toLowerCase().trim();
             var targetElement = headers.find(el => el.textContent.toLowerCase().includes(targetText));
             
             if (targetElement) {{
-                // Scroll ke elemen
                 targetElement.scrollIntoView({{behavior: 'smooth', block: 'center'}});
                 
-                // Animasi berkedip merah
                 var originalColor = targetElement.style.color;
                 targetElement.style.transition = "color 0.4s ease-in-out";
                 targetElement.style.color = "#ff4b4b"; 
@@ -1356,7 +1344,6 @@ if st.session_state.get('scroll_target'):
                     targetElement.style.color = originalColor; 
                 }}, 2000);
             }} else {{
-                // Coba lagi jika elemen belum selesai dimuat oleh Streamlit
                 setTimeout(scrollToTarget, 500);
             }}
         }}
@@ -1378,7 +1365,17 @@ _logo_path_footer = "assets/logo_pg.png"
 _logo_b64_footer  = _load_icon_b64(_logo_path_footer)
 
 with col_foot1:
-    system_label = "Bahan Baku" if is_bb else ("Inklaring Barang Impor" if is_inklaring else ("SIPS" if is_sips else ("Lainnya" if is_lainnya else "SAP")))
+    if is_bb:
+        system_label = "Bahan Baku"
+    elif is_inklaring:
+        system_label = "Inklaring Barang Impor"
+    elif is_sips:
+        system_label = "SIPS"
+    elif is_poo:
+        system_label = "PO Outstanding"
+    else:
+        system_label = "SAP"
+
     st.markdown(
         f"<div style='color:#666; display:flex; align-items:center; font-weight:500; height:100%; min-height:50px;'>"
         f"Monitoring Dashboard - {system_label} | v1.9.3 | "

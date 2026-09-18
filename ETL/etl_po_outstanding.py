@@ -1,27 +1,43 @@
 """
-etl_po_outstanding.py - ETL untuk Modul PO Outstanding (Reminder Email Vendor)
-Membaca file Excel PO Outstanding (Perlu Email), membersihkan format angka dan
-tanggal, membuang kolom/baris bukan-data, lalu MENGGANTI TOTAL isi tabel
-po_outstanding di PostgreSQL (TRUNCATE + INSERT).
+etl_po_outstanding.py - ETL untuk Modul PO Outstanding (sheet "ALL" bulanan)
 
-Kenapa TRUNCATE + INSERT (bukan Upsert seperti Inklaring)?
------------------------------------------------------------
-Data ini adalah representasi PO Outstanding "saat file diambil". PO yang
-sudah selesai akan hilang begitu saja dari file sumber berikutnya (tidak
-ditandai "selesai" secara eksplisit). Supaya tabel po_outstanding selalu
-mencerminkan kondisi outstanding TERKINI, seluruh isi tabel diganti total
-setiap kali ETL dijalankan.
+TUGAS TUNGGAL: baca sheet ALL bulanan, upsert ke po_all_raw, catat PO+Item
+yang baru terdeteksi Clear ke po_clear_history (memori permanen).
+
+PENTING -- kenapa file ini TIDAK menghitung/menyimpan keterlambatan atau
+mengisi tabel po_outstanding: keterlambatan (CURRENT_DATE - delivery_date)
+berubah nilainya setiap hari walau delivery_date tidak berubah. Kalau
+angka itu dihitung sekali lalu disimpan di ETL, dia langsung basi begitu
+hari berganti. Karena itu po_outstanding TIDAK LAGI berupa tabel fisik --
+dia dibuat sebagai VIEW (lihat schema_po_outstanding_v3.sql), yang meng-
+hitung ulang keterlambatan secara otomatis SETIAP KALI dibaca (persis
+seperti rumus =TODAY()-tanggal di Google Sheets). Jadi halaman Streamlit
+mana pun yang query dari po_outstanding akan selalu dapat angka yang
+akurat per hari ini, tanpa perlu proses "generate ulang" terpisah.
+
+Alur:
+1. Baca file Excel sheet ALL bulanan (misal "ALL (September 2026)") apa adanya
+   -- data mentah yang sudah kamu isi manual kolom W-AC di Google Sheets.
+2. Untuk tiap baris, cek apakah baris ini sudah "Clear":
+      Clear jika  keterangan_rencana_kirim (kolom X) TERISI
+               ATAU status_jawaban (kolom Z) == 'Sudah Ada Jawaban'
+3. Baris yang baru terdeteksi Clear -> dicatat ke po_clear_history (permanen,
+   tidak akan pernah dihapus oleh ETL ini di masa depan).
+4. SEMUA baris (baik yang clear maupun belum) di-upsert ke po_all_raw, supaya
+   po_all_raw selalu mencerminkan kondisi TERBARU tiap PO+Item apa adanya.
 """
 
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
 import os
+from datetime import datetime
 
 
 class Config:
-    PO_OUTSTANDING_FILE = None
-    SHEET_NAME = "Perlu Email"
+    PO_ALL_FILE = None
+    SHEET_NAME = None          # misal "ALL (September 2026)"
+    UPLOAD_MONTH = None        # misal "2026-09"; kalau None, diambil dari SHEET_NAME atau hari ini
 
 
 def db_get_engine():
@@ -30,26 +46,53 @@ def db_get_engine():
     return get_db_engine()
 
 
+def _guess_upload_month(sheet_name):
+    """Coba tebak bulan-tahun dari nama sheet, misal 'ALL (September 2026)' -> '2026-09'.
+    Kalau gagal, pakai bulan berjalan saat ETL dijalankan."""
+    bulan_map = {
+        'januari': '01', 'februari': '02', 'maret': '03', 'april': '04',
+        'mei': '05', 'juni': '06', 'juli': '07', 'agustus': '08',
+        'september': '09', 'oktober': '10', 'november': '11', 'desember': '12'
+    }
+    if sheet_name:
+        lower = sheet_name.lower()
+        for nama, angka in bulan_map.items():
+            if nama in lower:
+                import re
+                match = re.search(r'(20\d{2})', sheet_name)
+                tahun = match.group(1) if match else str(datetime.today().year)
+                return f"{tahun}-{angka}"
+    return datetime.today().strftime("%Y-%m")
+
+
 def run_etl():
-    if not Config.PO_OUTSTANDING_FILE or not os.path.exists(Config.PO_OUTSTANDING_FILE):
-        print(f"ERROR: File {Config.PO_OUTSTANDING_FILE} tidak ditemukan!")
+    if not Config.PO_ALL_FILE or not os.path.exists(Config.PO_ALL_FILE):
+        print(f"ERROR: File {Config.PO_ALL_FILE} tidak ditemukan!")
         return False
 
-    print(f"[*] Membaca file PO Outstanding dari {Config.PO_OUTSTANDING_FILE} (sheet: {Config.SHEET_NAME})...")
-    if Config.PO_OUTSTANDING_FILE.endswith('.csv'):
-        df = pd.read_csv(Config.PO_OUTSTANDING_FILE)
-    else:
-        df = pd.read_excel(Config.PO_OUTSTANDING_FILE, sheet_name=Config.SHEET_NAME)
+    sheet_name = Config.SHEET_NAME
+    upload_month = Config.UPLOAD_MONTH or _guess_upload_month(sheet_name)
+
+    print(f"[*] Membaca file PO ALL dari {Config.PO_ALL_FILE}, sheet '{sheet_name}'...")
+    try:
+        if sheet_name:
+            df = pd.read_excel(Config.PO_ALL_FILE, sheet_name=sheet_name)
+        else:
+            df = pd.read_excel(Config.PO_ALL_FILE)
+    except ValueError as e:
+        print(f"ERROR: Sheet '{sheet_name}' tidak ditemukan di file. Detail: {e}")
+        return False
 
     print(f"[*] Total data mentah dimuat: {len(df)} baris.")
+    print(f"[*] Upload month terdeteksi: {upload_month}")
 
     print("[*] Membersihkan dan memetakan kolom...")
-    # Hanya kolom yang relevan yang dipetakan. Kolom lain di file sumber
-    # (mis. 'Unnamed: 21', 'Unnamed: 22', 'Kategori', 'Jumlah') adalah
-    # sisa ringkasan/pivot yang menempel di sheet dan diabaikan di sini.
+    # Pemetaan header sheet ALL -> nama kolom database.
+    # Sesuaikan key di sebelah kiri jika header di Excel sedikit berbeda.
     column_mapping = {
         "Purchasing Document": "purchasing_document",
         "Item": "item",
+        "Buyer": "buyer",
         "Purchase Requisition": "purchase_requisition",
         "Short Text": "short_text",
         "Document Date": "document_date",
@@ -57,100 +100,134 @@ def run_etl():
         "Vendor Code": "vendor_code",
         "Vendor Name": "vendor_name",
         "Vendor email": "vendor_email",
-        "Purchasing Group": "purchasing_group",
-        "Order Quantity": "order_quantity",
-        "Still to be delivered (qty)": "still_to_be_delivered_qty",
-        "Order Unit": "order_unit",
-        "Net Order Value": "net_order_value",
-        "Currency": "currency",
-        "Still to be delivered (value)": "still_to_be_delivered_value",
-        "Outline Agreement": "outline_agreement",
-        "Deletion Indicator": "deletion_indicator",
-        "Requisitioner": "requisitioner",
-        "PENDING TIME": "pending_time",
-        "PENDING TIME Classification": "pending_time_classification",
+        "Tindak Lanjut (No. Surat)": "tindak_lanjut_no_surat",
+        "Keterangan / Rencana Kirim": "keterangan_rencana_kirim",
+        "Status Email": "status_email",
+        "Status Jawaban": "status_jawaban",
+        "Link Dokumentasi Balasan": "link_dokumentasi_balasan",
+        "Keterangan Email": "keterangan_email",
+        "Bagian": "bagian",
     }
 
-    kolom_hilang = [k for k in column_mapping if k not in df.columns]
+    kolom_wajib = ["Purchasing Document", "Item"]
+    kolom_hilang = [k for k in kolom_wajib if k not in df.columns]
     if kolom_hilang:
-        print(f"ERROR: Kolom berikut tidak ditemukan di file sumber: {kolom_hilang}")
+        print(f"ERROR: Kolom wajib tidak ditemukan di sheet: {kolom_hilang}")
+        print(f"       Kolom yang tersedia: {list(df.columns)}")
         return False
 
-    df_clean = df[list(column_mapping.keys())].rename(columns=column_mapping)
+    # Ambil hanya kolom yang memang ada di file (jaga-jaga kalau ada header
+    # yang belum konsisten antar bulan), lalu rename.
+    kolom_tersedia = {k: v for k, v in column_mapping.items() if k in df.columns}
+    kolom_tidak_ketemu = [k for k in column_mapping if k not in df.columns]
+    if kolom_tidak_ketemu:
+        print(f"[!] Kolom berikut tidak ditemukan di file dan akan dikosongkan: {kolom_tidak_ketemu}")
 
-    # --- Buang baris yang tidak punya Nomor PO (data kosong / baris sampah) ---
-    awal_len = len(df_clean)
-    df_clean = df_clean[
-        df_clean['purchasing_document'].notna() &
-        (df_clean['purchasing_document'].astype(str).str.strip() != '')
-    ]
-    print(f"[*] Dihapus {awal_len - len(df_clean)} baris karena 'Purchasing Document' kosong.")
+    df_clean = df[list(kolom_tersedia.keys())].rename(columns=kolom_tersedia)
 
-    # --- Cleansing kolom teks/kode yang berpotensi punya sisa '.0' (dari Excel) ---
-    kolom_teks_kode = [
-        'purchasing_document', 'item', 'purchase_requisition', 'vendor_code',
-        'outline_agreement', 'deletion_indicator'
-    ]
-    for col in kolom_teks_kode:
-        df_clean[col] = df_clean[col].astype(str).str.replace(r'\.0$', '', regex=True)
-        df_clean[col] = df_clean[col].replace({'nan': None, 'NaN': None, 'None': None})
+    # Tambahkan kolom yang tidak ketemu sebagai kosong, supaya struktur tetap konsisten
+    for kolom_asli, kolom_db in column_mapping.items():
+        if kolom_db not in df_clean.columns:
+            df_clean[kolom_db] = None
 
-    # --- Rapikan teks bebas (nama vendor, deskripsi, email, dll) ---
-    kolom_teks_bebas = [
-        'short_text', 'vendor_name', 'vendor_email', 'purchasing_group',
-        'order_unit', 'currency', 'requisitioner', 'pending_time_classification'
+    # Cleansing teks dasar
+    kolom_teks = [
+        "purchasing_document", "item", "buyer", "purchase_requisition", "short_text",
+        "vendor_code", "vendor_name", "vendor_email", "tindak_lanjut_no_surat",
+        "keterangan_rencana_kirim", "status_email", "status_jawaban",
+        "link_dokumentasi_balasan", "keterangan_email", "bagian"
     ]
-    for col in kolom_teks_bebas:
+    for col in kolom_teks:
         df_clean[col] = df_clean[col].astype(str).str.strip()
         df_clean[col] = df_clean[col].replace({'nan': None, 'NaN': None, 'None': None, '': None})
 
-    # Email vendor: lowercase-kan supaya konsisten untuk pencarian/join nanti
-    df_clean['vendor_email'] = df_clean['vendor_email'].apply(
-        lambda x: x.lower() if isinstance(x, str) else x
-    )
+    # Purchasing Document & Item adalah kombinasi kunci -> hapus baris tanpa keduanya
+    awal_len = len(df_clean)
+    df_clean = df_clean[df_clean['purchasing_document'].notna() & df_clean['item'].notna()]
+    print(f"[*] Dihapus {awal_len - len(df_clean)} baris karena Purchasing Document/Item kosong.")
 
-    # --- Kolom tanggal ---
+    # Format tanggal
     date_columns = ['document_date', 'delivery_date']
-    print("[*] Memformat data Tanggal...")
     for col in date_columns:
         df_clean[col] = pd.to_datetime(df_clean[col], errors='coerce')
 
-    # --- Kolom numerik ---
-    numeric_columns = [
-        'order_quantity', 'still_to_be_delivered_qty', 'net_order_value',
-        'still_to_be_delivered_value', 'pending_time'
-    ]
-    print("[*] Memformat data Angka...")
-    for col in numeric_columns:
-        if df_clean[col].dtype == 'object':
-            df_clean[col] = df_clean[col].astype(str).str.replace(r'[,\.]', '', regex=True)
-        df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce')
+    df_clean['upload_month'] = upload_month
 
     df_clean = df_clean.replace({np.nan: None, 'NaT': None})
-
-    # --- Unique key: (purchasing_document, item) ---
-    # Nomor PO (purchasing_document) bisa sama untuk beberapa baris karena
-    # satu PO bisa punya banyak Item; pembedanya adalah kolom 'item'.
-    awal_len = len(df_clean)
     df_clean = df_clean.drop_duplicates(subset=['purchasing_document', 'item'], keep='last')
-    print(f"[*] Dihapus {awal_len - len(df_clean)} baris duplikat (purchasing_document + item sama).")
-    print(f"[*] Total data siap simpan: {len(df_clean)} baris.")
+    print(f"[*] Total data siap simpan: {len(df_clean)} baris (unik berdasarkan Purchasing Document + Item).")
 
-    if df_clean.empty:
-        print("ERROR: Tidak ada data valid untuk disimpan setelah proses cleansing.")
-        return False
+    # -------------------------------------------------------------------
+    # Deteksi baris yang Clear (menurut definisi yang disepakati):
+    #   Clear jika keterangan_rencana_kirim TERISI
+    #          ATAU status_jawaban == 'Sudah Ada Jawaban'
+    # -------------------------------------------------------------------
+    def _is_clear(row):
+        if row['keterangan_rencana_kirim'] is not None and str(row['keterangan_rencana_kirim']).strip() != '':
+            return 'keterangan_rencana_kirim_terisi'
+        if row['status_jawaban'] == 'Sudah Ada Jawaban':
+            return 'vendor_sudah_jawab'
+        return None
 
-    print("[*] Mengganti total isi tabel po_outstanding (TRUNCATE + INSERT)...")
+    df_clean['_clear_reason'] = df_clean.apply(_is_clear, axis=1)
+    df_baru_clear = df_clean[df_clean['_clear_reason'].notna()][
+        ['purchasing_document', 'item', '_clear_reason']
+    ].copy()
+    print(f"[*] Terdeteksi {len(df_baru_clear)} baris berstatus Clear pada upload ini.")
+
     engine = db_get_engine()
 
     with engine.begin() as conn:
-        # Kosongkan tabel dulu -> PO yang sudah tidak outstanding (selesai)
-        # otomatis tidak akan muncul lagi setelah insert data baru.
-        conn.execute(text("TRUNCATE TABLE po_outstanding RESTART IDENTITY;"))
+        # ---------------------------------------------------------------
+        # 1. Upsert ke po_clear_history (memori permanen, tidak pernah dihapus)
+        #    ON CONFLICT DO NOTHING -> kalau sudah pernah tercatat clear di
+        #    bulan sebelumnya, cleared_date & source_upload_month TIDAK diubah
+        #    (mempertahankan kapan PERTAMA KALI dia clear).
+        # ---------------------------------------------------------------
+        if not df_baru_clear.empty:
+            df_baru_clear['source_upload_month'] = upload_month
+            df_baru_clear.to_sql('temp_clear_history', conn, if_exists='replace', index=False)
 
-        df_clean.to_sql('po_outstanding', conn, if_exists='append', index=False)
+            conn.execute(text("""
+                INSERT INTO po_clear_history (purchasing_document, item, cleared_reason, source_upload_month)
+                SELECT purchasing_document, item, "_clear_reason", source_upload_month
+                FROM temp_clear_history
+                ON CONFLICT (purchasing_document, item) DO NOTHING;
+            """))
+            conn.execute(text("DROP TABLE temp_clear_history;"))
+            print(f"[*] po_clear_history diperbarui (baris baru saja ditambahkan, baris lama tidak diubah).")
+
+        # ---------------------------------------------------------------
+        # 2. Upsert SEMUA baris ke po_all_raw (data mentah apa adanya)
+        # ---------------------------------------------------------------
+        df_upsert = df_clean.drop(columns=['_clear_reason'])
+        columns = list(df_upsert.columns)
+
+        df_upsert.to_sql('temp_po_all_raw', conn, if_exists='replace', index=False)
+
+        set_clause = ", ".join([
+            f"{col} = EXCLUDED.{col}" for col in columns
+            if col not in ('purchasing_document', 'item')
+        ])
+
+        select_clause_items = []
+        for col in columns:
+            if col in date_columns:
+                select_clause_items.append(f"CAST({col} AS TIMESTAMP)")
+            else:
+                select_clause_items.append(col)
+        select_clause = ", ".join(select_clause_items)
+
+        upsert_query = f"""
+            INSERT INTO po_all_raw ({', '.join(columns)})
+            SELECT {select_clause} FROM temp_po_all_raw
+            ON CONFLICT (purchasing_document, item) DO UPDATE SET {set_clause};
+        """
+        conn.execute(text(upsert_query))
+        conn.execute(text("DROP TABLE temp_po_all_raw;"))
 
     print("[*] Proses ETL PO Outstanding selesai dengan sukses!")
+    print("[*] Tabel po_outstanding (VIEW) otomatis ter-update -- tidak perlu proses tambahan.")
     return True
 
 

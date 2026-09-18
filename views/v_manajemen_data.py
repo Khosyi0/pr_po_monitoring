@@ -441,8 +441,9 @@ def render(**kwargs):
         """, unsafe_allow_html=True)
         
         tipe_etl = st.selectbox(
-            "Pilih Modul ETL", 
-            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor", "EPROC (Utilisasi)", "Harga Bahan Baku", "Kondisi Stock BB"]
+            "Pilih Modul ETL",
+            ["SAP (PR & PO)", "SIPS", "SAP + SIPS (1 File)", "Inklaring Barang Impor",
+                "EPROC (Utilisasi)", "Harga Bahan Baku", "Kondisi Stock BB", "PO Outstanding (ALL)"]
         )
 
         if tipe_etl == "SAP (PR & PO)":
@@ -963,6 +964,113 @@ def render(**kwargs):
                             except Exception as e:
                                 st.error(f"Terjadi kesalahan saat mengunduh: {e}")
 
+        elif tipe_etl == "PO Outstanding (ALL)":
+            st.info(
+                ":material/info: Upload sheet **ALL** bulanan (data mentah PO Outstanding, apa "
+                "adanya dari Google Sheets, termasuk kolom Tindak Lanjut/Keterangan/Status Email/"
+                "Status Jawaban/Bagian yang sudah kamu isi manual). Sistem akan otomatis: "
+                "(1) menyimpan/memperbarui data mentah tanpa menghapus histori bulan sebelumnya, "
+                "(2) mengingat PO+Item yang sudah pernah **Clear** agar tidak muncul lagi di bulan "
+                "berikutnya, dan (3) menghitung ulang keterlambatan & memfilter PO+Item yang perlu "
+                "dikirim reminder email."
+            )
+        
+            # 1. FUNGSI HELPER (satu ETL saja -- run_etl() hanya upsert data mentah
+            #    ke po_all_raw & catat status Clear baru. Tabel po_outstanding adalah
+            #    VIEW yang otomatis menghitung ulang keterlambatan & filter setiap
+            #    kali dibaca, jadi TIDAK perlu proses "generate" terpisah.)
+            def _jalankan_etl_po_outstanding(file_path, sheet_name, update_tanggal):
+                sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../ETL')))
+                import etl_po_outstanding  # type: ignore
+        
+                etl_po_outstanding.Config.PO_ALL_FILE = file_path
+                etl_po_outstanding.Config.SHEET_NAME = sheet_name
+                etl_po_outstanding.Config.UPLOAD_MONTH = None  # auto-detect dari nama sheet
+                etl_po_outstanding.db_get_engine = _get_engine
+        
+                terminal = st.empty()
+                capture_po_all = StreamlitCapture(terminal)
+                with redirect_stdout(capture_po_all), redirect_stderr(capture_po_all):
+                    try:
+                        sukses = etl_po_outstanding.run_etl()
+                        capture_po_all.flush()
+        
+                        if not sukses:
+                            st.error("❌ Proses ETL PO Outstanding gagal, periksa log terminal di atas.")
+                            return
+        
+                        if update_tanggal:
+                            set_setting("DATA_UPDATE_PO_OUTSTANDING", datetime.today().strftime("%Y-%m-%d"))
+        
+                        st.success(
+                            "✅ Proses upload PO Outstanding selesai! Data mentah tersimpan. "
+                            "Daftar Perlu Email (view po_outstanding) otomatis mencerminkan data "
+                            "terbaru setiap kali dibuka -- tidak perlu langkah tambahan. Cek halaman "
+                            "**Monitoring PO Outstanding** atau **PO Outstanding - Reminder Email**."
+                        )
+                        st.cache_data.clear()
+                    except Exception as e:
+                        st.error(f"Gagal memproses data PO Outstanding: {e}")
+                    finally:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+        
+            # 2. LOGIKA ANTARMUKA
+            file_po_all = st.file_uploader(
+                "Upload File Sheet ALL (.xlsx)",
+                type=["xlsx"],
+                key="uploader_po_all"
+            )
+        
+            sheet_name_po_all = None
+            if file_po_all:
+                try:
+                    xl_po = pd.ExcelFile(file_po_all)
+                    sheet_name_po_all = st.selectbox(
+                        "Pilih sheet yang berisi data ALL bulan ini",
+                        options=xl_po.sheet_names,
+                        index=0,
+                        key="sheet_select_po_all",
+                        help="Pilih sheet ALL untuk bulan yang sesuai, misal 'ALL (September 2026)'."
+                    )
+                except Exception as e:
+                    st.error(f"Gagal membaca daftar sheet: {e}")
+        
+            update_tgl_po_all = st.checkbox(
+                "Update Tanggal Data Menjadi Hari Ini", value=True, key="chk_po_all"
+            )
+        
+            if file_po_all and sheet_name_po_all:
+                if st.button("Jalankan ETL PO Outstanding (ALL)", type="primary",
+                            icon=":material/cloud_upload:", key="btn_etl_po_all"):
+                    po_all_path = "temp_po_all.xlsx"
+                    with open(po_all_path, "wb") as f:
+                        f.write(file_po_all.getbuffer())
+                    _jalankan_etl_po_outstanding(po_all_path, sheet_name_po_all, update_tgl_po_all)
+        
+            with st.expander(":material/history: Lihat Daftar PO+Item yang Sudah Pernah Clear"):
+                try:
+                    engine_clear = _get_engine()
+                    with engine_clear.connect() as conn:
+                        df_clear_hist = pd.read_sql(
+                            text("""
+                                SELECT purchasing_document AS "No PO", item AS "Item",
+                                    cleared_reason AS "Alasan Clear",
+                                    cleared_date AS "Tanggal Clear",
+                                    source_upload_month AS "Bulan Upload Saat Clear"
+                                FROM po_clear_history
+                                ORDER BY cleared_date DESC
+                            """),
+                            conn
+                        )
+                    if df_clear_hist.empty:
+                        st.info("Belum ada PO+Item yang tercatat Clear.")
+                    else:
+                        st.dataframe(df_clear_hist, use_container_width=True, hide_index=True)
+                        st.caption(f"Total {len(df_clear_hist)} PO+Item tercatat Clear secara permanen.")
+                except Exception as e:
+                    st.warning(f"Belum bisa menampilkan histori Clear: {e}")
+
     # == Bagian 3: Zona Berbahaya (Reset Data) =================================
     st.markdown("<hr style='margin: 32px 0 24px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
     
@@ -978,7 +1086,7 @@ def render(**kwargs):
     
     st.warning("Fitur ini akan menghapus seluruh data transaksi dari database secara permanen. Gunakan hanya jika Anda perlu mengulang proses upload (ETL) dari awal atau membersihkan data yang salah.")
     
-    col_del1, col_del2, col_del3, col_del4, col_del5, col_del6 = st.columns(6)
+    col_del1, col_del2, col_del3, col_del4, col_del5, col_del6, col_del7 = st.columns(7)
     
     with col_del1:
         with st.expander("🗑️ Hapus Data SAP"):
@@ -1115,6 +1223,29 @@ def render(**kwargs):
                             with engine.begin() as conn:
                                 conn.execute(text("TRUNCATE TABLE rencana_bb_raw RESTART IDENTITY CASCADE;"))
                             st.success("SELURUH data Rencana Kebutuhan BB (semua tahun) berhasil dikosongkan!")
+                        time.sleep(2)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Gagal menghapus data: {e}")
+
+    with col_del7:
+        with st.expander("🗑️ Hapus PO Outstanding"):
+            st.write(
+                "Menghapus data mentah (po_all_raw). Karena po_outstanding adalah VIEW "
+                "(bukan tabel), dia otomatis ikut kosong begitu po_all_raw dikosongkan -- "
+                "tidak perlu dihapus terpisah. Memori Clear (po_clear_history) TIDAK ikut "
+                "terhapus di sini -- kelola itu secara terpisah di halaman Monitoring PO "
+                "Outstanding jika benar-benar perlu."
+            )
+            confirm_poo = st.checkbox("Saya yakin", key="confirm_poo")
+            if st.button("Hapus po_all_raw", type="primary", disabled=not confirm_poo,
+                        use_container_width=True, key="btn_delete_poo"):
+                with st.spinner("Menghapus data PO Outstanding..."):
+                    try:
+                        engine = _get_engine()
+                        with engine.begin() as conn:
+                            conn.execute(text("TRUNCATE TABLE po_all_raw RESTART IDENTITY CASCADE;"))
+                        st.success("Data mentah PO Outstanding berhasil dikosongkan! (View po_outstanding otomatis ikut kosong.)")
                         time.sleep(2)
                         st.rerun()
                     except Exception as e:
