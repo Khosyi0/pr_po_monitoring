@@ -226,20 +226,29 @@ INKLARING_SHEET_COLUMN_ORDER = [
  
  
 def _format_nilai_untuk_sheet(val):
-    """Normalisasi 1 nilai field ke bentuk string/angka yang aman dikirim ke
-    Sheets API. Tanggal diformat 'YYYY-MM-DD' (konsisten dengan format yang
-    dipakai di PostgreSQL); None/NaN jadi string kosong."""
+    """Normalisasi 1 nilai field ke bentuk yang aman dikirim ke Sheets API.
+    Tanggal dikirim sebagai SERIAL NUMBER tanggal Google Sheets (angka hari
+    sejak 1899-12-30), BUKAN string -- supaya Sheets pasti mengenalinya
+    sebagai nilai tanggal asli dan tampilannya mengikuti format kolom yang
+    sudah ada (mis. M/D/YYYY seperti baris-baris sebelumnya), bukan ikut
+    berubah mengikuti format string mentah yang kita kirim (ini yang terjadi
+    sebelumnya saat mengirim string '2026-08-19' ke kolom berformat
+    'Automatic' -- Sheets malah mengubah format tampilan kolom mengikuti
+    pola string tsb). None/NaN jadi string kosong."""
     import math
     from datetime import date, datetime as _dt
     import pandas as _pd
- 
+
     if val is None:
         return ""
     if isinstance(val, float) and math.isnan(val):
         return ""
     if isinstance(val, (_pd.Timestamp, _dt, date)):
         ts = _pd.Timestamp(val)
-        return "" if _pd.isna(ts) else ts.strftime("%Y-%m-%d")
+        if _pd.isna(ts):
+            return ""
+        epoch_sheets = _pd.Timestamp("1899-12-30")
+        return (ts.normalize() - epoch_sheets).days
     return val
  
  
