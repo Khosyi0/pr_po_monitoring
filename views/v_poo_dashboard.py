@@ -1,5 +1,5 @@
 """
-v_poo_dashboard.py - Halaman "Monitoring PO Outstanding"
+v_poo_monitoring.py - Halaman "Monitoring PO Outstanding"
 
 3 tab:
   1. Dashboard      -> KPI cards (bergaya sama seperti Executive Summary) + chart
@@ -250,10 +250,10 @@ def _tab_dashboard(load_data):
     )
     total_perlu_remind = mask_perlu_email.sum()
 
-    total_sudah_email = (df_belum_clear["status_email"] == "Sudah di-Email").sum()
+    total_sudah_email = (df["status_email"] == "Sudah di-Email").sum()
     total_belum_email = (df_belum_clear["status_email"] != "Sudah di-Email").sum()
 
-    total_sudah_jawab = (df_belum_clear["status_jawaban"] == "Sudah Ada Jawaban").sum()
+    total_sudah_jawab = (df["status_jawaban"] == "Sudah Ada Jawaban").sum()
     total_belum_jawab = (df_belum_clear["status_jawaban"] == "Belum Ada Jawaban").sum()
     total_tidak_terkirim = (df_belum_clear["status_jawaban"] == "Tidak Dapat Terkirim").sum()
 
@@ -322,18 +322,25 @@ def _tab_dashboard(load_data):
         st.markdown(_card("send", "Sudah Di-Email", _fmt(total_sudah_email), "border-green"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info(
-                "**Sudah Di-Email**: Dari PO+Item yang Belum Clear, dihitung yang kolom "
-                "**Status Email** di sheet ALL sudah bernilai 'Sudah di-Email'.\n\n"
-                "**Formula:**\n```\nSudah Di-Email = COUNT(Belum Clear\n"
-                "  WHERE status_email = 'Sudah di-Email')\n```"
+                "**Sudah Di-Email**: Dihitung dari SELURUH PO+Item (baik yang sudah "
+                "Clear maupun yang masih outstanding), berapa yang kolom **Status Email** "
+                "di sheet ALL sudah bernilai 'Sudah di-Email'.\n\n"
+                "**Formula:**\n```\nSudah Di-Email = COUNT(SEMUA data\n"
+                "  WHERE status_email = 'Sudah di-Email')\n```\n\n"
+                "Catatan: berbeda dari kartu 'Belum Di-Email' di sebelahnya yang hanya "
+                "menghitung dari PO+Item yang masih Belum Clear, kartu ini sengaja "
+                "menghitung dari seluruh data supaya mencerminkan total riwayat email "
+                "yang sudah pernah dikirim, termasuk yang PO-nya sudah tuntas (Clear)."
             )
     with c3:
         st.markdown(_card("send", "Belum Di-Email", _fmt(total_belum_email), "border-orange"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info(
-                "**Belum Di-Email**: Dari PO+Item yang Belum Clear, dihitung yang kolom "
-                "**Status Email** BUKAN 'Sudah di-Email' (termasuk kosong atau nilai lain).\n\n"
-                "**Formula:**\n```\nBelum Di-Email = Belum Clear - Sudah Di-Email\n```"
+                "**Belum Di-Email**: Dari PO+Item yang Belum Clear (masih perlu "
+                "ditindaklanjuti), dihitung yang kolom **Status Email** BUKAN 'Sudah "
+                "di-Email' (termasuk kosong atau nilai lain).\n\n"
+                "**Formula:**\n```\nBelum Di-Email = COUNT(Belum Clear\n"
+                "  WHERE status_email != 'Sudah di-Email')\n```"
             )
 
     _row_label("Balasan Vendor")
@@ -342,12 +349,16 @@ def _tab_dashboard(load_data):
         st.markdown(_card("reply", "Sudah Ada Jawaban", _fmt(total_sudah_jawab), "border-green"), unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info(
-                "**Sudah Ada Jawaban**: Dari PO+Item yang Belum Clear, dihitung yang "
-                "**Status Jawaban** = 'Sudah Ada Jawaban'.\n\n"
-                "Catatan: angka ini normalnya kecil/nol, karena begitu status jawaban "
-                "menjadi 'Sudah Ada Jawaban', PO+Item tersebut seharusnya langsung "
-                "tercatat Clear pada upload berikutnya dan pindah keluar dari kelompok "
-                "Belum Clear."
+                "**Sudah Ada Jawaban**: Dihitung dari SELURUH PO+Item (baik yang sudah "
+                "Clear maupun yang masih outstanding), berapa yang **Status Jawaban** = "
+                "'Sudah Ada Jawaban'.\n\n"
+                "**Formula:**\n```\nSudah Ada Jawaban = COUNT(SEMUA data\n"
+                "  WHERE status_jawaban = 'Sudah Ada Jawaban')\n```\n\n"
+                "Catatan: berbeda dari 2 kartu di sebelahnya (Belum Ada Jawaban, Tidak "
+                "Dapat Terkirim) yang hanya menghitung dari PO+Item yang masih Belum "
+                "Clear, kartu ini sengaja menghitung dari seluruh data -- karena begitu "
+                "vendor menjawab, PO+Item itu langsung tercatat Clear dan tidak akan "
+                "muncul lagi di kelompok Belum Clear."
             )
     with c2:
         st.markdown(_card("reply", "Belum Ada Jawaban", _fmt(total_belum_jawab), "border-orange"), unsafe_allow_html=True)
