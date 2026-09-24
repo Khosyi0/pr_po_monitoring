@@ -18,7 +18,7 @@ from openpyxl.chart.text import Text
 from openpyxl.chart.title import Title
 from openpyxl.chart.legend import LegendEntry
 
-from utils import MAPPING_SINGKATAN
+from utils import MAPPING_SINGKATAN, render_chat_analyst
 import gdocs_export
 import gemini_bb_resume
 
@@ -236,6 +236,49 @@ def _load_harga_perolehan(load_data, db_value, start_date, end_date):
 
     return df_hp
 
+def _load_isu_terkait(load_data, label_bb, start_date, end_date):
+    try:
+        start_buffer = pd.Timestamp(start_date) - pd.DateOffset(days=14)
+        label_escaped = label_bb.replace("'", "''")
+
+        query = f"""
+            SELECT judul, deskripsi, konten, kategori, prioritas, bagian,
+                   status, dibuat_oleh, created_at, tanggal_mulai_berlaku,
+                   masih_berlangsung,
+                   COALESCE(tanggal_mulai_berlaku, created_at::date) AS tanggal_acuan
+            FROM melati_isu
+            WHERE
+                (
+                    -- Isu sesaat: jendela pendek di sekitar tanggal kejadian
+                    NOT COALESCE(masih_berlangsung, FALSE)
+                    AND COALESCE(tanggal_mulai_berlaku, created_at::date) >= '{start_buffer.date()}'
+                    AND COALESCE(tanggal_mulai_berlaku, created_at::date) <= '{end_date}'
+                )
+                OR (
+                    -- Isu berkelanjutan: relevan untuk seluruh rentang filter
+                    -- SETELAH tanggal mulai, selama filter masih menyentuh
+                    -- periode sejak isu itu mulai berlaku.
+                    COALESCE(masih_berlangsung, FALSE)
+                    AND tanggal_mulai_berlaku IS NOT NULL
+                    AND tanggal_mulai_berlaku <= '{end_date}'
+                )
+                OR (
+                    judul ILIKE '%{label_escaped}%'
+                    OR deskripsi ILIKE '%{label_escaped}%'
+                    OR konten ILIKE '%{label_escaped}%'
+                )
+            ORDER BY tanggal_acuan DESC
+            LIMIT 20
+        """
+        df_isu = load_data(query)
+    except Exception:
+        return pd.DataFrame(columns=[
+            'judul', 'deskripsi', 'konten', 'kategori', 'prioritas',
+            'bagian', 'status', 'dibuat_oleh', 'created_at',
+            'tanggal_mulai_berlaku', 'masih_berlangsung', 'tanggal_acuan'
+        ])
+
+    return df_isu
 
 # =============================================================================
 # RESUME OTOMATIS GENERIK (fallback template, dipakai kalau Resume AI gagal)
@@ -1257,6 +1300,81 @@ def render(load_data, global_context):
                 "https://drive.google.com/drive/folders/12b6aBQNwaNWnMmgLgK_juBuiYL7jcme1?hl=ID",
                 use_container_width=False,
             )
+
+            # ================= AI CHAT (konteks khusus halaman ini) =================
+            st.markdown("---")
+
+            suplemen_lines = [
+                "# KONTEKS DATA — HALAMAN HARGA BAHAN BAKU",
+                f"## Bahan Baku Aktif: {label_bb}",
+                f"## Rentang Tanggal: {start_date} s.d. {end_date}",
+                f"## Jenis Harga yang Diplot: {jenis_harga}",
+                "",
+                "## DATA KOMPARASI HARGA (Majalah - Incoterm), per baris publikasi",
+                df_plot_komparasi[
+                    ['tanggal_terbit', 'nama_majalah', 'incoterm', 'label_komparasi', 'harga_min', 'harga_max', y_col]
+                ].to_csv(index=False),
+                "",
+                "## TABEL DETAIL HISTORI DATA (3 Periode Terakhir, seperti tampil di halaman)",
+                df_pivot.to_csv(),
+                "",
+                "## RESUME TERKINI YANG TAMPIL DI HALAMAN",
+            ]
+
+            resume_untuk_konteks = st.session_state.get(resume_state_key)
+            if resume_untuk_konteks:
+                for poin in resume_untuk_konteks:
+                    suplemen_lines.append(f"- {poin}")
+            else:
+                suplemen_lines.append("(Resume AI belum digenerate untuk kombinasi filter saat ini.)")
+
+            if not df_hp.empty:
+                suplemen_lines.append("")
+                suplemen_lines.append("## DATA HARGA PEROLEHAN (ditampilkan di chart)")
+                suplemen_lines.append(df_hp[['tanggal_terbit', 'harga_perolehan']].to_csv(index=False))
+
+            # -------- Isu terkait dari halaman "Isu" (tabel melati_isu) --------
+            # Dipakai supaya AI bisa mengaitkan pergerakan harga dengan kejadian
+            # yang tercatat, mis. "kenapa harga Ammonia naik Maret 2026?" bisa
+            # dijawab dari isu yang dibuat di sekitar periode tersebut.
+            df_isu = _load_isu_terkait(load_data, label_bb, start_date, end_date)
+            suplemen_lines.append("")
+            suplemen_lines.append("## ISU TERKAIT (dari Halaman Isu, tabel melati_isu)")
+            suplemen_lines.append(
+                "Setiap isu berikut dicantumkan dengan 'Tanggal Kejadian/Berlaku' -- "
+                "yaitu tanggal saat kejadian yang dibahas isu ini mulai relevan, BUKAN "
+                "tanggal isu dicatat di sistem (bisa jadi isu ditulis belakangan, "
+                "setelah kejadiannya berlalu). Gunakan tanggal ini untuk mengaitkan isu "
+                "dengan pergerakan harga pada periode yang sama. Gunakan sebagai konteks "
+                "penjelas jika relevan dengan pertanyaan user, namun jangan memaksakan "
+                "kaitan jika isu tidak relevan."
+            )
+            if not df_isu.empty:
+                for _, isu_row in df_isu.iterrows():
+                    tgl_acuan_str = pd.Timestamp(isu_row['tanggal_acuan']).strftime('%d %b %Y')
+                    if isu_row.get('masih_berlangsung'):
+                        ket_waktu = f"dimulai {tgl_acuan_str}, MASIH BERLANGSUNG hingga sekarang"
+                    elif pd.notna(isu_row['tanggal_mulai_berlaku']):
+                        ket_waktu = f"kejadian pada {tgl_acuan_str}"
+                    else:
+                        ket_waktu = f"dicatat pada {tgl_acuan_str}, tanggal kejadian tidak spesifik"
+
+                    suplemen_lines.append(
+                        f"- [{ket_waktu}] "
+                        f"({isu_row['kategori']}, prioritas {isu_row['prioritas']}, "
+                        f"status {isu_row['status']}) **{isu_row['judul']}** — {isu_row['deskripsi']}"
+                    )
+            else:
+                suplemen_lines.append("(Tidak ada isu yang tercatat relevan dengan bahan baku/periode ini.)")
+
+            konteks_final = "\n".join(suplemen_lines)
+
+            with st.expander(f"Tanya ke Melati (Analisis Harga {label_bb})"):
+                render_chat_analyst(
+                    konteks_data_teks=konteks_final,
+                    nama_halaman=f"Harga Bahan Baku - {label_bb}",
+                    load_data_fn=load_data,
+                )
 
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")

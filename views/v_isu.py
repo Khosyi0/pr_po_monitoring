@@ -137,6 +137,9 @@ def _ensure_table():
         updated_at   TIMESTAMP    DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_isu_created ON melati_isu (created_at DESC);
+    ALTER TABLE melati_isu ADD COLUMN IF NOT EXISTS masih_berlangsung BOOLEAN DEFAULT FALSE;
+    ALTER TABLE melati_isu ADD COLUMN IF NOT EXISTS tanggal_mulai_berlaku DATE;
+    CREATE INDEX IF NOT EXISTS idx_isu_tgl_berlaku ON melati_isu (tanggal_mulai_berlaku);
     """
     with _engine().begin() as conn:
         conn.execute(text(sql))
@@ -163,7 +166,8 @@ def _load_list(kategori=None, prioritas=None, status=None,
     where = " AND ".join(conds)
     q = f"""
         SELECT id, judul, deskripsi, kategori, prioritas, bagian,
-               dibuat_oleh, status, created_at, updated_at
+               dibuat_oleh, status, created_at, updated_at,
+               tanggal_mulai_berlaku, masih_berlangsung
         FROM melati_isu
         WHERE {where}
         ORDER BY
@@ -183,14 +187,15 @@ def _load_detail(isu_id: int) -> dict | None:
     return None if df.empty else df.iloc[0].to_dict()
 
 
-def _create(judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh) -> int:
+def _create(judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh,
+            tanggal_mulai_berlaku=None, masih_berlangsung=False) -> int:
     sql = text("""
         INSERT INTO melati_isu
             (judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh,
-             status, created_at, updated_at)
+             tanggal_mulai_berlaku, masih_berlangsung, status, created_at, updated_at)
         VALUES
             (:judul, :deskripsi, :konten, :kategori, :prioritas, :bagian,
-             :dibuat_oleh, 'Open', NOW(), NOW())
+             :dibuat_oleh, :tanggal_mulai_berlaku, :masih_berlangsung, 'Open', NOW(), NOW())
         RETURNING id
     """)
     with _engine().begin() as conn:
@@ -199,18 +204,23 @@ def _create(judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh) 
             kategori=kategori, prioritas=prioritas,
             bagian=bagian if bagian != "Semua Bagian" else None,
             dibuat_oleh=dibuat_oleh,
+            tanggal_mulai_berlaku=tanggal_mulai_berlaku,
+            masih_berlangsung=masih_berlangsung,
         ))
         _load_list.clear()
         return r.fetchone()[0]
 
 
 def _update(isu_id, judul, deskripsi, konten, kategori, prioritas,
-            bagian, dibuat_oleh, status):
+            bagian, dibuat_oleh, status, tanggal_mulai_berlaku=None,
+            masih_berlangsung=False):
     sql = text("""
         UPDATE melati_isu
         SET judul=:judul, deskripsi=:deskripsi, konten=:konten,
             kategori=:kategori, prioritas=:prioritas, bagian=:bagian,
-            dibuat_oleh=:dibuat_oleh, status=:status, updated_at=NOW()
+            dibuat_oleh=:dibuat_oleh, status=:status,
+            tanggal_mulai_berlaku=:tanggal_mulai_berlaku,
+            masih_berlangsung=:masih_berlangsung, updated_at=NOW()
         WHERE id=:id
     """)
     with _engine().begin() as conn:
@@ -219,6 +229,8 @@ def _update(isu_id, judul, deskripsi, konten, kategori, prioritas,
             kategori=kategori, prioritas=prioritas,
             bagian=bagian if bagian not in ("Semua Bagian", None, "") else None,
             dibuat_oleh=dibuat_oleh, status=status,
+            tanggal_mulai_berlaku=tanggal_mulai_berlaku,
+            masih_berlangsung=masih_berlangsung,
         ))
         _load_list.clear()
         _load_detail.clear()
@@ -267,6 +279,10 @@ def _render_card(row: pd.Series, idx: int, is_admin: bool):
     kat_icon   = KATEGORI_ICON.get(row['kategori'], '<i class="bi bi-pin-angle-fill"></i>')
     bagian_str = row['bagian'] if pd.notna(row.get('bagian')) and row['bagian'] else "Semua Bagian"
     dt_str     = _fmt_dt(row['created_at'])
+    tgl_berlaku = row.get('tanggal_mulai_berlaku')
+    tgl_berlaku_str = ""
+    if pd.notna(tgl_berlaku) and tgl_berlaku:
+        tgl_berlaku_str = f' &nbsp;·&nbsp; <i class="bi bi-calendar-event"></i> Kejadian: {pd.Timestamp(tgl_berlaku).strftime("%d %b %Y")}'
 
     st.markdown(f"""
     <div class="isu-card">
@@ -284,7 +300,7 @@ def _render_card(row: pd.Series, idx: int, is_admin: bool):
             <span class="isu-chip"><i class="bi bi-folder-fill"></i> {row['kategori']}</span>
             <span class="isu-chip"><i class="bi bi-building"></i> {bagian_str}</span>
             <span style="margin-left:auto;opacity:0.45;font-size:11px;">
-                <i class="bi bi-pencil-square"></i> {row['dibuat_oleh']} &nbsp;·&nbsp; <i class="bi bi-clock-fill"></i> {dt_str}
+                <i class="bi bi-pencil-square"></i> {row['dibuat_oleh']} &nbsp;·&nbsp; <i class="bi bi-clock-fill"></i> {dt_str}{tgl_berlaku_str}
             </span>
         </div>
     </div>
@@ -354,6 +370,48 @@ def _render_form(mode="create", data: dict = None):
                   if bagian_def in BAGIAN_LIST else 0,
         )
 
+    # Tanggal mulai berlaku: kapan KEJADIAN yang dibahas isu ini mulai terjadi
+    # atau relevan -- BEDA dengan "Dibuat" (created_at) yang otomatis dicatat
+    # sistem saat isu disimpan. Field ini opsional; kalau dikosongkan (dicentang
+    # "Sama dengan tanggal dibuat"), sistem akan pakai created_at sebagai acuan.
+    default_tgl_berlaku = default.get('tanggal_mulai_berlaku')
+    if isinstance(default_tgl_berlaku, str) and default_tgl_berlaku:
+        try:
+            default_tgl_berlaku = datetime.fromisoformat(default_tgl_berlaku).date()
+        except Exception:
+            default_tgl_berlaku = None
+
+    pakai_tgl_custom = st.checkbox(
+        "Isu ini menjelaskan kejadian pada tanggal tertentu (berbeda dari tanggal dibuat)",
+        value=default_tgl_berlaku is not None,
+        help=(
+            "Aktifkan jika isu ini baru dicatat sekarang, tapi membahas kejadian "
+            "yang terjadi atau mulai berlaku pada tanggal lain (mis. isu tentang "
+            "perang yang dimulai Maret 2026, meski isu baru ditulis hari ini). "
+            "Tanggal ini dipakai AI untuk mengaitkan isu dengan periode harga "
+            "yang relevan di halaman Harga Bahan Baku."
+        ),
+    )
+    if pakai_tgl_custom:
+        tanggal_mulai_berlaku = st.date_input(
+            "Tanggal Mulai Berlaku / Kejadian",
+            value=default_tgl_berlaku or datetime.now().date(),
+        )
+        masih_berlangsung = st.checkbox(
+            "Kejadian ini masih berlangsung / dampaknya masih terasa hingga sekarang",
+            value=default.get('masih_berlangsung', False),
+            help=(
+                "Aktifkan untuk kejadian jangka panjang yang belum selesai, "
+                "misal perang yang masih berjalan atau kebijakan yang masih "
+                "berlaku. Isu ini akan dianggap relevan untuk SEMUA rentang "
+                "filter tanggal setelah 'Tanggal Mulai Berlaku', bukan hanya "
+                "jendela waktu singkat di sekitar tanggal tersebut."
+            ),
+        )
+    else:
+        tanggal_mulai_berlaku = None
+        masih_berlangsung = False
+
     status = "Open"
     if mode == "edit":
         status = st.selectbox(
@@ -387,7 +445,8 @@ def _render_form(mode="create", data: dict = None):
         with st.expander("Preview Konten", expanded=False):
             st.markdown(konten)
 
-    return judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, status
+    return (judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh,
+        status, tanggal_mulai_berlaku, masih_berlangsung)
 
 
 def _validate(judul, deskripsi, konten, dibuat_oleh) -> list:
@@ -519,6 +578,11 @@ def _render_detail(isu_id: int, is_admin: bool):
     st_color,   st_icon   = STATUS_COLOR.get(data['status'],    ("#888", '<i class="bi bi-question-circle"></i>'))
     kat_icon   = KATEGORI_ICON.get(data['kategori'], '<i class="bi bi-pin-angle-fill"></i>')
     bagian_str = data['bagian'] if data.get('bagian') else "Semua Bagian"
+    tgl_berlaku_detail = data.get('tanggal_mulai_berlaku')
+    tgl_berlaku_detail_html = ""
+    if tgl_berlaku_detail:
+        tgl_berlaku_str = pd.Timestamp(tgl_berlaku_detail).strftime('%d %b %Y')
+        tgl_berlaku_detail_html = f' &nbsp;·&nbsp; <i class="bi bi-calendar-event"></i> Kejadian: {tgl_berlaku_str}'
 
     # Header detail
     st.markdown(f"""
@@ -546,7 +610,7 @@ def _render_detail(isu_id: int, is_admin: bool):
         <p style='font-size:13px;opacity:0.45;margin:0;'>
             <i class="bi bi-pencil-square"></i> {data['dibuat_oleh']} &nbsp;·&nbsp;
             <i class="bi bi-clock"></i> Dibuat: {_fmt_dt(data['created_at'])} &nbsp;·&nbsp;
-            <i class="bi bi-arrow-repeat"></i> Diperbarui: {_fmt_dt(data['updated_at'])}
+            <i class="bi bi-arrow-repeat"></i> Diperbarui: {_fmt_dt(data['updated_at'])}{tgl_berlaku_detail_html}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -606,7 +670,7 @@ def _render_create():
     st.markdown("### Buat Isu Baru")
     st.markdown("---")
 
-    judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, _ = \
+    judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, _, tanggal_mulai_berlaku, masih_berlangsung = \
         _render_form(mode="create")
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -623,7 +687,9 @@ def _render_create():
                     _ensure_table()
                     new_id = _create(
                         judul.strip(), deskripsi.strip(), konten.strip(),
-                        kategori, prioritas, bagian, dibuat_oleh.strip()
+                        kategori, prioritas, bagian, dibuat_oleh.strip(),
+                        tanggal_mulai_berlaku=tanggal_mulai_berlaku,
+                        masih_berlangsung=masih_berlangsung,
                     )
                     st.success("Isu berhasil dibuat!")
                     _go('detail', new_id)
@@ -656,7 +722,7 @@ def _render_edit(isu_id: int):
         st.error("Isu tidak ditemukan.")
         return
 
-    judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, status = \
+    judul, deskripsi, konten, kategori, prioritas, bagian, dibuat_oleh, status, tanggal_mulai_berlaku, masih_berlangsung = \
         _render_form(mode="edit", data=data)
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
@@ -671,7 +737,9 @@ def _render_edit(isu_id: int):
             else:
                 try:
                     _update(isu_id, judul.strip(), deskripsi.strip(), konten.strip(),
-                            kategori, prioritas, bagian, dibuat_oleh.strip(), status)
+                            kategori, prioritas, bagian, dibuat_oleh.strip(), status,
+                            tanggal_mulai_berlaku=tanggal_mulai_berlaku,
+                            masih_berlangsung=masih_berlangsung)
                     st.success("Perubahan berhasil disimpan!")
                     _go('detail', isu_id)
                 except Exception as e:
