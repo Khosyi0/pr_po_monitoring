@@ -202,8 +202,8 @@ def render_login() -> bool:
 
         st.markdown("""
             <div style='text-align:center;margin-bottom:16px;'>
-                <h2 style='font-size:22px;margin:0 0 4px 20px;'>Monitoring Dashboard</h2>
-                <p style='color:#888;font-size:13px;margin:0;'>Pengadaan Barang</p>
+                <h2 style='font-size:22px;margin:0 0 4px 20px;'>Dashboard Melati</h2>
+                <p style='color:#888;font-size:13px;margin:0;'>Monitoring, Evaluasi, Laporan Terintegrasi - Pengadaan Barang</p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -295,6 +295,9 @@ def render_login() -> bool:
         st.markdown("""
             <p style='text-align:center;color:#aaa;font-size:12px;margin-top:16px;'>
                 Hubungi administrator jika lupa password.
+            </p>
+            <p style='text-align:center;color:#aaa;font-size:12px;margin-top:16px;'>
+                v1.9.5
             </p>
         """, unsafe_allow_html=True)
 

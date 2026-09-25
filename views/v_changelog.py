@@ -20,6 +20,33 @@ def render(**kwargs):
     st.markdown("---")
 
     changelog_data = [
+        {"Tanggal": "31 Agustus 2026", "Versi": "v1.9.5", "Perubahan": """
+    - Update halaman Kondisi Stock Bahan Baku mengikuti struktur database terbaru:
+        - Membuat ETL untuk data Kondisi Stock Bahan Baku
+        - Membuat halaman manajemen data Kondisi Stock Bahan Baku untuk admin Bahan Baku
+    - Membuat bagian baru untuk PO Outstanding:
+        - Membuat ETL untuk data PO Outstanding
+        - Membuat halaman Dashboard PO Outstanding:
+            - Dashboard secara keseluruhan PO Outstanding
+            - Seluruh data PO Outstanding yang terekam
+            - Data PO Outstanding yang belum clear dan perlu Remind Email ke Vendor
+        - Update halaman Remind Vendor terkait PO Outstanding sehingga otomatis menampilkan data PO Outstanding yang perlu di-remind ke Vendor
+    - Menghilangkan bagian Lainnya dan halaman yang ada di dalamnya karena belum ada data yang bisa ditampilkan
+    - Update halaman Tren Harga Bahan Baku:
+        - Menambahkan konteks dari halaman Isu ke model AI untuk memberikan insight yang lebih tajam dan faktual terkait tren harga bahan baku
+        - Update halaman isu dan kode utils untuk menyesuaikan update di halaman Tren Harga Bahan Baku agar bisa mengirim konteks ke model AI
+        - Update akses Admin Bahan Baku dapat membuat isu baru"""},
+        {"Tanggal": "31 Agustus 2026", "Versi": "v1.9.4", "Perubahan": """
+    - Menambahkan kode untuk Ekstrak PDF inklaring barang impor
+    - Mengubah halaman Detailed Inklaring Data menjadi halaman Manajemen Inklaring Data:
+        - Data Table persis dengan data di spreadsheet
+        - Dapat menambahkan data baru secara manual
+        - Dapat menambah data baru dengan fungsi OCR dari file PDF langsung masuk ke database PostgreSQL dan Spreadsheet
+    - Mengubah Resume Tren Harga Bahan Baku dari metode if-else menjadi berbasis AI dengan model LLM dari Gemini flash-3.0
+    - Update model prediksi jalur inklaring
+    - Membuat halaman untuk remind Vendor terkait PO Outstanding:
+        - Membuat ETL untuk data PO Outstanding
+    - Membuat halaman untuk membuat laporan inklaring rencana kedatangan barang impor bahan baku"""},
         {"Tanggal": "7 Agustus 2026", "Versi": "v1.9.3", "Perubahan": """
     - Mengubah fitur tombol export excel menjadi google docs
     - Update halaman Harga Bahan Baku
@@ -374,5 +401,5 @@ def render(**kwargs):
     ]
 
     for item in changelog_data:
-        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9.3"])):
+        with st.expander(f"**{item['Versi']}** - {item['Tanggal']}", expanded=(item['Versi'] in ["v1.9.5"])):
             st.markdown(item["Perubahan"])
