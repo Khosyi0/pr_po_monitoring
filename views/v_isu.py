@@ -740,7 +740,7 @@ def _render_edit(isu_id: int):
     with cs:
         if st.button("Simpan Perubahan", type="primary", use_container_width=True,
                      key="btn_save_edit"):
-            errs = _validate(judul, deskripsi, konten, dibuat_oleh)
+            errs = _validate(judul, deskripsi, konten, dibuat_oleh, tanggal_mulai_berlaku)
             if errs:
                 for e in errs:
                     st.error(e)
