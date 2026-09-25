@@ -4,6 +4,7 @@ matplotlib
 plotly
 sqlalchemy
 psycopg2-binary
+psycopg[binary]
 google-genai
 tabulate
 openpyxl
