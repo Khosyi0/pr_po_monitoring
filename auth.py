@@ -60,35 +60,26 @@ def _ensure_table():
 
 
 def _verify_password(username: str, password: str) -> dict | None:
-    """
-    Cek username + password.
-    Kembalikan dict user jika valid & aktif, None jika tidak.
-    Menggunakan fungsi pgcrypto: crypt(password, password_hash)
-    """
-    try:
-        query = text("""
-            SELECT id, username, nama_lengkap, role, bagian, aktif
-            FROM melati_users
-            WHERE username = :uname
-              AND aktif    = TRUE
-              AND password_hash = crypt(:pwd, password_hash)
-        """)
-        with _get_engine().connect() as conn:
-            result = conn.execute(query, {"uname": username.strip().lower(),
-                                          "pwd":   password})
-            row = result.fetchone()
-        if row is None:
-            return None
-        return {
-            "id":           row[0],
-            "username":     row[1],
-            "nama_lengkap": row[2],
-            "role":         row[3],
-            "bagian":       row[4],
-        }
-    except Exception as e:
-        st.error(f"Error autentikasi: {e}")
+    query = text("""
+        SELECT id, username, nama_lengkap, role, bagian, aktif
+        FROM melati_users
+        WHERE username = :uname
+          AND aktif    = TRUE
+          AND password_hash = crypt(:pwd, password_hash)
+    """)
+    with _get_engine().connect() as conn:
+        result = conn.execute(query, {"uname": username.strip().lower(),
+                                      "pwd":   password})
+        row = result.fetchone()
+    if row is None:
         return None
+    return {
+        "id":           row[0],
+        "username":     row[1],
+        "nama_lengkap": row[2],
+        "role":         row[3],
+        "bagian":       row[4],
+    }
 
 
 def _update_last_login(user_id: int):
@@ -262,19 +253,25 @@ def render_login() -> bool:
         # == Proses Verifikasi (Berjalan saat _is_loading True) ================
         if _is_loading:
             _ensure_table()
-            _user = _verify_password(st.session_state["_login_username"], st.session_state["_login_password"])
-            
-            # Reset status loading
+            try:
+                _user = _verify_password(st.session_state["_login_username"], st.session_state["_login_password"])
+                _debug_err = None
+            except Exception as e:
+                _user = None
+                _debug_err = str(e)
+
             st.session_state["_login_loading"] = False
-            
+
             if _user:
                 st.session_state.authenticated = True
                 st.session_state.current_user  = _user
                 _update_last_login(_user["id"])
             else:
-                st.session_state["_login_error"] = "Username atau password salah, atau akun tidak aktif."
-            
-            # Rerun untuk masuk dashboard atau menampilkan error
+                if _debug_err:
+                    st.session_state["_login_error"] = f"[DEBUG] Error internal: {_debug_err}"
+                else:
+                    st.session_state["_login_error"] = "Username atau password salah, atau akun tidak aktif."
+
             st.rerun()
 
         # == Tampilkan error jika ada (setelah loading selesai) ================
