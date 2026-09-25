@@ -1194,6 +1194,7 @@ st.session_state['_summary_view_args'] = dict(
     load_data      = load_data,
     global_context = global_context,
     is_admin       = is_admin(),
+    is_admin_bb    = is_admin_bb,
 )
 
 st.session_state['_view_args'] = dict(
@@ -1310,6 +1311,23 @@ if st.session_state.filter_mode == 'topbar' and not st.session_state.show_change
             date_from         = date_from,
             date_to           = date_to,
         ))
+
+# =============================================================================
+# REDIRECT KE HALAMAN ISU (dipicu dari tombol di halaman lain, mis. Harga BB)
+# =============================================================================
+if st.session_state.get('_redirect_to_isu'):
+    st.session_state['_redirect_to_isu'] = False
+    # Cari objek st.Page dengan title "Isu" di nav_dict, lalu pindah ke sana
+    _target_isu_page = None
+    for _pages in nav_dict.values():
+        for _p in _pages:
+            if _p.title == "Isu":
+                _target_isu_page = _p
+                break
+        if _target_isu_page:
+            break
+    if _target_isu_page:
+        st.switch_page(_target_isu_page)
 
 # =============================================================================
 # ROUTING

@@ -1369,12 +1369,21 @@ def render(load_data, global_context):
 
             konteks_final = "\n".join(suplemen_lines)
 
-            with st.expander(f"Tanya ke Melati (Analisis Harga {label_bb})"):
+            with st.expander(f"Tanya ke Melati (Analisis Harga {label_bb})", expanded=True):
                 render_chat_analyst(
                     konteks_data_teks=konteks_final,
                     nama_halaman=f"Harga Bahan Baku - {label_bb}",
                     load_data_fn=load_data,
                 )
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            if st.button(
+                ":material/report_problem: Lihat / Catat Isu Terkait",
+                key=f"goto_isu_{suffix}",
+                help="Buka halaman Isu untuk melihat atau menambahkan catatan isu yang berkaitan dengan pergerakan harga bahan baku ini.",
+            ):
+                st.session_state['_redirect_to_isu'] = True
+                st.rerun()
 
         else:
             st.info("Tidak ada data yang tersedia untuk kombinasi filter yang dipilih pada rentang waktu tersebut.")

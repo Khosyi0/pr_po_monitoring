@@ -754,8 +754,11 @@ def _render_edit(isu_id: int):
 # =============================================================================
 
 def render(**kwargs):
-    # is_admin dikirim dari app.py melalui _summary_view_args
-    is_admin_user: bool = kwargs.get('is_admin', False)
+    # is_admin dan is_admin_bb dikirim dari app.py melalui _summary_view_args.
+    # admin_bb (admin khusus modul Bahan Baku) juga diberi akses CRUD penuh
+    # di halaman Isu, karena isu banyak dipakai untuk menjelaskan pergerakan
+    # harga bahan baku (lihat integrasi dengan halaman Harga Bahan Baku).
+    is_admin_user: bool = kwargs.get('is_admin', False) or kwargs.get('is_admin_bb', False)
 
     # Inisialisasi session state
     for k, v in [('isu_view', 'feed'), ('isu_selected_id', None),
