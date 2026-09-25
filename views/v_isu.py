@@ -370,47 +370,55 @@ def _render_form(mode="create", data: dict = None):
                   if bagian_def in BAGIAN_LIST else 0,
         )
 
-    # Tanggal mulai berlaku: kapan KEJADIAN yang dibahas isu ini mulai terjadi
-    # atau relevan -- BEDA dengan "Dibuat" (created_at) yang otomatis dicatat
-    # sistem saat isu disimpan. Field ini opsional; kalau dikosongkan (dicentang
-    # "Sama dengan tanggal dibuat"), sistem akan pakai created_at sebagai acuan.
+    # Tanggal Kejadian: kapan kejadian yang dibahas isu ini SEBENARNYA terjadi
+    # atau mulai berlaku -- BEDA dengan "Dibuat" (created_at) yang otomatis
+    # dicatat sistem saat isu disimpan. Field ini WAJIB diisi, karena isu sering
+    # ditulis belakangan setelah kejadiannya berlalu (mis. isu tentang perang
+    # yang dimulai Maret 2026, meski isu baru ditulis September 2026). Tanggal
+    # ini dipakai AI di halaman Harga Bahan Baku untuk mengaitkan isu dengan
+    # periode pergerakan harga yang relevan.
     default_tgl_berlaku = default.get('tanggal_mulai_berlaku')
     if isinstance(default_tgl_berlaku, str) and default_tgl_berlaku:
         try:
             default_tgl_berlaku = datetime.fromisoformat(default_tgl_berlaku).date()
         except Exception:
             default_tgl_berlaku = None
+    # Untuk isu lama yang belum punya tanggal kejadian (dibuat sebelum field ini
+    # ada), fallback ke tanggal dibuat sebagai default awal saat diedit, supaya
+    # form tidak muncul kosong -- admin tetap bisa mengoreksinya jika perlu.
+    if default_tgl_berlaku is None:
+        created_at_default = default.get('created_at')
+        if isinstance(created_at_default, str) and created_at_default:
+            try:
+                default_tgl_berlaku = datetime.fromisoformat(created_at_default).date()
+            except Exception:
+                default_tgl_berlaku = datetime.now().date()
+        elif hasattr(created_at_default, 'date'):
+            default_tgl_berlaku = created_at_default.date()
+        else:
+            default_tgl_berlaku = datetime.now().date()
 
-    pakai_tgl_custom = st.checkbox(
-        "Isu ini menjelaskan kejadian pada tanggal tertentu (berbeda dari tanggal dibuat)",
-        value=default_tgl_berlaku is not None,
+    tanggal_mulai_berlaku = st.date_input(
+        "Tanggal Kejadian *",
+        value=default_tgl_berlaku,
         help=(
-            "Aktifkan jika isu ini baru dicatat sekarang, tapi membahas kejadian "
-            "yang terjadi atau mulai berlaku pada tanggal lain (mis. isu tentang "
-            "perang yang dimulai Maret 2026, meski isu baru ditulis hari ini). "
-            "Tanggal ini dipakai AI untuk mengaitkan isu dengan periode harga "
-            "yang relevan di halaman Harga Bahan Baku."
+            "Wajib diisi: tanggal saat kejadian yang dibahas isu ini benar-benar "
+            "terjadi atau mulai berlaku -- BUKAN tanggal kamu menulis isu ini. "
+            "Contoh: kalau kamu baru menulis catatan hari ini tentang perang yang "
+            "pecah 24 Februari 2022, isi tanggal ini dengan 24 Februari 2022."
         ),
     )
-    if pakai_tgl_custom:
-        tanggal_mulai_berlaku = st.date_input(
-            "Tanggal Mulai Berlaku / Kejadian",
-            value=default_tgl_berlaku or datetime.now().date(),
-        )
-        masih_berlangsung = st.checkbox(
-            "Kejadian ini masih berlangsung / dampaknya masih terasa hingga sekarang",
-            value=default.get('masih_berlangsung', False),
-            help=(
-                "Aktifkan untuk kejadian jangka panjang yang belum selesai, "
-                "misal perang yang masih berjalan atau kebijakan yang masih "
-                "berlaku. Isu ini akan dianggap relevan untuk SEMUA rentang "
-                "filter tanggal setelah 'Tanggal Mulai Berlaku', bukan hanya "
-                "jendela waktu singkat di sekitar tanggal tersebut."
-            ),
-        )
-    else:
-        tanggal_mulai_berlaku = None
-        masih_berlangsung = False
+    masih_berlangsung = st.checkbox(
+        "Kejadian ini masih berlangsung / dampaknya masih terasa hingga sekarang",
+        value=default.get('masih_berlangsung', False),
+        help=(
+            "Aktifkan untuk kejadian jangka panjang yang belum selesai, misal "
+            "perang yang masih berjalan atau kebijakan yang masih berlaku. Isu "
+            "ini akan dianggap relevan untuk SEMUA rentang filter tanggal setelah "
+            "'Tanggal Kejadian', bukan hanya jendela waktu singkat di sekitar "
+            "tanggal tersebut."
+        ),
+    )
 
     status = "Open"
     if mode == "edit":
@@ -449,12 +457,14 @@ def _render_form(mode="create", data: dict = None):
         status, tanggal_mulai_berlaku, masih_berlangsung)
 
 
-def _validate(judul, deskripsi, konten, dibuat_oleh) -> list:
+def _validate(judul, deskripsi, konten, dibuat_oleh, tanggal_mulai_berlaku=None) -> list:
     errs = []
     if not judul.strip():       errs.append("Judul tidak boleh kosong.")
     if not deskripsi.strip():   errs.append("Deskripsi tidak boleh kosong.")
     if not konten.strip():      errs.append("Konten tidak boleh kosong.")
     if not dibuat_oleh.strip(): errs.append("Nama pembuat tidak boleh kosong.")
+    if tanggal_mulai_berlaku is None:
+        errs.append("Tanggal Kejadian wajib diisi.")
     return errs
 
 
@@ -678,7 +688,7 @@ def _render_create():
     with cs:
         if st.button("Simpan Isu", type="primary", use_container_width=True,
                      key="btn_save_create"):
-            errs = _validate(judul, deskripsi, konten, dibuat_oleh)
+            errs = _validate(judul, deskripsi, konten, dibuat_oleh, tanggal_mulai_berlaku)
             if errs:
                 for e in errs:
                     st.error(e)
