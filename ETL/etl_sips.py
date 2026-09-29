@@ -18,7 +18,7 @@ Catatan SIPS:
 
 Catatan Bagian:
   - BAGIAN_MAP statis sudah dihapus.
-  - Penentuan bagian karyawan sepenuhnya dikelola lewat tabel
+  - Penentuan bagian buyer sepenuhnya dikelola lewat tabel
     karyawan_bagian_history di database (diisi via UI v_profile_departemen).
   - ETL hanya bertanggung jawab sync data transaksi; view vw_sips
     yang melakukan lookup bagian berdasarkan tanggal transaksi.
@@ -176,21 +176,8 @@ def transform(df: pd.DataFrame):
         nik  = clean_str(row.get('nik'))
         if not nama: continue
 
-        # Ekstrak bulan & tahun dari tanggal (prioritas: tgl_dispo → tgl_po → req_date)
-        tgl_anchor = (
-            clean_date(row.get('tgl_disposisi_buyer'))
-            or clean_date(row.get('tgl_po'))
-            or clean_date(row.get('requisition_date'))
-        )
-
-        if tgl_anchor:
-            b_imp, t_imp = tgl_anchor.month, tgl_anchor.year
-        else:
-            b_imp, t_imp = 0, 0
-
-        # Filter: hanya masukkan ke records jika periodenya terdaftar
-        if Config.PERIODE_IMPORT and (b_imp, t_imp) not in Config.PERIODE_IMPORT:
-            continue
+        # HAPUS pengecekan: if Config.PERIODE_IMPORT ... continue
+        # Masukkan semua baris ke records
 
         records.append({
             'nik':                   nik,
@@ -221,17 +208,9 @@ def transform(df: pd.DataFrame):
             'persen_po_sr_mr':       clean_persen(row.get('persen_po_sr_mr')),
             'nilai_persen_po_sr_mr': clean_float(row.get('nilai_persen_po_sr_mr')),
             'bulan_dispo':           clean_str(row.get('bulan_dispo')),
-            'bulan_import':          b_imp,
-            'tahun_import':          t_imp,
         })
 
-    if not records:
-        print("   ⚠️ Peringatan: Tidak ada baris yang sesuai dengan PERIODE_IMPORT.")
-        return pd.DataFrame()
-
-    df_clean = pd.DataFrame(records)
-    print(f"   Siap import : {len(df_clean):,} baris (terfilter sesuai PERIODE_IMPORT)")
-    return df_clean
+    return pd.DataFrame(records)
 
 
 # =====================================================================
@@ -284,33 +263,18 @@ def sync_employees(df_clean: pd.DataFrame, engine):
                 if result.fetchone()[0]: inserted += 1
                 else: updated += 1
 
-    print(f"   Karyawan    : +{inserted} baru, ~{updated} update")
+    print(f"   Buyer    : +{inserted} baru, ~{updated} update")
 
 
 def sync_sips_data(df_clean: pd.DataFrame, engine):
-    """
-    DELETE semua data untuk list bulan/tahun yang ada di PERIODE_IMPORT,
-    lalu INSERT ulang data yang sudah di-filter.
-    """
     if df_clean.empty:
         return
 
-    periods = df_clean[['bulan_import', 'tahun_import']].drop_duplicates().values.tolist()
-    deleted_total = 0
-    for b, t in periods:
-        with engine.begin() as conn:
-            deleted = conn.execute(text("""
-                DELETE FROM sips_data
-                WHERE bulan_import = :b AND tahun_import = :t
-            """), {'b': b, 't': t}).rowcount
-            deleted_total += deleted
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE sips_data"))
 
-    for i in range(0, len(df_clean), 1000):
-        chunk = df_clean.iloc[i:i+1000]
-        with engine.begin() as conn:
-            chunk.to_sql('sips_data', conn, if_exists='append', index=False)
-
-    print(f"   Data SIPS   : {deleted_total} lama dihapus → {len(df_clean):,} baru diinsert")
+    df_clean.to_sql('sips_data', engine, if_exists='append', index=False, chunksize=2000)
+    print(f"    Data SIPS   : {len(df_clean):,} baris berhasil diimport ke DB.")
 
 
 # =====================================================================
@@ -357,7 +321,7 @@ def run_etl():
 
     print("\n" + "=" * 55)
     print("✅ ETL SELESAI")
-    print(f"   Total karyawan di DB   : {total_emp:,}")
+    print(f"   Total buyer di DB   : {total_emp:,}")
     print(f"   Total data periode ini : {total_bln:,}  ({periods_str})")
     print(f"   Total semua data DB    : {total_data:,}")
     print("=" * 55)

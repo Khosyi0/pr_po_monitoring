@@ -45,7 +45,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         """, unsafe_allow_html=True)
 
         search_term = st.text_input("Search", value="", label_visibility="collapsed",
-                                    placeholder="Ketik No PR, No PO, nama barang, atau nama karyawan...")
+                                    placeholder="Ketik No PR, No PO, nama barang, atau nama buyer...")
 
         # == WHERE clause ==========================================================
         # 1. Standard Where (menggunakan filter tanggal global)
@@ -221,7 +221,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 
         # Gunakan kolom asli dari df (sebelum rename/format) yang masih tersimpan
         if 'nama' in df.columns:
-            konteks_lines.append(f"- Karyawan (nama) unik: {df['nama'].dropna().nunique()}")
+            konteks_lines.append(f"- Buyer (nama) unik: {df['nama'].dropna().nunique()}")
         if 'Status' in df.columns:
             status_dist = df['Status'].value_counts().to_dict()
             status_str = ", ".join(f"{k}: {v}" for k, v in status_dist.items())

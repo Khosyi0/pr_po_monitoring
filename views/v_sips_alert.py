@@ -289,14 +289,14 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
                          viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
                         <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-8.082.414c.92 0 1.535.54 1.541 1.318.012.791-.615 1.36-1.588 1.354-.861-.006-1.482-.469-1.54-1.066H5.104c.047 1.177 1.05 2.144 2.754 2.144 1.653 0 2.954-.937 2.93-2.396-.023-1.278-1.031-1.846-1.734-1.916v-.07c.597-.1 1.505-.739 1.482-1.876-.03-1.177-1.043-2.074-2.637-2.062-1.675.006-2.59.984-2.625 2.12h1.248c.036-.556.557-1.054 1.348-1.054.785 0 1.348.486 1.348 1.195.006.715-.563 1.237-1.342 1.237h-.838v1.072h.879Z"/>
                     </svg>
-                    Beban Pending per Karyawan
+                    Beban Pending per Buyer
                 </h1>
             """, unsafe_allow_html=True)
         with btn_col3:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             with st.popover(":material/visibility:", help="Lihat Formula"):
                 st.info("""\
-**Beban Pending per Karyawan**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per karyawan,
+**Beban Pending per Buyer**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per buyer,
 dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`standar_sla`).
 
 Bar 🟡 kuning (Nilai < 1) = **0** - Masih dalam batas SLA.
@@ -304,7 +304,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
 
 **Formula Excel:** (SIPS)
 - Filter **Status** selain `Closed` dan `Proses PO`
-- Filter **Nama** per karyawan
+- Filter **Nama** per buyer
 - Tambah kolom `= (TODAY() - Tanggal Disposisi Buyer) / standar_sla`
 - Kelompokkan output: 0 jika rasio < 1, dan 1 jika rasio >= 1
             """)
@@ -327,7 +327,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
         ) ASC
         """
 
-        with st.spinner("Memuat beban per karyawan..."):
+        with st.spinner("Memuat beban per buyer..."):
             beban_data = load_data(beban_query)
 
         if not beban_data.empty:
@@ -358,7 +358,7 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
             )
             st.plotly_chart(fig_beban, use_container_width=True)
         else:
-            st.info("Tidak ada data beban pending per karyawan.")
+            st.info("Tidak ada data beban pending per buyer.")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
@@ -543,11 +543,11 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
         konteks_lines.append("## 2. REKAP AGING PR PENDING SIPS\nTidak ada data aging.\n")
 
     if 'beban_data' in locals() and not beban_data.empty:
-        konteks_lines.append("## 3. BEBAN PENDING PER KARYAWAN")
+        konteks_lines.append("## 3. BEBAN PENDING PER BUYER")
         konteks_lines.append(beban_data.to_csv(index=False))
         konteks_lines.append("")
     else:
-        konteks_lines.append("## 3. BEBAN PENDING PER KARYAWAN\nTidak ada data.\n")
+        konteks_lines.append("## 3. BEBAN PENDING PER BUYER\nTidak ada data.\n")
 
     if 'status_dist_data' in locals() and not status_dist_data.empty:
         konteks_lines.append("## 4. DISTRIBUSI STATUS PR SIPS")

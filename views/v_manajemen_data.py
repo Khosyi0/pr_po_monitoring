@@ -1106,7 +1106,7 @@ def render(**kwargs):
 
     with col_del2:
         with st.expander("🗑️ Hapus Data SIPS"):
-            st.write("Menghapus semua riwayat transaksi SIPS dan data karyawan SIPS dari database.")
+            st.write("Menghapus semua riwayat transaksi SIPS dan data buyer SIPS dari database.")
             confirm_sips = st.checkbox("Saya yakin (SIPS)", key="confirm_sips")
             if st.button("Hapus Data SIPS", type="primary", disabled=not confirm_sips, use_container_width=True):
                 with st.spinner("Menghapus data SIPS..."):

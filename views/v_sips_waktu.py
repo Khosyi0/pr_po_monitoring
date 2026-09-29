@@ -262,10 +262,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                     unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info(f"""\
-**Rata-rata PR-PO**: Rata-rata jumlah hari PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan, khusus untuk dokumen yang sudah selesai/ditutup.
+**Rata-rata PR-PO**: Rata-rata jumlah hari PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per buyer, khusus untuk dokumen yang sudah selesai/ditutup.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** menjadi `Closed`
 - Hitung rata-rata **PR-PO**
 
@@ -285,7 +285,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Rata-rata Realisasi SLA**: Rata-rata waktu proses pengadaan dari Disposisi Buyer ke Tanggal PO dalam **hari kerja**.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Nilai SLA** menjadi `1`
 - Hitung rata-rata **Realisasi SLA**
 
@@ -311,7 +311,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 Ini adalah waktu **di luar kendali tim pengadaan**.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Nilai SLA** menjadi `1`
 - Hitung rata-rata dari `Tanggal Disposisi Buyer` dikurangi dengan `Requisition Date`
 
@@ -339,7 +339,7 @@ Ini adalah gabungan dari **Waktu Pra-Disposisi** + **PR-PO**:
 - PR-PO = waktu pengadaan setelah buyer menerima PR
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** menjadi `Closed`
 - Hitung rata-rata dari `Tanggal PO` dikurangi dengan `Requisition Date`
 
@@ -362,7 +362,7 @@ SLA Headroom = Standard SLA - Realisasi SLA
 ```
             
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Nilai SLA** menjadi `1`
 - Hitung rata-rata dari `Standard SLA` dikurangi dengan `Realisasi SLA`
 
@@ -394,7 +394,7 @@ SLA Headroom = Standard SLA - Realisasi SLA
 **% On Time SLA**: Persentase PR yang berhasil diselesaikan dalam batas Standard SLA.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Nilai SLA** menjadi `1` dan `0`
 - `= Nilai SLA 1 - Total PO`
 
@@ -421,13 +421,13 @@ SLA Headroom = Standard SLA - Realisasi SLA
                 </svg>
                 Dekomposisi Waktu per Nama
             </h1>
-            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan</p>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Proporsi Realisasi SLA vs Selisih Waktu PR-PO per buyer</p>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-**Dekomposisi Waktu per Nama:** Stacked bar chart Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan.
+**Dekomposisi Waktu per Nama:** Stacked bar chart Proporsi Realisasi SLA vs Selisih Waktu PR-PO per buyer.
 
 | Komponen | Artinya |
 |---|---|
@@ -592,13 +592,13 @@ Total panjang bar menunjukkan rata-rata keseluruhan hari kerja PR-PO. Bar biru y
                 </svg>
                 SLA Headroom per Nama
             </h1>
-            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan</p>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per buyer</p>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-**SLA Headroom per Nama**: Horizontal Bar Chart Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per karyawan.
+**SLA Headroom per Nama**: Horizontal Bar Chart Sisa waktu rata-rata (Standard SLA minus Realisasi SLA) per buyer.
 
 | Nilai | Artinya |
 |---|---|
@@ -791,7 +791,7 @@ Garis putus = rata-rata masing-masing.
 | Normal | 12H (Agreement) / 57H (Non-Agreement) |
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Nilai SLA** menjadi `1` dan `0`
 - Filter **Prioritas** menjadi `Urgent`, `TA`, `Investasi`, dan `Normal`
 - **Chart Kiri**: Hitung rata-rata **PR-PO** dan **Realisasi SLA**
@@ -920,13 +920,13 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
                 </svg>
                 Resume OTOBOS per Individu
             </h1>
-            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Ringkasan ketepatan waktu per karyawan x jenis kontrak (seperti Ringkasan Kecepatan per PG x Jenis Tender)</p>
+            <p style='opacity:.55; font-size:14px; margin:-10px 0 10px 0;'>Ringkasan ketepatan waktu per buyer x jenis kontrak (seperti Ringkasan Kecepatan per PG x Jenis Tender)</p>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-**Resume OTOBOS per Individu**: Tabel ringkasan ketepatan waktu setiap karyawan dibreakdown berdasarkan jenis kontrak (Agreement vs Non-Agreement).
+**Resume OTOBOS per Individu**: Tabel ringkasan ketepatan waktu setiap buyer dibreakdown berdasarkan jenis kontrak (Agreement vs Non-Agreement).
 
 **Kolom yang ditampilkan:**
 | Kolom | Keterangan |
@@ -942,7 +942,7 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
 | Avg Headroom | Rata-rata sisa waktu (Standard - Realisasi) |
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** menjadi `Proses PO` dan `Closed`
 - Pisahkan berdasarkan **Kontrak/Non kontrak** (Agreement vs Non-Agreement)
 - Hitung % On Time: `Nilai SLA = 1` dibagi **Total PO**
@@ -951,7 +951,7 @@ Menampilkan rata-rata waktu Realisasi SLA (dalam hari kerja) yang dihabiskan ole
 Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
 """)
 
-    st.caption("Ketepatan waktu per karyawan dan jenis pengadaan, serupa dengan Ringkasan Kecepatan PG x Jenis Tender di halaman SAP.")
+    st.caption("Ketepatan waktu per buyer dan jenis pengadaan, serupa dengan Ringkasan Kecepatan PG x Jenis Tender di halaman SAP.")
 
     if df.empty:
         st.info("Tidak ada data untuk filter yang dipilih.")
@@ -1090,9 +1090,9 @@ Warna % On Time: 🟢 ≥ 90% · 🟡 75-89% · 🔴 < 75%
     konteks_lines.append(f"- SLA Headroom (Sisa Waktu): {avg_headroom:.2f} hari")
     konteks_lines.append(f"- % On Time SLA: {pct_ontime:.2f}% (Jumlah terlambat: {cnt_miss} PO)\n")
 
-    # 2. Dekomposisi Waktu per Nama (Karyawan)
+    # 2. Dekomposisi Waktu per Nama (Buyer)
     if 'decomp' in locals() and not decomp.empty:
-        konteks_lines.append("## 2. DEKOMPOSISI WAKTU PER KARYAWAN")
+        konteks_lines.append("## 2. DEKOMPOSISI WAKTU PER BUYER")
         # Menggunakan df decomp yang sudah dihitung sebelumnya
         konteks_lines.append(decomp.to_csv(index=False))
         konteks_lines.append("\n")

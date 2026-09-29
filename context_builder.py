@@ -227,7 +227,7 @@ def _fetch_sips_context(load_data, date_from, date_to,
         ]
 
         if not perf.empty:
-            lines.append("## [SIPS] PERFORMA PER KARYAWAN")
+            lines.append("## [SIPS] PERFORMA PER BUYER")
             lines.append(perf.to_markdown(index=False))
             lines.append("")
 
@@ -351,10 +351,10 @@ SEARCH_INDEX = [
         "section": "Laporan Bagian",
         "items": [
             "On Budget", "On Time", "Lead Time (PR → PO)", "Efisiensi",
-            "Tabel Kinerja Karyawan", "Tren Realisasi Item PR-PO per Bagian"
+            "Tabel Kinerja Buyer", "Tren Realisasi Item PR-PO per Bagian"
         ],
-        "keywords": ["bagian", "alpata", "barum", "bb/bd/bp", "karyawan", "buyer", "summary"],
-        "description": "Menampilkan laporan performa spesifik, tabel kinerja individu karyawan, dan grafik tren per Bagian."
+        "keywords": ["bagian", "alpata", "barum", "bb/bd/bp", "buyer", "buyer", "summary"],
+        "description": "Menampilkan laporan performa spesifik, tabel kinerja individu buyer, dan grafik tren per Bagian."
     },
     # --- DASHBOARD MONITORING SAP ---
     {
@@ -620,31 +620,31 @@ SEARCH_INDEX = [
     },
     {
         "page_title": "Dashboard Monitoring SIPS",
-        "section": "Performa SLA per Karyawan",
-        "items": ["Performa SLA per Karyawan", "Distribusi Waktu PR → PO"],
-        "keywords": ["grafik", "bar chart", "histogram", "sla", "karyawan", "buyer", "lead time", "waktu proses", "kecepatan"],
-        "description": "Grafik pencapaian SLA tepat waktu per karyawan dan histogram persebaran lama proses PR ke PO."
+        "section": "Performa SLA per Buyer",
+        "items": ["Performa SLA per Buyer", "Distribusi Waktu PR → PO"],
+        "keywords": ["grafik", "bar chart", "histogram", "sla", "buyer", "buyer", "lead time", "waktu proses", "kecepatan"],
+        "description": "Grafik pencapaian SLA tepat waktu per buyer dan histogram persebaran lama proses PR ke PO."
     },
     {
         "page_title": "Dashboard Monitoring SIPS",
-        "section": "Beban Kerja (Volume Dokumen) per Karyawan",
-        "items": ["Beban Kerja (Volume Dokumen) per Karyawan"],
-        "keywords": ["grafik", "bar chart", "beban kerja", "karyawan", "buyer", "volume", "dokumen", "pr", "po"],
-        "description": "Grafik jumlah dokumen PR yang ditangani masing-masing karyawan beserta persentase yang berhasil dikonversi ke PO."
+        "section": "Beban Kerja (Volume Dokumen) per Buyer",
+        "items": ["Beban Kerja (Volume Dokumen) per Buyer"],
+        "keywords": ["grafik", "bar chart", "beban kerja", "buyer", "buyer", "volume", "dokumen", "pr", "po"],
+        "description": "Grafik jumlah dokumen PR yang ditangani masing-masing buyer beserta persentase yang berhasil dikonversi ke PO."
     },
     {
         "page_title": "Dashboard Monitoring SIPS",
-        "section": "Proporsi PO Kontrak vs Non-Kontrak per Karyawan",
-        "items": ["Proporsi PO Kontrak vs Non-Kontrak per Karyawan"],
-        "keywords": ["grafik", "stacked bar", "kontrak", "non-kontrak", "outline agreement", "karyawan", "buyer"],
-        "description": "Grafik perbandingan item PO yang menggunakan kontrak payung (Outline Agreement) dengan tender normal per karyawan."
+        "section": "Proporsi PO Kontrak vs Non-Kontrak per Buyer",
+        "items": ["Proporsi PO Kontrak vs Non-Kontrak per Buyer"],
+        "keywords": ["grafik", "stacked bar", "kontrak", "non-kontrak", "outline agreement", "buyer", "buyer"],
+        "description": "Grafik perbandingan item PO yang menggunakan kontrak payung (Outline Agreement) dengan tender normal per buyer."
     },
     {
         "page_title": "Dashboard Monitoring SIPS",
-        "section": "Perbandingan Nilai OE vs PO per Karyawan",
-        "items": ["Perbandingan Nilai OE vs PO per Karyawan", "Download Semua Data Chart (XLSX)"],
-        "keywords": ["grafik", "grouped bar", "oe vs po", "nilai", "efisiensi", "penghematan", "karyawan", "buyer", "rupiah", "download"],
-        "description": "Grafik perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk melihat nilai penghematan tiap karyawan."
+        "section": "Perbandingan Nilai OE vs PO per Buyer",
+        "items": ["Perbandingan Nilai OE vs PO per Buyer", "Download Semua Data Chart (XLSX)"],
+        "keywords": ["grafik", "grouped bar", "oe vs po", "nilai", "efisiensi", "penghematan", "buyer", "buyer", "rupiah", "download"],
+        "description": "Grafik perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk melihat nilai penghematan tiap buyer."
     },
     # --- HALAMAN DETAIL SIPS ---
     {
@@ -657,7 +657,7 @@ SEARCH_INDEX = [
         ],
         "keywords": [
             "tabel", "detail", "rincian", "raw data", "data mentah", "download", 
-            "ekspor", "excel", "xlsx", "pencarian spesifik", "search", "sips", "karyawan"
+            "ekspor", "excel", "xlsx", "pencarian spesifik", "search", "sips", "buyer"
         ],
         "description": "Tabel data mentah (raw data) seluruh log pengadaan dari SIPS dengan fitur pencarian spesifik dan unduh ke format Excel."
     },
@@ -676,8 +676,8 @@ SEARCH_INDEX = [
         "page_title": "Analisis Waktu Proses SIPS",
         "section": "Dekomposisi Waktu per Nama",
         "items": ["Dekomposisi Waktu per Nama Chart"],
-        "keywords": ["grafik", "stacked bar", "dekomposisi", "waktu", "karyawan", "buyer", "selisih"],
-        "description": "Grafik yang memecah total waktu PR-PO menjadi waktu Realisasi SLA dan selisih waktu di luar SLA per karyawan."
+        "keywords": ["grafik", "stacked bar", "dekomposisi", "waktu", "buyer", "buyer", "selisih"],
+        "description": "Grafik yang memecah total waktu PR-PO menjadi waktu Realisasi SLA dan selisih waktu di luar SLA per buyer."
     },
     {
         "page_title": "Analisis Waktu Proses SIPS",
@@ -690,8 +690,8 @@ SEARCH_INDEX = [
         "page_title": "Analisis Waktu Proses SIPS",
         "section": "SLA Headroom per Nama",
         "items": ["SLA Headroom per Nama Chart"],
-        "keywords": ["grafik", "bar chart", "sisa waktu", "headroom", "karyawan", "buyer"],
-        "description": "Grafik rata-rata sisa waktu atau selisih antara target SLA dengan realisasi per karyawan."
+        "keywords": ["grafik", "bar chart", "sisa waktu", "headroom", "buyer", "buyer"],
+        "description": "Grafik rata-rata sisa waktu atau selisih antara target SLA dengan realisasi per buyer."
     },
     {
         "page_title": "Analisis Waktu Proses SIPS",
@@ -725,8 +725,8 @@ SEARCH_INDEX = [
         "page_title": "Analisis Waktu Proses SIPS",
         "section": "Resume OTOBOS per Individu",
         "items": ["Tabel Resume OTOBOS per Individu", "Download Resume OTOBOS sebagai XLSX"],
-        "keywords": ["tabel", "resume", "otobos", "karyawan", "buyer", "jenis kontrak", "download", "excel"],
-        "description": "Tabel rincian ketepatan waktu tiap karyawan yang dibreakdown berdasarkan jenis kontrak beserta opsi untuk diunduh."
+        "keywords": ["tabel", "resume", "otobos", "buyer", "buyer", "jenis kontrak", "download", "excel"],
+        "description": "Tabel rincian ketepatan waktu tiap buyer yang dibreakdown berdasarkan jenis kontrak beserta opsi untuk diunduh."
     },
     # --- HALAMAN ALERT SIPS ---
     {
@@ -748,9 +748,9 @@ SEARCH_INDEX = [
     },
     {
         "page_title": "Halaman Alert SIPS",
-        "section": "Beban Pending per Karyawan",
-        "items": ["Grafik Beban Pending per Karyawan", "Overdue SLA"],
-        "keywords": ["grafik", "bar chart", "beban kerja", "pending", "karyawan", "buyer", "overdue", "sla", "sips"],
+        "section": "Beban Pending per Buyer",
+        "items": ["Grafik Beban Pending per Buyer", "Overdue SLA"],
+        "keywords": ["grafik", "bar chart", "beban kerja", "pending", "buyer", "buyer", "overdue", "sla", "sips"],
         "description": "Grafik jumlah PR pending per buyer yang dibedakan warnanya berdasarkan status aman (kuning) atau sudah melebihi batas SLA (merah)."
     },
     {

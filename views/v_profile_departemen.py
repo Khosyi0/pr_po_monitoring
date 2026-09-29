@@ -136,12 +136,12 @@ SECTION_CAPACITIES = {"ALPATA": 10, "BARUM": 7, "BB/BD/BP": 8, "EPP": 6}
 
 
 # =============================================================================
-# PANEL ADMIN: MANAJEMEN KARYAWAN (profile_karyawan)
+# PANEL ADMIN: MANAJEMEN BUYER (profile_karyawan)
 # =============================================================================
 
 def _panel_manajemen_karyawan(load_data, engine):
     """Panel untuk tambah/edit/hapus data di tabel profile_karyawan (struktur organisasi)."""
-    with st.expander("Manajemen Data Karyawan (Edit Manual)", icon=":material/settings:"):
+    with st.expander("Manajemen Data Buyer (Edit Manual)", icon=":material/settings:"):
         tab_tambah, tab_hapus = st.tabs(["Tambah / Edit", "Hapus"])
 
         with tab_tambah:
@@ -151,9 +151,9 @@ def _panel_manajemen_karyawan(load_data, engine):
                     "Menunjuk AVP akan otomatis menggantikan AVP lama di bagian tersebut."
                 )
                 col_nama, col_bag, col_jab = st.columns([2, 1, 1])
-                inp_nama    = col_nama.text_input("Nama Karyawan")
+                inp_nama    = col_nama.text_input("Nama Buyer")
                 inp_bagian  = col_bag.selectbox("Bagian", BAGIAN_LIST)
-                inp_jabatan = col_jab.selectbox("Jabatan", ["Karyawan", "AVP", "VP"])
+                inp_jabatan = col_jab.selectbox("Jabatan", ["Buyer", "AVP", "VP"])
 
                 if st.form_submit_button("Simpan Data", type="primary"):
                     if inp_nama.strip():
@@ -161,11 +161,11 @@ def _panel_manajemen_karyawan(load_data, engine):
                         with engine.begin() as conn:
                             if inp_jabatan == "VP":
                                 conn.execute(text(
-                                    "UPDATE profile_karyawan SET jabatan = 'Karyawan' WHERE jabatan = 'VP'"
+                                    "UPDATE profile_karyawan SET jabatan = 'Buyer' WHERE jabatan = 'VP'"
                                 ))
                             elif inp_jabatan == "AVP":
                                 conn.execute(text(
-                                    "UPDATE profile_karyawan SET jabatan = 'Karyawan' "
+                                    "UPDATE profile_karyawan SET jabatan = 'Buyer' "
                                     "WHERE bagian = :b AND jabatan = 'AVP'"
                                 ), {"b": bagian_simpan})
 
@@ -186,13 +186,13 @@ def _panel_manajemen_karyawan(load_data, engine):
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error("Nama karyawan tidak boleh kosong.")
+                        st.error("Nama buyer tidak boleh kosong.")
 
         with tab_hapus:
             df_list = load_data("SELECT nama FROM profile_karyawan ORDER BY nama")
             if not df_list.empty:
                 with st.form("form_hapus"):
-                    opt_hapus = st.selectbox("Pilih Karyawan", df_list['nama'].tolist())
+                    opt_hapus = st.selectbox("Pilih Buyer", df_list['nama'].tolist())
                     if st.form_submit_button("Hapus"):
                         with engine.begin() as conn:
                             conn.execute(text(
@@ -202,7 +202,7 @@ def _panel_manajemen_karyawan(load_data, engine):
                         st.cache_data.clear()
                         st.rerun()
             else:
-                st.info("Belum ada data karyawan yang terdaftar.")
+                st.info("Belum ada data buyer yang terdaftar.")
 
 
 # =============================================================================
@@ -211,14 +211,14 @@ def _panel_manajemen_karyawan(load_data, engine):
 
 def _panel_riwayat_bagian(load_data, engine):
     """
-    Panel untuk mengelola historis keanggotaan bagian karyawan SIPS.
-    Ini yang menentukan bagian karyawan pada laporan berdasarkan tanggal transaksi.
+    Panel untuk mengelola historis keanggotaan bagian buyer SIPS.
+    Ini yang menentukan bagian buyer pada laporan berdasarkan tanggal transaksi.
     """
-    with st.expander("Manajemen Riwayat Bagian SIPS (Mutasi Karyawan)", icon=":material/sync:"):
+    with st.expander("Manajemen Riwayat Bagian SIPS (Mutasi Buyer)", icon=":material/sync:"):
         st.info(
-            "**Cara kerja:** Setiap karyawan SIPS bisa punya lebih dari satu riwayat bagian. "
+            "**Cara kerja:** Setiap buyer SIPS bisa punya lebih dari satu riwayat bagian. "
             "Laporan akan otomatis menggunakan bagian yang berlaku sesuai tanggal transaksi. "
-            "Misalnya, karyawan yang pindah dari BARUM ke ALPATA per 1 Juni 2026: "
+            "Misalnya, buyer yang pindah dari BARUM ke ALPATA per 1 Juni 2026: "
             "laporan Januari–Mei tetap masuk BARUM, laporan Juni+ masuk ALPATA."
         )
 
@@ -279,14 +279,14 @@ def _panel_riwayat_bagian(load_data, engine):
         # -- Tab: Tambah Riwayat Baru ------------------------------------------
         with tab_tambah:
             st.caption(
-                "Gunakan ini untuk: menambah karyawan baru ke bagian, atau mencatat mutasi "
+                "Gunakan ini untuk: menambah buyer baru ke bagian, atau mencatat mutasi "
                 "(tambahkan riwayat baru dengan tanggal mulai yang sesuai)."
             )
 
-            # Ambil daftar karyawan dari sips_employees
+            # Ambil daftar buyer dari sips_employees
             df_emp = load_data("SELECT nik, nama FROM sips_employees ORDER BY nama")
             if df_emp.empty:
-                st.warning("Belum ada karyawan di database SIPS. Jalankan ETL terlebih dahulu.")
+                st.warning("Belum ada buyer di database SIPS. Jalankan ETL terlebih dahulu.")
             else:
                 emp_options = {
                     f"{row['nama']} ({row['nik']})": row['nik']
@@ -295,13 +295,13 @@ def _panel_riwayat_bagian(load_data, engine):
 
                 with st.form("form_tambah_history"):
                     col_e, col_b = st.columns([2, 1])
-                    sel_emp    = col_e.selectbox("Karyawan", list(emp_options.keys()))
+                    sel_emp    = col_e.selectbox("Buyer", list(emp_options.keys()))
                     sel_bagian = col_b.selectbox("Bagian Tujuan", BAGIAN_LIST)
 
                     col_d1, col_d2 = st.columns(2)
                     inp_dari   = col_d1.date_input(
                         "Berlaku Dari", value=date.today(),
-                        help="Tanggal mulai karyawan ini masuk ke bagian tersebut."
+                        help="Tanggal mulai buyer ini masuk ke bagian tersebut."
                     )
                     inp_sampai = col_d2.date_input(
                         "Berlaku Sampai (kosongkan jika masih aktif)",
@@ -343,7 +343,7 @@ def _panel_riwayat_bagian(load_data, engine):
         # -- Tab: Tutup Riwayat Aktif ------------------------------------------
         with tab_tutup:
             st.caption(
-                "Gunakan ini saat karyawan pindah bagian: tutup riwayat lamanya "
+                "Gunakan ini saat buyer pindah bagian: tutup riwayat lamanya "
                 "dengan mengisi tanggal berakhir, lalu tambahkan riwayat baru di tab sebelumnya."
             )
 
@@ -375,7 +375,7 @@ def _panel_riwayat_bagian(load_data, engine):
                     tgl_tutup  = st.date_input(
                         "Tutup per Tanggal",
                         value=date.today(),
-                        help="Tanggal terakhir karyawan ini ada di bagian tersebut (inklusif)."
+                        help="Tanggal terakhir buyer ini ada di bagian tersebut (inklusif)."
                     )
                     ket_tutup  = st.text_input(
                         "Keterangan Penutupan (opsional)",
@@ -530,7 +530,7 @@ def render(**kwargs):
         col_total, col_vp = st.columns(2)
         with col_total:
             st.markdown(_card(
-                ICONS['people'], "Total Karyawan", f"{total_count} Orang",
+                ICONS['people'], "Total Buyer", f"{total_count} Orang",
                 subtext=f"Kapasitas: {total_capacity} Kursi | Kosong: {empty_total}"
             ), unsafe_allow_html=True)
         with col_vp:
@@ -538,7 +538,7 @@ def render(**kwargs):
                 ICONS['crown'], "Vice President (VP)", vp_name, is_gold=True
             ), unsafe_allow_html=True)
 
-        st.markdown("#### Jumlah Karyawan per Bagian")
+        st.markdown("#### Jumlah Buyer per Bagian")
         cols = st.columns(4)
 
         for i, section in enumerate(BAGIAN_LIST):
@@ -584,7 +584,7 @@ def render(**kwargs):
         st.markdown("---")
         st.markdown("### Keanggotaan Bagian SIPS (Berdasarkan Tanggal Transaksi)")
         st.caption(
-            "Tabel di bawah menampilkan karyawan yang terdaftar di sistem SIPS beserta "
+            "Tabel di bawah menampilkan buyer yang terdaftar di sistem SIPS beserta "
             "riwayat keanggotaan bagiannya. Laporan SIPS akan menggunakan bagian yang "
             "berlaku sesuai tanggal transaksi masing-masing."
         )
@@ -608,7 +608,7 @@ def render(**kwargs):
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "nama":           st.column_config.TextColumn("Nama Karyawan"),
+                    "nama":           st.column_config.TextColumn("Nama Buyer"),
                     "bagian":         st.column_config.TextColumn("Bagian"),
                     "berlaku_dari":   st.column_config.DateColumn("Berlaku Dari", format="DD MMM YYYY"),
                     "berlaku_sampai": st.column_config.DateColumn("Berlaku Sampai", format="DD MMM YYYY"),

@@ -170,7 +170,7 @@ def render(**kwargs):
     - Menambahkan Halaman Alert SIPS:
         - PR Pending Mendekati Kadaluarsa (> 30 Hari)
         - Rekap Aging PR Pending (Open)
-        - Beban Pending per Karyawan
+        - Beban Pending per Buyer
         - Monitoring Status PR SIPS
     - Menambahkan template halaman Executive Summary
     - Mengubah tanggal filter jadi maksimal sesuai dengan data diupdate
@@ -237,12 +237,12 @@ def render(**kwargs):
         - Perubahan chart Tren Harga Historis per Material
         - Filter material menjadi satu diantara tiga chart (Variasi Harga Antar Vendor (Top 10 Material), Tren Harga Historis per Material, dan Perbandingan Vendor: Harga · Kecepatan · Reliabilitas)
     - Update halaman Analisis Waktu Proses SIPS
-        - Perubahan isi chart Dekomposisi Waktu per Nama menjadi Proporsi Realisasi SLA vs Selisih Waktu PR-PO per karyawan
+        - Perubahan isi chart Dekomposisi Waktu per Nama menjadi Proporsi Realisasi SLA vs Selisih Waktu PR-PO per buyer
         - Menambahkan chart Waktu Realisasi SLA per Purchasing Group
         - Mengubah chart Distribusi End-to-End (Req Date ke Tgl PO) menjadi Distribusi Realisasi SLA (hari kerja)
     - Update halaman Dashboard Monitoring SIPS
-        - Menambahkan chart Proporsi PO Kontrak vs Non-Kontrak per Karyawan
-        - Menambahkan chart Beban Kerja (Volume Dokumen) per Karyawan"""},
+        - Menambahkan chart Proporsi PO Kontrak vs Non-Kontrak per Buyer
+        - Menambahkan chart Beban Kerja (Volume Dokumen) per Buyer"""},
         {"Tanggal": "27 Feb 2026", "Versi": "v1.6", "Perubahan": """
     - Menambahkan info detail pada masing-masing bagian pada Ringkasan Waktu di halaman Analisis Waktu Proses SIPS
     - Menambahkan model LLM bernama untuk memberikan insight otomatis berdasarkan data yang tampil di halaman Dashboard Monitoring SIPS
@@ -270,11 +270,11 @@ def render(**kwargs):
     - Menambahkan beberapa chart di halaman Dashboard Monitoring SIPS
         - Pipeline & Trend PR-PO SIPS
         - Distribusi Status PR SIPS
-        - Performa SLA per Karyawan
+        - Performa SLA per Buyer
         - Distribusi Waktu PR → PO
-        - Perbandingan Nilai OE vs PO per Karyawan
+        - Perbandingan Nilai OE vs PO per Buyer
     - Menambahkan filter pada halaman Dashboard Monitoring SIPS
-        - Karyawan
+        - Buyer
         - Date Range
     - Menambahkan halaman Detailed SIPS Data
     - Menambahkan halaman Analisis Waktu Proses SIPS

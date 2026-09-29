@@ -437,7 +437,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Total PR**: Jumlah Purchase Requisition dalam periode filter (semua status).
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter Tanggal Disposisis Buyer
     - Hitung seluruh baris
 
@@ -454,7 +454,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Total PO**: Jumlah PR yang sudah memiliki PO, yaitu yang berstatus *Closed* atau *Proses PO*.
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Closed` dan `Proses PO`
     - Filter Tanggal PO
     - Hitung seluruh baris
@@ -495,10 +495,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 "delta":    "Waktu PR → PO (Closed)",
                 "dtype":    "neutral",
                 "formula":  f"""\
-    **Rata-rata PR-PO**: Rata-rata jumlah hari semua PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per karyawan, khusus untuk dokumen yang sudah selesai/ditutup.
+    **Rata-rata PR-PO**: Rata-rata jumlah hari semua PR-PO dari **Tanggal Disposisi Buyer** hingga **Tanggal PO** per buyer, khusus untuk dokumen yang sudah selesai/ditutup.
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Closed`
     - Hitung rata-rata **PR-PO**
 
@@ -515,7 +515,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **SLA On Time**: Jumlah PO yang diselesaikan dalam batas SLA standar.
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Hitung nilai **1** pada **Nilai SLA**
 
     **Target:** -""",
@@ -534,7 +534,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Nilai saat ini: {format_currency(oe_proses)}**
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
     - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **OE PR**
@@ -554,7 +554,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Nilai saat ini: {format_currency(oe_closed)}**
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Closed`
     - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **OE PR**
@@ -596,7 +596,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Nilai saat ini: {format_currency(po_proses)}**
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Proses PO`
     - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **Nilai Item PO**
@@ -616,7 +616,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     **Nilai saat ini: {format_currency(po_closed)}**
 
     **Formula Excel:**
-    - Filter nama karyawan yang ingin dicari
+    - Filter nama buyer yang ingin dicari
     - Filter **Status** menjadi `Closed`
     - Filter **Outline Agreement** menjadi kosong (Non Agreement)
     - Jumlahkan **Nilai Item PO**
@@ -716,7 +716,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** menjadi `Proses PO` dan `Closed`
 - Filter **Persentase PO/SR atau PO/MR** kurang dari sama dengan 100% lalu dibagi **Total PO**
 
@@ -899,7 +899,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Pipeline & Trend PR-PO SIPS**: Line chart jumlah PR dan PO yang dibuat per bulan.
                     
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Requisition Date** sesuai bulan yang diinginkan
 - Hitung seluruh baris untuk menghitung **Total PR**
 - Filter **Status** menjadi `Proses PO` dan `Closed` untuk menghitung **Total PO** """)
@@ -1017,7 +1017,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Distribusi Status PR SIPS**: Pie chart persentase jumlah dokumen berdasarkan status akhirnya.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** sesuai yang diinginkan
                     
 """)
@@ -1060,14 +1060,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         <path d="m8 0 1.669.864 1.858.282.842 1.68 1.337 1.32L13.4 6l.306 1.854-1.337 1.32-.842 1.68-1.858.282L8 12l-1.669-.864-1.858-.282-.842-1.68-1.337-1.32L2.6 6l-.306-1.854 1.337-1.32.842-1.68 1.858-.282z"/>
                         <path d="M4 11.794V16l4-1 4 1v-4.206l-2.018.306L8 13.126 6.018 12.1z"/>
                     </svg>
-                    Performa SLA per Karyawan
+                    Performa SLA per Buyer
                 </h1>
             """, unsafe_allow_html=True)
         with btn_col:
             st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
             with st.popover(":material/visibility:", help="Lihat Formula"):
                 st.info("""\
-    **Performa SLA per Karyawan**: Bar chart persentase pencapaian SLA tepat waktu untuk setiap karyawan.
+    **Performa SLA per Buyer**: Bar chart persentase pencapaian SLA tepat waktu untuk setiap buyer.
                     
     **Kalkulasi:**
     ```
@@ -1077,7 +1077,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     Dihitung khusus untuk PR yang berstatus Closed atau Proses PO.
         """)
         
-        st.caption("Persentase pencapaian SLA tepat waktu untuk setiap karyawan.")
+        st.caption("Persentase pencapaian SLA tepat waktu untuk setiap buyer.")
 
         if 'nama' in df_chart.columns:
             perf = (df_chart[df_chart['is_po'] == 1]
@@ -1138,7 +1138,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     Membantu mengidentifikasi apakah mayoritas dokumen selesai dalam rentang waktu yang normal, atau terdapat banyak outlier yang memakan waktu sangat lama (ekor grafik yang panjang ke kanan).
     """)
             
-        st.caption("Persebaran hari PR→PO seluruh karyawan.")
+        st.caption("Persebaran hari PR→PO seluruh buyer.")
 
         days_data = df_chart[
             (df_chart['is_po'] == 1) & 
@@ -1170,7 +1170,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         else:
             st.info("Tidak ada data untuk filter yang dipilih.")
 
-    # == ROW 3: Beban Kerja (Volume PR & PO) per Karyawan ====================
+    # == ROW 3: Beban Kerja (Volume PR & PO) per Buyer ====================
     st.markdown("---")
 
     title_col, btn_col = st.columns([19, 1])
@@ -1180,17 +1180,17 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-person-lines-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                     <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-5 6s-1 0-1-1 1-4 6-4 6 3 6 4-1 1-1 1H1zM11 3.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5zm.5 2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1h-4zm2 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2zm0 3a.5.5 0 0 0 0 1h2a.5.5 0 0 0 0-1h-2z"/>
                 </svg>
-                Beban Kerja (Volume Dokumen) per Karyawan
+                Beban Kerja (Volume Dokumen) per Buyer
             </h1>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-    **Beban Kerja per Karyawan**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing karyawan, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
+    **Beban Kerja per Buyer**: Bar chart ini menghitung frekuensi dokumen PR yang ditangani oleh masing-masing buyer, serta seberapa banyak yang sudah berhasil dikonversi menjadi PO.
     """)
         
-    st.caption("Perbandingan total dokumen PR yang ditugaskan and diselesaikan (PO) oleh masing-masing karyawan.")
+    st.caption("Perbandingan total dokumen PR yang ditugaskan and diselesaikan (PO) oleh masing-masing buyer.")
 
     if 'nama' in df_chart.columns:
         vol = (df_chart.groupby('nama')
@@ -1235,7 +1235,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-file-earmark-check-fill" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
                     <path d="M9.293 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.707A1 1 0 0 0 13.707 4L10 .293A1 1 0 0 0 9.293 0zM9.5 3.5v-2l3 3h-2a1 1 0 0 1-1-1zm1.354 4.354-3 3a.5.5 0 0 1-.708 0l-1.5-1.5a.5.5 0 1 1 .708-.708L7.5 9.793l2.646-2.647a.5.5 0 0 1 .708.708z"/>
                 </svg>
-                Proporsi PO Kontrak vs Non-Kontrak per Karyawan
+                Proporsi PO Kontrak vs Non-Kontrak per Buyer
             </h1>
         """, unsafe_allow_html=True)
     with btn_col_k:
@@ -1245,14 +1245,14 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Proporsi PO Kontrak vs Non-Kontrak**: Stacked bar chart ini menunjukkan berapa banyak item PO yang dibuat menggunakan kontrak payung (*Outline Agreement*) dibandingkan yang tidak.
 
 **Formula Excel:**
-- Filter nama karyawan yang ingin dicari
+- Filter nama buyer yang ingin dicari
 - Filter **Status** menjadi `Proses PO` dan `Closed`
 - Hitung jumlah `Non Agreement` dan `Agreement` di **Kontrak/Non kontrak**
 
-Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien karena tidak perlu melakukan proses lelang atau negosiasi berulang.
+Buyer dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien karena tidak perlu melakukan proses lelang atau negosiasi berulang.
 """)
 
-    st.caption("Jumlah item PO yang diterbitkan dengan dasar Outline Agreement (Kontrak) per karyawan.")
+    st.caption("Jumlah item PO yang diterbitkan dengan dasar Outline Agreement (Kontrak) per buyer.")
 
     if 'nama' in df_chart.columns and 'outline_agreement' in df_chart.columns:
         df_po = df_chart[df_chart['is_po'] == 1].copy()
@@ -1304,20 +1304,20 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
                     <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v2h6a.5.5 0 0 1 .5.5c0 .253.08.644.306.958.207.288.557.542 1.194.542s.987-.254 1.194-.542C9.42 6.644 9.5 6.253 9.5 6a.5.5 0 0 1 .5-.5h6v-2A1.5 1.5 0 0 0 14.5 2z"/>
                     <path d="M16 6.5h-5.551a2.7 2.7 0 0 1-.443 1.042C9.613 8.088 8.963 8.5 8 8.5s-1.613-.412-2.006-.958A2.7 2.7 0 0 1 5.551 6.5H0v6A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5z"/>
                 </svg>
-                Perbandingan Nilai OE vs PO (Non Agreement) per Karyawan
+                Perbandingan Nilai OE vs PO (Non Agreement) per Buyer
             </h1>
         """, unsafe_allow_html=True)
     with btn_col:
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
-    **Perbandingan Nilai OE vs PO (Non Agreement)**: Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap karyawan. Chart ini dikhususkan untuk melihat efisiensi item Non Agreement.
+    **Perbandingan Nilai OE vs PO (Non Agreement)**: Grouped bar chart yang membandingkan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk setiap buyer. Chart ini dikhususkan untuk melihat efisiensi item Non Agreement.
 
     Bar **Biru** (OE PR) = Total nilai estimasi sebelum PO diproses.
 
     Bar **Hijau** (Nilai PO) = Total nilai final setelah negosiasi dan PO diterbitkan.
 
-    Jika bar Hijau lebih pendek dari Biru, artinya karyawan tersebut berhasil melakukan penghematan pengadaan.
+    Jika bar Hijau lebih pendek dari Biru, artinya buyer tersebut berhasil melakukan penghematan pengadaan.
     """)
         
     st.caption("Perbandingan total nilai anggaran (OE) dengan realisasi aktual (PO) untuk dokumen pengadaan Non Agreement.")
@@ -1393,19 +1393,19 @@ Karyawan dengan porsi PO Kontrak yang tinggi cenderung bekerja lebih efisien kar
         suplemen_lines.append("")
 
     if 'vol' in locals() and not vol.empty:
-        suplemen_lines.append("## BEBAN KERJA (VOLUME PR & PO) PER KARYAWAN")
+        suplemen_lines.append("## BEBAN KERJA (VOLUME PR & PO) PER BUYER")
         df_vol_simple = vol.sort_values('Total_PR', ascending=False)
         suplemen_lines.append(df_vol_simple.to_csv(index=False))
         suplemen_lines.append("")
 
     if 'perf' in locals() and not perf.empty:
-        suplemen_lines.append("## PERFORMA KETEPATAN WAKTU (SLA) PER KARYAWAN")
+        suplemen_lines.append("## PERFORMA KETEPATAN WAKTU (SLA) PER BUYER")
         df_perf_simple = perf[['nama', 'total_po', 'sla_ok', 'pct_ontime']].sort_values('pct_ontime', ascending=False)
         suplemen_lines.append(df_perf_simple.to_csv(index=False))
         suplemen_lines.append("")
 
     if 'eff' in locals() and not eff.empty:
-        suplemen_lines.append("## EFISIENSI (OE VS PO KHUSUS NON AGREEMENT) PER KARYAWAN")
+        suplemen_lines.append("## EFISIENSI (OE VS PO KHUSUS NON AGREEMENT) PER BUYER")
         eff_ai = eff.copy()
         eff_ai['efisiensi_rp']  = eff_ai['oe'] - eff_ai['po']
         eff_ai['efisiensi_pct'] = ((eff_ai['efisiensi_rp'] / eff_ai['oe']) * 100).round(1).fillna(0)

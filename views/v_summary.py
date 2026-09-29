@@ -384,6 +384,57 @@ div[data-testid="stPopover"] {
         display: none !important;
     }
 }
+
+/* == Card & Badge Lead Time Process ======================================== */
+.ltp-container {
+    background-color: var(--secondary-background-color) !important;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05)) !important;
+    border: 1px solid rgba(128, 128, 128, 0.25) !important;
+    border-radius: 12px;
+    padding: 18px 12px 14px 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    margin-top: 12px;
+    margin-bottom: 24px;
+}
+
+.ltp-item {
+    text-align: center;
+    padding: 0 6px;
+}
+
+.ltp-title {
+    font-size: 17px;
+    font-weight: 500;
+    color: var(--text-color);
+    margin-bottom: 4px;
+}
+
+.ltp-pct {
+    font-size: 2.1rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 2px 0 6px 0;
+}
+
+.ltp-count {
+    font-size: 13px;
+    color: var(--text-color);
+    opacity: 0.85;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.ltp-badge {
+    display: inline-block;
+    background: linear-gradient(180deg, #2e7d32 0%, #1b5e20 100%);
+    color: #ffffff !important;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
 </style>
 """
 
@@ -622,9 +673,10 @@ def render(load_data, **kwargs):
             st.warning(f"⚠️ Gagal memuat data KPI bulanan: {e}")
 
     # =========================================================================
-    # DEFINISI LOGIKA FILTER SIPS 
+    # DEFINISI LOGIKA FILTER SIPS (KEMBALIKAN KE VERSI AWAL)
     # =========================================================================
     where_pr = f"tgl_disposisi_buyer >= '{date_from}' AND tgl_disposisi_buyer <= '{date_to}'"
+
     po_date_cond = f"""(
         (tgl_po >= '{date_from}'::date AND tgl_po <= '{date_to}'::date)
         OR (
@@ -701,6 +753,36 @@ def render(load_data, **kwargs):
     FROM data_eproc WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}'
     """
 
+    ltp_query = f"""
+    SELECT
+        -- Agreement
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'AGREEMENT' THEN 1 END) AS agreement_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'AGREEMENT' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS agreement_ontime,
+
+        -- Emergency
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'EMERGENCY' THEN 1 END) AS emergency_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'EMERGENCY' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS emergency_ontime,
+
+        -- Urgent
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'URGENT' THEN 1 END) AS urgent_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'URGENT' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS urgent_ontime,
+
+        -- TA
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'TA' THEN 1 END) AS ta_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'TA' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS ta_ontime,
+
+        -- Investasi
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'INVESTASI' THEN 1 END) AS investasi_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'INVESTASI' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS investasi_ontime,
+
+        -- Normal
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'NORMAL' THEN 1 END) AS normal_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'NORMAL' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS normal_ontime
+    FROM vw_sips
+    WHERE UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
+      AND {po_date_cond}
+    """
+
     eproc_emp_query = f"""
     SELECT UPPER(TRIM(pic)) AS nama_join, COUNT(*) AS total_dokumen_eproc, SUM(CASE WHEN LOWER(TRIM(metode)) = 'eproc' THEN 1 ELSE 0 END) AS total_eproc_method
     FROM data_eproc WHERE tgl_dokumen >= '{date_from}' AND tgl_dokumen <= '{date_to}' GROUP BY UPPER(TRIM(pic))
@@ -721,6 +803,7 @@ def render(load_data, **kwargs):
             eproc_kpi_data = load_data(eproc_kpi_query)
             eproc_emp_data = load_data(eproc_emp_query)
             inklaring_data = load_data(inklaring_query)
+            ltp_data = load_data(ltp_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -1248,7 +1331,7 @@ def render(load_data, **kwargs):
         st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
 
         if not val_trend_data.empty:
-            chart_type_val = st.pills("Tampilan:", options=["Per Bulan (Bar)", "Kumulatif (Line)"], default="Per Bulan (Bar)", key="pills_trend_summary_val")
+            chart_type_val = st.pills("Tampilan:", options=["Per Bulan (Bar)", "Kumulatif (Line)"], default="Kumulatif (Line)", key="pills_trend_summary_val")
             fig2 = go.Figure()
 
             if chart_type_val == "Kumulatif (Line)":
@@ -1265,6 +1348,75 @@ def render(load_data, **kwargs):
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("Tidak ada data tren nilai.")
+
+    # ── Widget Lead Time Process ──────────────────────────────────────────
+    _row_label("Lead Time Process")
+
+    ltp_row = ltp_data.iloc[0] if (ltp_data is not None and not ltp_data.empty) else {}
+
+    categories = [
+        {"title": "Agreement",  "key": "agreement", "target_hari": 12},
+        {"title": "Emergency",  "key": "emergency", "target_hari": 5},
+        {"title": "Urgent",     "key": "urgent",    "target_hari": 24},
+        {"title": "TA",         "key": "ta",        "target_hari": 48},
+        {"title": "Investasi",  "key": "investasi", "target_hari": 48},
+        {"title": "Normal",     "key": "normal",    "target_hari": 57},
+    ]
+
+    cols_ltp = st.columns(6)
+
+    for idx, cat in enumerate(categories):
+        tot = int(ltp_row.get(f"{cat['key']}_total", 0) or 0)
+        ontime = int(ltp_row.get(f"{cat['key']}_ontime", 0) or 0)
+        pct = (ontime / tot * 100) if tot > 0 else 0.0
+
+        # Format persentase: jika bulat 100 tampilkan '100%', selain itu 2 desimal dengan koma
+        if tot == 0:
+            pct_str = "0%"
+        elif abs(pct - 100.0) < 1e-9:
+            pct_str = "100%"
+        else:
+            pct_str = f"{pct:.2f}%".replace('.', ',')
+
+        with cols_ltp[idx]:
+            st.markdown(f"""
+            <div class="sum-card" style="
+                min-height: auto !important; 
+                height: 100% !important; 
+                padding: 20px 8px 16px 8px !important; 
+                border-left-width: 6px !important;
+                border-left-style: solid !important;
+                border-left-color: var(--text-color) !important;
+                display: flex; 
+                flex-direction: column; 
+                align-items: center; 
+                justify-content: center; 
+                text-align: center;
+            ">
+                <div style="font-size: 16px; font-weight: 500; color: var(--text-color); margin-bottom: 4px;">
+                    {cat['title']}
+                </div>
+                <div style="font-size: 2.2rem; font-weight: 700; color: #09ab3b; line-height: 1.1; margin: 4px 0 8px 0;">
+                    {pct_str}
+                </div>
+                <div style="font-size: 13px; color: var(--text-color); opacity: 0.85; margin-bottom: 2px; font-weight: 500;">
+                    {format_number(ontime)} dari {format_number(tot)}
+                </div>
+                <div style="
+                    display: inline-block; 
+                    background-color: rgba(9, 171, 59, 0.12) !important; 
+                    border: 1px solid rgba(9, 171, 59, 0.3) !important;
+                    padding: 2px 12px; 
+                    border-radius: 12px;
+                ">
+                    <span style="color: #0b802e !important; font-size: 11px; font-weight: 700; display: block;">
+                        Target : {cat['target_hari']} Hari
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("<hr style='margin: 24px 0 16px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
@@ -1372,6 +1524,7 @@ def render(load_data, **kwargs):
         karyawan_query_early = f"""
         SELECT
             nama,
+            -- Agregasi umum (tabel Kinerja Buyer)
             SUM(CASE WHEN {where_pr} THEN 1 ELSE 0 END) AS total_pr,
             SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS total_po,
             ROUND(AVG(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} THEN pr_po_days END)::numeric, 2) AS avg_pr_po,
@@ -1380,9 +1533,36 @@ def render(load_data, **kwargs):
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_total,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN oe_pr END), 0) AS sips_oe_na,
             COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') AND {po_date_cond} AND (outline_agreement IS NULL OR TRIM(outline_agreement) = '') THEN nilai_item_po END), 0) AS sips_po_na,
-            SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count
-        FROM vw_sips WHERE {where_gabungan} AND {_bagian_filter_cond}
-        GROUP BY nama ORDER BY total_pr DESC
+            SUM(CASE WHEN persen_po_sr_mr <= 1.0 AND UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} THEN 1 ELSE 0 END) AS on_budget_count,
+
+            -- =================================================================
+            -- PO OUTPUT PO (*5 atau kosong)
+            -- =================================================================
+            SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (no_po LIKE '5%' OR no_po IS NULL OR TRIM(no_po) IN ('', '-')) THEN 1 ELSE 0 END) AS po_5_count,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (kontrak_status = 'Non Agreement' OR outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+                     AND (no_po LIKE '5%' OR no_po IS NULL OR TRIM(no_po) IN ('', '-')) THEN oe_pr END), 0) AS po_5_oe,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (kontrak_status = 'Non Agreement' OR outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+                     AND (no_po LIKE '5%' OR no_po IS NULL OR TRIM(no_po) IN ('', '-')) THEN nilai_item_po END), 0) AS po_5_val,
+
+            -- =================================================================
+            -- PO OUTPUT AGREEMENT (*4 atau 04)
+            -- =================================================================
+            SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (no_po LIKE '4%' OR no_po LIKE '04%') THEN 1 ELSE 0 END) AS po_4_count,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (kontrak_status = 'Non Agreement' OR outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+                     AND (no_po LIKE '4%' OR no_po LIKE '04%') THEN oe_pr END), 0) AS po_4_oe,
+            COALESCE(SUM(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} 
+                     AND (kontrak_status = 'Non Agreement' OR outline_agreement IS NULL OR TRIM(outline_agreement) = '')
+                     AND (no_po LIKE '4%' OR no_po LIKE '04%') THEN nilai_item_po END), 0) AS po_4_val
+
+        FROM vw_sips 
+        WHERE {where_gabungan} AND {_bagian_filter_cond}
+        GROUP BY nama 
+        ORDER BY total_pr DESC
         """
         with st.spinner(f"Memuat data bagian {pilihan_bagian}..."):
             karyawan_data = load_data(karyawan_query_early)
@@ -1444,7 +1624,7 @@ def render(load_data, **kwargs):
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
             f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['people'], 26)}</span>"
-            f"<span style='vertical-align: middle;'>Kinerja Karyawan</span>"
+            f"<span style='vertical-align: middle;'>Kinerja Buyer</span>"
             f"</h3>", 
             unsafe_allow_html=True
         )
@@ -1487,7 +1667,7 @@ def render(load_data, **kwargs):
             import io
             _excel_buf = io.BytesIO()
             with pd.ExcelWriter(_excel_buf, engine="openpyxl") as _writer:
-                df_table.to_excel(_writer, index=True, sheet_name="Kinerja Karyawan")
+                df_table.to_excel(_writer, index=True, sheet_name="Kinerja Buyer")
             _excel_bytes = _excel_buf.getvalue()
 
             import base64
@@ -1522,10 +1702,110 @@ def render(load_data, **kwargs):
                 </a>
             """, unsafe_allow_html=True)
         else:
-            st.info(f"Tidak ada data kinerja karyawan untuk bagian **{pilihan_bagian}** pada periode ini.")
-            
-        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+            st.info(f"Tidak ada data kinerja buyer untuk bagian **{pilihan_bagian}** pada periode ini.")
 
+        # ═════════════════════════════════════════════════════════════════
+        # TABEL BARU: DETAIL EFISIENSI PO OUTPUT PO & AGREEMENT
+        # ═════════════════════════════════════════════════════════════════
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<h3 style='font-size:20px; margin-bottom:14px; color:var(--text-color);'>"
+            f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['graph_up'], 24)}</span>"
+            f"<span style='vertical-align: middle;'>Detail Efisiensi PO Output PO & Agreement</span>"
+            f"</h3>", 
+            unsafe_allow_html=True
+        )
+
+        df_efis = df_karyawan.copy()
+
+        # Hitung PO *5 (Output PO)
+        df_efis['Total PO (PO)'] = df_efis['po_5_count'].astype(int)
+        df_efis['efis_rp_5_num'] = df_efis['po_5_oe'] - df_efis['po_5_val']
+        df_efis['efis_pct_5_num'] = np.where(
+            df_efis['po_5_oe'] > 0,
+            (df_efis['efis_rp_5_num'] / df_efis['po_5_oe']) * 100,
+            np.nan
+        )
+        df_efis['Efisiensi Rp (PO)'] = df_efis['efis_rp_5_num'].apply(lambda x: format_idr_short(x) if pd.notna(x) and x != 0 else "0")
+        df_efis['Efisiensi % (PO)'] = df_efis['efis_pct_5_num'].apply(lambda x: f"{x:.2f}%".replace('.', ',') if pd.notna(x) else "-")
+
+        # Hitung PO *4 (Output Agreement)
+        df_efis['Total PO (Agr)'] = df_efis['po_4_count'].astype(int)
+        df_efis['efis_rp_4_num'] = df_efis['po_4_oe'] - df_efis['po_4_val']
+        df_efis['efis_pct_4_num'] = np.where(
+            df_efis['po_4_oe'] > 0,
+            (df_efis['efis_rp_4_num'] / df_efis['po_4_oe']) * 100,
+            np.nan
+        )
+        df_efis['Efisiensi Rp (Agr)'] = df_efis['efis_rp_4_num'].apply(lambda x: format_idr_short(x) if pd.notna(x) and x != 0 else "0")
+        df_efis['Efisiensi % (Agr)'] = df_efis['efis_pct_4_num'].apply(lambda x: f"{x:.2f}%".replace('.', ',') if pd.notna(x) else "-")
+
+        # Susun dataframe tampilan
+        df_efis_table = df_efis[[
+            'nama', 
+            'Total PO (PO)', 
+            'Efisiensi Rp (PO)', 
+            'Efisiensi % (PO)', 
+            'Total PO (Agr)', 
+            'Efisiensi Rp (Agr)', 
+            'Efisiensi % (Agr)'
+        ]].rename(columns={'nama': 'Nama'})
+        
+        df_efis_table.index = df_efis_table.index + 1
+
+        # Tampilkan dataframe interaktif di Streamlit
+        st.dataframe(
+            df_efis_table, 
+            use_container_width=True,
+            column_config={
+                "Nama": st.column_config.TextColumn("Nama", width="medium"),
+                "Total PO (PO)": st.column_config.NumberColumn("Total PO (PO)", format="%d"),
+                "Efisiensi Rp (PO)": st.column_config.TextColumn("Efisiensi Rp (PO)"),
+                "Efisiensi % (PO)": st.column_config.TextColumn("Efisiensi % (PO)"),
+                "Total PO (Agr)": st.column_config.NumberColumn("Total PO (Agr)", format="%d"),
+                "Efisiensi Rp (Agr)": st.column_config.TextColumn("Efisiensi Rp (Agr)"),
+                "Efisiensi % (Agr)": st.column_config.TextColumn("Efisiensi % (Agr)")
+            }
+        )
+
+        # Tombol Download Excel untuk tabel ini
+        _excel_buf_efis = io.BytesIO()
+        with pd.ExcelWriter(_excel_buf_efis, engine="openpyxl") as _writer:
+            df_efis_table.to_excel(_writer, index=True, sheet_name="Efisiensi PO & Agreement")
+        _excel_bytes_efis = _excel_buf_efis.getvalue()
+
+        _b64_efis = base64.b64encode(_excel_bytes_efis).decode()
+        _filename_efis = f"Efisiensi_PO_Agreement_{pilihan_bagian}.xlsx"
+
+        st.markdown(f"""
+            <a href="data:{_mime};base64,{_b64_efis}" download="{_filename_efis}" style="text-decoration:none;">
+                <button style="
+                    background-color: #2e7d32;
+                    color: white;
+                    border: none;
+                    padding: 4px 12px;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    margin-top: 2px;
+                ">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                        fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    Download Detail Efisiensi (.xlsx)
+                </button>
+            </a>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<hr style='margin: 32px 0; border-color: rgba(128,128,128,0.2);'>", unsafe_allow_html=True)
+        
         st.markdown(
             f"<h3 style='font-size:20px; margin-bottom:16px; color:var(--text-color);'>"
             f"<span style='margin-right:8px; vertical-align: middle;'>{_svg(ICONS['box'], 26)}</span>"
@@ -1534,26 +1814,17 @@ def render(load_data, **kwargs):
             unsafe_allow_html=True
         )
 
+        # Tren Realisasi PR Outstanding / Status Closed per Bulan Disposisi
         trend_bagian_query = f"""
-        WITH pr_bulanan AS (
-            SELECT DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month, COUNT(*) AS total_pr
-            FROM vw_sips WHERE {where_pr} AND {_bagian_filter_cond} GROUP BY 1
-        ),
-        po_bulanan AS (
-            SELECT DATE_TRUNC('month',
-                CASE
-                    WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-') THEN tgl_po
-                    WHEN UPPER(TRIM(status)) = 'PROSES PO'
-                        AND EXTRACT(YEAR FROM tgl_disposisi_buyer) < {date_from.year}
-                        THEN DATE '{date_from.year}-01-01'
-                    ELSE tgl_disposisi_buyer
-                END
-            )::date AS month, COUNT(*) AS total_po
-            FROM vw_sips WHERE UPPER(TRIM(status)) IN ('CLOSED','PROSES PO') AND {po_date_cond} AND {_bagian_filter_cond} GROUP BY 1
-        )
-        SELECT TO_CHAR(COALESCE(pr_bulanan.month, po_bulanan.month), 'YYYY-MM-01')::date AS month,
-               COALESCE(pr_bulanan.total_pr, 0) AS total_pr, COALESCE(po_bulanan.total_po, 0) AS total_po
-        FROM pr_bulanan FULL OUTER JOIN po_bulanan ON pr_bulanan.month = po_bulanan.month ORDER BY 1
+        SELECT 
+            DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
+            COUNT(*) AS total_pr,
+            COUNT(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN 1 END) AS pr_closed
+        FROM vw_sips
+        WHERE {where_pr}
+          AND {_bagian_filter_cond}
+        GROUP BY 1
+        ORDER BY 1
         """
 
         with st.spinner(f"Memuat tren bagian {pilihan_bagian}..."):
@@ -1563,18 +1834,68 @@ def render(load_data, **kwargs):
             trend_bagian_data['month'] = pd.to_datetime(trend_bagian_data['month']).dt.tz_localize(None)
             trend_bagian_data = trend_bagian_data.sort_values('month')
             trend_bagian_data = trend_bagian_data[(trend_bagian_data['month'] >= dt_from_pd) & (trend_bagian_data['month'] <= dt_to_pd)]
-            trend_bagian_data['month_display'] = trend_bagian_data['month'].apply(resolve_month_date)
-            trend_bagian_data['hover_label'] = trend_bagian_data['month_display'].apply(fmt_date)
+            
+            # Format nama bulan Indonesia untuk sumbu X (misal: Januari, Februari, dst.)
+            month_names_map = {1: "Januari", 2: "Februari", 3: "Maret", 4: "April", 5: "Mei", 6: "Juni",
+                               7: "Juli", 8: "Agustus", 9: "September", 10: "Oktober", 11: "November", 12: "Desember"}
+            trend_bagian_data['month_name'] = trend_bagian_data['month'].dt.month.map(month_names_map)
 
             fig_trend_bagian = go.Figure()
-            fig_trend_bagian.add_trace(go.Bar(x=trend_bagian_data['month_display'], y=trend_bagian_data['total_pr'], name='PR Created', marker_color='#1f77b4', customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PR Created: %{y}<extra></extra>'))
-            fig_trend_bagian.add_trace(go.Bar(x=trend_bagian_data['month_display'], y=trend_bagian_data['total_po'], name='PO Created', marker_color='#2ca02c', customdata=trend_bagian_data[['hover_label']], hovertemplate='<b>%{customdata[0]}</b><br>PO Created: %{y}<extra></extra>'))
-            
-            fig_trend_bagian.update_layout(barmode='group', height=360, xaxis_title='', yaxis_title='Jumlah Item', xaxis=dict(tickmode='array', tickvals=trend_bagian_data['month_display'].tolist(), ticktext=trend_bagian_data['hover_label'].tolist(), tickangle=-30), margin=dict(t=60, b=10, l=10, r=30), legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+
+            # Bar 1: Total PR (Biru)
+            fig_trend_bagian.add_trace(go.Bar(
+                x=trend_bagian_data['month_name'],
+                y=trend_bagian_data['total_pr'],
+                name='Total PR',
+                marker_color='#2b7fff',  # Warna biru sesuai contoh spreadsheet
+                text=trend_bagian_data['total_pr'],
+                textposition='outside',
+                textfont=dict(size=12, color='#2b7fff', weight='bold'),
+                hovertemplate='<b>%{x}</b><br>Total PR: %{y:,}<extra></extra>'
+            ))
+
+            # Bar 2: PR Status Closed (Oranye)
+            fig_trend_bagian.add_trace(go.Bar(
+                x=trend_bagian_data['month_name'],
+                y=trend_bagian_data['pr_closed'],
+                name='PR Status Closed',
+                marker_color='#f39c38',  # Warna oranye sesuai contoh spreadsheet
+                text=trend_bagian_data['pr_closed'],
+                textposition='outside',
+                textfont=dict(size=12, color='#f39c38', weight='bold'),
+                hovertemplate='<b>%{x}</b><br>PR Status Closed: %{y:,}<extra></extra>'
+            ))
+
+            # Atur batas atas sumbu Y agar teks di atas bar tidak terpotong
+            max_y = max(trend_bagian_data['total_pr'].max(), trend_bagian_data['pr_closed'].max()) * 1.18
+
+            fig_trend_bagian.update_layout(
+                barmode='group',
+                height=380,
+                xaxis_title='',
+                yaxis_title='Total PR',
+                yaxis=dict(
+                    range=[0, max_y],
+                    showgrid=True,
+                    gridcolor='rgba(128,128,128,0.15)'
+                ),
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=trend_bagian_data['month_name'].tolist(),
+                    tickangle=0,
+                    showgrid=False
+                ),
+                margin=dict(t=50, b=10, l=10, r=20),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.05,
+                    xanchor="left",
+                    x=0.01
+                ),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)'
+            )
             st.plotly_chart(fig_trend_bagian, use_container_width=True)
         else:
             st.info(f"Tidak ada data tren untuk bagian **{pilihan_bagian}**.")
-            
-        st.markdown("<br><br>", unsafe_allow_html=True)
-    else:
-        st.info(f"Tidak ada transaksi PO untuk bagian **{pilihan_bagian}** pada periode ini.")
