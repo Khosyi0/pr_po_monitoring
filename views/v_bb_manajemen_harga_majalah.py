@@ -7,6 +7,9 @@ Primary key alami tabel ini adalah kombinasi:
     (tanggal_terbit, nama_majalah, bahan_baku, incoterm)
 karena ada UNIQUE constraint pada kombinasi tersebut (dipakai untuk ON CONFLICT
 upsert oleh ETL). Tidak ada kolom id/serial.
+
+Tab "Harga RKAP" menyimpan harga RKAP tahunan ke tabel terpisah
+`harga_rkap_bahan_baku` (PK: tahun, bahan_baku).
 """
 
 import streamlit as st
@@ -24,6 +27,7 @@ except ImportError:  # fallback saat file dijalankan langsung
     from views.v_bb_bahan_baku import BAHAN_BAKU_CONFIG, get_daftar_bahan_baku
 
 
+@st.cache_resource
 def _get_engine():
     from config_db import get_db_engine
     return get_db_engine()
@@ -88,6 +92,71 @@ def _get_bahan_baku_db_options():
         else:
             options.append(db_value)
     return sorted(set(options))
+
+
+# =============================================================================
+# HARGA RKAP: helper database
+# =============================================================================
+def _ensure_rkap_table(engine):
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS harga_rkap_bahan_baku (
+                tahun       INTEGER NOT NULL,
+                bahan_baku  TEXT    NOT NULL,
+                harga_rkap  NUMERIC NOT NULL,
+                updated_at  TIMESTAMP DEFAULT now(),
+                PRIMARY KEY (tahun, bahan_baku)
+            )
+        """))
+
+
+def _upsert_rkap(engine, tahun, bahan_baku, harga_rkap):
+    with engine.begin() as conn:
+        # Batas waktu: kalau ada lock, langsung error (tidak menggantung)
+        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+        conn.execute(text("SET LOCAL statement_timeout = '15s'"))
+        conn.execute(text("""
+            INSERT INTO harga_rkap_bahan_baku (tahun, bahan_baku, harga_rkap)
+            VALUES (:tahun, :bahan_baku, :harga)
+            ON CONFLICT (tahun, bahan_baku)
+            DO UPDATE SET harga_rkap = EXCLUDED.harga_rkap, updated_at = now()
+        """), {"tahun": tahun, "bahan_baku": bahan_baku, "harga": harga_rkap})
+
+
+def _delete_rkap(engine, tahun, bahan_baku):
+    with engine.begin() as conn:
+        conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+        conn.execute(text("SET LOCAL statement_timeout = '15s'"))
+        conn.execute(text(
+            "DELETE FROM harga_rkap_bahan_baku WHERE tahun = :t AND bahan_baku = :b"
+        ), {"t": tahun, "b": bahan_baku})
+
+
+def _load_rkap_langsung(engine):
+    """Baca daftar RKAP langsung dari DB (tanpa cache) supaya selalu terbaru."""
+    return pd.read_sql(
+        text("SELECT tahun, bahan_baku, harga_rkap FROM harga_rkap_bahan_baku "
+             "ORDER BY tahun DESC, bahan_baku"),
+        engine,
+    )
+
+
+def _simpan_rkap_callback():
+    """
+    Dijalankan sebagai callback tombol simpan (di awal rerun, sebelum script utama),
+    sehingga tidak terputus oleh rerun lain saat query berjalan.
+    """
+    bb = st.session_state["rkap_bb"]
+    tahun = int(st.session_state["rkap_tahun"])
+    harga = float(st.session_state["rkap_harga"])
+    if harga <= 0:
+        st.session_state["_rkap_msg"] = ("error", "Harga RKAP harus lebih dari 0.")
+        return
+    try:
+        _upsert_rkap(_get_engine(), tahun, bb, harga)
+        st.session_state["_rkap_msg"] = ("success", f"RKAP {tahun} untuk {bb} tersimpan.")
+    except Exception as e:
+        st.session_state["_rkap_msg"] = ("error", f"Gagal menyimpan: {e}")
 
 
 # =============================================================================
@@ -299,6 +368,10 @@ def render(load_data, global_context=None):
     )
 
     engine = _get_engine()
+    if not st.session_state.get('_rkap_table_ready'):
+        _ensure_rkap_table(engine)
+        st.session_state['_rkap_table_ready'] = True
+
     daftar_bb_label = get_daftar_bahan_baku()
     daftar_bb_db_options = _get_bahan_baku_db_options()
 
@@ -310,10 +383,11 @@ def render(load_data, global_context=None):
         level, msg = st.session_state.pop('_bb_manajemen_msg')
         getattr(st, level)(msg)
 
-    tab_impor, tab_tambah, tab_lihat_edit_hapus = st.tabs([
+    tab_impor, tab_tambah, tab_lihat_edit_hapus, tab_rkap = st.tabs([
         ":material/cloud_upload: Impor Data (ETL)",
         ":material/add_circle: Tambah Data Baru",
-        ":material/table_chart: Lihat / Edit / Hapus Data"
+        ":material/table_chart: Lihat / Edit / Hapus Data",
+        ":material/flag: Harga RKAP",
     ])
 
     # =========================================================================
@@ -443,7 +517,62 @@ def render(load_data, global_context=None):
                         st.error(f"Gagal menyimpan data: {e}")
 
     # =========================================================================
-    # TAB 2: LIHAT / EDIT / HAPUS DATA
+    # TAB 3: HARGA RKAP
+    # (ditulis SEBELUM tab "Lihat / Edit / Hapus" karena tab itu punya `return`
+    #  yang menghentikan fungsi; urutan tampil tab tetap ditentukan st.tabs)
+    # =========================================================================
+    with tab_rkap:
+        st.markdown("#### Input Harga RKAP Tahunan")
+        st.caption("Harga RKAP bersifat tetap sepanjang tahun. Menyimpan bahan baku + tahun yang sama akan menimpa nilai lama.")
+
+        with st.form("form_rkap", clear_on_submit=False):
+            r1, r2, r3 = st.columns(3)
+            with r1:
+                st.selectbox("Bahan Baku", daftar_bb_db_options, key="rkap_bb")
+            with r2:
+                st.number_input(
+                    "Tahun", min_value=2020, max_value=2100,
+                    value=datetime.today().year, step=1, key="rkap_tahun"
+                )
+            with r3:
+                st.number_input(
+                    "Harga RKAP (USD/MT)", min_value=0.0, step=0.5,
+                    format="%.2f", key="rkap_harga"
+                )
+            st.form_submit_button(
+                "Simpan Harga RKAP", type="primary",
+                icon=":material/save:", on_click=_simpan_rkap_callback
+            )
+
+        if "_rkap_msg" in st.session_state:
+            level, msg = st.session_state.pop("_rkap_msg")
+            getattr(st, level)(msg)
+
+        st.markdown("##### Data RKAP Tersimpan")
+        try:
+            df_rkap_all = _load_rkap_langsung(engine)
+        except Exception as e:
+            st.error(f"Gagal memuat data RKAP: {e}")
+            df_rkap_all = pd.DataFrame(columns=["tahun", "bahan_baku", "harga_rkap"])
+
+        if df_rkap_all.empty:
+            st.info("Belum ada data RKAP.")
+        else:
+            for _, r in df_rkap_all.iterrows():
+                c1, c2, c3, c4 = st.columns([1, 3, 2, 1])
+                c1.write(int(r["tahun"]))
+                c2.write(r["bahan_baku"])
+                c3.write(f"{float(r['harga_rkap']):.2f}")
+                if c4.button("", icon=":material/delete:", key=f"del_rkap_{r['tahun']}_{r['bahan_baku']}"):
+                    try:
+                        _delete_rkap(engine, int(r["tahun"]), r["bahan_baku"])
+                    except Exception as e:
+                        st.error(f"Gagal menghapus: {e}")
+                    else:
+                        st.rerun()
+
+    # =========================================================================
+    # TAB 2: LIHAT / EDIT / HAPUS DATA  (punya `return`, jadi taruh paling akhir)
     # =========================================================================
     with tab_lihat_edit_hapus:
         st.markdown("#### Filter Data")

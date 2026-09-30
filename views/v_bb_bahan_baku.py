@@ -34,6 +34,8 @@ LABEL_HARGA_PEROLEHAN = "Harga Perolehan"
 # Default warna kuning/emas dipilih karena tetap kontras baik di tema terang
 # maupun tema gelap (berbeda dengan hitam yang nyaris tak terlihat di dark mode).
 WARNA_HARGA_PEROLEHAN_DEFAULT = "#FFC300"
+LABEL_HARGA_RKAP = "Harga RKAP"
+WARNA_HARGA_RKAP_DEFAULT = "#00BFA5"
 
 
 # =============================================================================
@@ -194,6 +196,16 @@ BAHAN_BAKU_CONFIG = {
         ],
     },
 }
+
+def _load_harga_rkap(load_data, label_bb):
+    label_escaped = label_bb.replace("'", "''")
+    try:
+        return load_data(f"""
+            SELECT tahun, harga_rkap FROM harga_rkap_bahan_baku
+            WHERE bahan_baku = '{label_escaped}' ORDER BY tahun
+        """)
+    except Exception:
+        return pd.DataFrame(columns=['tahun', 'harga_rkap'])
 
 def get_daftar_bahan_baku():
     return list(BAHAN_BAKU_CONFIG.keys())
@@ -856,6 +868,24 @@ def render(load_data, global_context):
                 args=(f"warna_hp_{suffix}", f"_perm_warna_hp_{suffix}")
             )
 
+        col_rkap_toggle, col_rkap_warna = st.columns([3, 1])
+        with col_rkap_toggle:
+            tampilkan_rkap = st.checkbox(
+                "Tampilkan garis Harga RKAP pada chart",
+                value=st.session_state.get(f"_perm_tampilkan_rkap_{suffix}", False),
+                key=f"tampilkan_rkap_{suffix}",
+                on_change=_save_to_permanent,
+                args=(f"tampilkan_rkap_{suffix}", f"_perm_tampilkan_rkap_{suffix}")
+            )
+        with col_rkap_warna:
+            warna_rkap = st.color_picker(
+                "Warna",
+                value=st.session_state.get(f"_perm_warna_rkap_{suffix}", WARNA_HARGA_RKAP_DEFAULT),
+                key=f"warna_rkap_{suffix}",
+                on_change=_save_to_permanent,
+                args=(f"warna_rkap_{suffix}", f"_perm_warna_rkap_{suffix}")
+            )
+
         st.markdown("<hr style='margin: 10px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
         komparasi_data = []
@@ -1008,6 +1038,26 @@ def render(load_data, global_context):
                 df_plot_chart = pd.concat([df_plot_chart, df_hp_for_plot], ignore_index=True)
                 warna_map[LABEL_HARGA_PEROLEHAN] = warna_harga_perolehan
 
+            if tampilkan_rkap:
+                df_rkap = _load_harga_rkap(load_data, label_bb)
+                if not df_rkap.empty:
+                    tgl_data = df_plot_komparasi['tanggal_terbit'].drop_duplicates()
+                    frames = []
+                    for _, r in df_rkap.iterrows():
+                        tahun = int(r['tahun'])
+                        tgl_tahun = tgl_data[tgl_data.dt.year == tahun]
+                        if tgl_tahun.empty:
+                            continue
+                        label_rkap = f"{LABEL_HARGA_RKAP} {tahun}"
+                        frames.append(pd.DataFrame({
+                            'tanggal_terbit': tgl_tahun,
+                            'label_komparasi': label_rkap,
+                            y_col: float(r['harga_rkap']),
+                        }))
+                        warna_map[label_rkap] = warna_rkap
+                    if frames:
+                        df_plot_chart = pd.concat([df_plot_chart] + frames, ignore_index=True)
+
             tanggal_unik = df_plot_chart['tanggal_terbit'].unique()
             gdocs_export_label_hp = LABEL_HARGA_PEROLEHAN
 
@@ -1022,7 +1072,7 @@ def render(load_data, global_context):
             # tidak tertukar dengan garis komparasi Majalah - Incoterm biasa.
             if not df_hp.empty:
                 fig.for_each_trace(
-                    lambda tr: tr.update(line=dict(dash="dash", width=3)) if tr.name == LABEL_HARGA_PEROLEHAN else ()
+                    lambda tr: tr.update(line=dict(dash="dot", width=3)) if tr.name.startswith(LABEL_HARGA_RKAP) else ()
                 )
 
             # Label angka pada titik data TERAKHIR tiap garis (komparasi maupun Harga
