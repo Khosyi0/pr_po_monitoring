@@ -297,17 +297,36 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             ) AS po_closed_na
     """
 
-    # Query untuk breakdown SLA per prioritas
-    sla_prio_query = f"""
-        SELECT
-            prioritas,
-            COUNT(*) AS total_po,
-            COALESCE(SUM(nilai_sla), 0) AS sla_ontime
-        FROM vw_sips
-        WHERE {where_po}
-            AND UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
-            AND {po_date_cond}
-        GROUP BY prioritas
+    # Query untuk Lead Time Process
+    ltp_query = f"""
+    SELECT
+        -- Agreement
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'AGREEMENT' THEN 1 END) AS agreement_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'AGREEMENT' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS agreement_ontime,
+
+        -- Emergency
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'EMERGENCY' THEN 1 END) AS emergency_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'EMERGENCY' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS emergency_ontime,
+
+        -- Urgent
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'URGENT' THEN 1 END) AS urgent_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'URGENT' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS urgent_ontime,
+
+        -- TA
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'TA' THEN 1 END) AS ta_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'TA' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS ta_ontime,
+
+        -- Investasi
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'INVESTASI' THEN 1 END) AS investasi_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'INVESTASI' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS investasi_ontime,
+
+        -- Normal
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'NORMAL' THEN 1 END) AS normal_total,
+        COUNT(CASE WHEN UPPER(TRIM(kontrak_status)) = 'NON AGREEMENT' AND UPPER(TRIM(prioritas)) = 'NORMAL' AND COALESCE(nilai_sla, 0) = 1 THEN 1 END) AS normal_ontime
+    FROM vw_sips
+    WHERE {where_po}
+      AND UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO')
+      AND {po_date_cond}
     """
 
     # == Query chart data ==
@@ -329,15 +348,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         FROM vw_sips
         LEFT JOIN LATERAL (
             SELECT
-                -- bulan_pr: SELALU basis tgl_disposisi_buyer, dipakai
-                -- untuk mengelompokkan Total_PR (tidak berubah dari
-                -- logika where_pr).
                 TO_CHAR(DATE_TRUNC('month', tgl_disposisi_buyer), 'YYYY-MM') AS bulan_pr,
-                -- bulan_po: mengikuti logika po_date_cond -- pakai
-                -- tgl_po kalau ada & terisi; kalau status PROSES PO
-                -- tanpa tgl_po, pakai tgl_disposisi_buyer, dengan
-                -- aturan carry-over (dorong ke 1 Januari date_from.year
-                -- kalau tgl_disposisi_buyer dari tahun sebelumnya).
                 TO_CHAR(DATE_TRUNC('month',
                     CASE
                         WHEN tgl_po IS NOT NULL AND tgl_po::text NOT IN ('', '-')
@@ -355,7 +366,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         try:
             df_kpi   = load_data(kpi_query)
             df_chart = load_data(chart_query)
-            df_sla_prio = load_data(sla_prio_query)
+            df_ltp   = load_data(ltp_query)
         except Exception as e:
             st.error(f"Gagal memuat data: {e}")
             return
@@ -368,10 +379,10 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         r = df_kpi.iloc[0]
 
         # == Kalkulasi KPI =========================================================
-        total_pr      = int(r['total_pr']       or 0)
-        total_po      = int(r['total_po']       or 0)
-        avg_pr_po     = float(r['avg_pr_po']    or 0)
-        sla_ontime    = float(r['sla_ontime']   or 0)
+        total_pr      = int(r['total_pr']        or 0)
+        total_po      = int(r['total_po']        or 0)
+        avg_pr_po     = float(r['avg_pr_po']     or 0)
+        sla_ontime    = float(r['sla_ontime']    or 0)
         
         # Mapping Variabel Finansial agar selaras menggunakan Non Agreement
         oe_proses     = float(r['oe_proses_na'] or 0)
@@ -381,7 +392,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         oe_total      = oe_proses + oe_closed
         po_total      = po_proses + po_closed
 
-        # Variabel khusus Efisiensi (Non Agreement)
         oe_proses_na  = oe_proses
         oe_closed_na  = oe_closed
         po_proses_na  = po_proses
@@ -401,29 +411,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         
         pct_on_budget = (on_budget_cnt / total_po * 100) if total_po > 0 else 0.0
 
-        # Proses data SLA per prioritas
-        sla_by_prio = {}
-        sla_details_by_prio = {}
-        if not df_sla_prio.empty and total_po > 0:
-            for _, row in df_sla_prio.iterrows():
-                prio = row['prioritas']
-                ontime_prio = row['sla_ontime']
-                total_po_prio = row['total_po']
-                # (Jumlah on-time per prioritas / Total PO keseluruhan) * 100
-                contribution_pct = (ontime_prio / total_po) * 100
-                sla_by_prio[prio] = contribution_pct
-
-                # Kalkulasi detail untuk delta text
-                pct_memenuhi = (ontime_prio / total_po_prio * 100) if total_po_prio > 0 else 0.0
-                sla_details_by_prio[prio] = {"pct_memenuhi": pct_memenuhi, "item_memenuhi": ontime_prio, "total_item": total_po_prio}
-
-        prio_normal_pct = sla_by_prio.get('Normal', 0.0)
-        prio_ta_pct = sla_by_prio.get('TA', 0.0)
-        prio_investasi_pct = sla_by_prio.get('Investasi', 0.0)
-        prio_urgent_pct = sla_by_prio.get('Urgent', 0.0)
-        prio_emergency_pct = sla_by_prio.get('Emergency', 0.0)
-        
-        # == KPI_DASH: definisi 15 KPI dengan formula masing-masing ==============
+        # == KPI_DASH: definisi 14 KPI dengan formula masing-masing ==============
         KPI_DASH = [
             # == Baris 1: PR / PO / PO-PR =========================================
             {
@@ -704,15 +692,15 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     Nilai positif berarti realisasi PO lebih rendah dari anggaran OE.
 
 **Target:** -""",
-        },
-        {
-            "key":      "sips_kpi_on_budget",
-            "icon":     "check-circle",
-            "label":    "% On Budget",
-            "value":    f"{format_number(pct_on_budget)}%",
-            "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
-            "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
-            "formula":  f"""\
+            },
+            {
+                "key":      "sips_kpi_on_budget",
+                "icon":     "check-circle",
+                "label":    "% On Budget",
+                "value":    f"{format_number(pct_on_budget)}%",
+                "delta":    f"{format_number(on_budget_cnt)} dari {format_number(total_po)} PO ≤ 100%",
+                "dtype":    "positive" if pct_on_budget >= 80 else ("negative" if pct_on_budget < 60 else "neutral"),
+                "formula":  f"""\
 **% On Budget**: Persentase PO yang nilai realisasinya tidak melebihi nilai MR/SR (kolom Z ≤ 100%).
 
 **Formula Excel:**
@@ -727,143 +715,122 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 | < 60% | 🔴 Banyak over budget |
 
 **Target:** -""",
-        },
-    ]
+            },
+        ]
 
-    # == Helper: render satu baris (max 3 KPI) dengan tombol formula ==========
-    def render_kpi_row(items):
-        cols = st.columns(3)
-        for i, col in enumerate(cols):
-            with col:
-                if i >= len(items):
-                    continue
-                kpi     = items[i]
+        # == Helper: render satu baris (max 3 KPI) dengan tombol formula ==========
+        def render_kpi_row(items):
+            cols = st.columns(3)
+            for i, col in enumerate(cols):
+                with col:
+                    if i >= len(items):
+                        continue
+                    kpi     = items[i]
 
-                delta_type_map = {"positive": "green", "negative": "red"}
-                delta_type = delta_type_map.get(kpi["dtype"], "neutral")
-                st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], kpi["delta"], delta_type), unsafe_allow_html=True)
-                with st.popover(":material/visibility:", help="Lihat Formula"):
-                    st.info(kpi["formula"])
+                    delta_type_map = {"positive": "green", "negative": "red"}
+                    delta_type = delta_type_map.get(kpi["dtype"], "neutral")
+                    st.markdown(_card(ICONS[kpi["icon"]], kpi["label"], kpi["value"], kpi["delta"], delta_type), unsafe_allow_html=True)
+                    with st.popover(":material/visibility:", help="Lihat Formula"):
+                        st.info(kpi["formula"])
 
-    # == Render 5 baris x 3 KPI ===============================================
-    for row_start in range(0, len(KPI_DASH), 3):
-        row_items = KPI_DASH[row_start:row_start + 3]
-        render_kpi_row(row_items)
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        # == Render 5 baris x 3 KPI ===============================================
+        for row_start in range(0, len(KPI_DASH), 3):
+            row_items = KPI_DASH[row_start:row_start + 3]
+            render_kpi_row(row_items)
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # == Bagian Baru: Pemenuhan SLA berdasarkan Prioritas =====================
-    title_col, btn_col = st.columns([9, 1])
-    with title_col:
-        st.markdown("""
-            <h1 style='display: flex; align-items: center; font-size:24px;'>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
-                    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16M8 13A5 5 0 1 1 8 3a5 5 0 0 1 0 10m0 1A6 6 0 1 0 8 2a6 6 0 0 0 0 12m0-9a3 3 0 1 1 0 6 3 3 0 0 1 0-6m0 1a2 2 0 1 0 0 4 2 2 0 0 0 0-4"/>
-                </svg>
-                Pemenuhan SLA berdasarkan Prioritas
-            </h1>
-        """, unsafe_allow_html=True)
-    with btn_col:
-        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-        with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info("""**Pemenuhan SLA berdasarkan Prioritas**: Kontribusi persentase dari PO dengan prioritas tertentu yang on-time terhadap total PO keseluruhan.
+        # =========================================================================
+        # WIDGET LEAD TIME PROCESS (Menggantikan Pemenuhan SLA per Prioritas)
+        # =========================================================================
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        title_col, btn_col = st.columns([19, 1])
+        with title_col:
+            st.markdown("""
+                <h1 style='display: flex; align-items: center; font-size:24px;'>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                        <path d="M8 3.5a.5.5 0 0 0-1 0V9a.5.5 0 0 0 .252.434l3.5 2a.5.5 0 0 0 .496-.868L8 8.71zM8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m7-8A7 7 0 1 1 1 8a7 7 0 0 1 14 0"/>
+                    </svg>
+                    Lead Time Process
+                </h1>
+            """, unsafe_allow_html=True)
+        with btn_col:
+            st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+            with st.popover(":material/visibility:", help="Lihat Formula"):
+                st.info("""**Lead Time Process**: Persentase penyelesaian tepat waktu (Nilai SLA = 1) berdasarkan jenis kontrak (Agreement) dan kategori prioritas pengadaan (Emergency, Urgent, TA, Investasi, Normal).
 
-**Kalkulasi:**
-% Kontribusi = (Total PO On Time Prioritas X) / (Total PO Keseluruhan) x 100%""")
+**Formula Excel:**
+- Agreement: Dihitung dari baris berstatus Agreement (Target 12 Hari)
+- Emergency: Non Agreement dengan prioritas Emergency (Target 5 Hari)
+- Urgent: Non Agreement dengan prioritas Urgent (Target 24 Hari)
+- TA: Non Agreement dengan prioritas TA (Target 48 Hari)
+- Investasi: Non Agreement dengan prioritas Investasi (Target 48 Hari)
+- Normal: Non Agreement dengan prioritas Normal (Target 57 Hari)
+""")
 
-    # Data untuk kartu-kartu dipisah agar lebih mudah diatur layout-nya
-    card_overall = {"label": "% On Time SLA", "value": pct_ontime, "icon": "award", "prio": "Overall"}
-    
-    sla_prio_cards = [
-        {"label": "% Kontribusi Normal", "value": prio_normal_pct, "icon": "check-circle", "prio": "Normal"},
-        {"label": "% Kontribusi TA", "value": prio_ta_pct, "icon": "check-circle", "prio": "TA"},
-        {"label": "% Kontribusi Investasi", "value": prio_investasi_pct, "icon": "check-circle", "prio": "Investasi"},
-        {"label": "% Kontribusi Urgent", "value": prio_urgent_pct, "icon": "check-circle", "prio": "Urgent"},
-        {"label": "% Kontribusi Emergency", "value": prio_emergency_pct, "icon": "check-circle", "prio": "Emergency"},
-    ]
+        ltp_row = df_ltp.iloc[0] if (df_ltp is not None and not df_ltp.empty) else {}
 
-    # Buat layout kolom utama: Kiri (Besar), Kanan (List Prioritas)
-    col_main_left, col_main_right = st.columns([1, 3], gap="small")
+        categories = [
+            {"title": "Agreement",  "key": "agreement", "target_hari": 12},
+            {"title": "Emergency",  "key": "emergency", "target_hari": 5},
+            {"title": "Urgent",     "key": "urgent",    "target_hari": 24},
+            {"title": "TA",         "key": "ta",        "target_hari": 48},
+            {"title": "Investasi",  "key": "investasi", "target_hari": 48},
+            {"title": "Normal",     "key": "normal",    "target_hari": 57},
+        ]
 
-    # ==========================================
-    # 1. KARTU UTAMA DI KIRI (Besar & Memanjang)
-    # ==========================================
-    with col_main_left:
-        # Ubah delta_text di bawah ini
-        delta_text = f"{format_number(sla_miss)} Item dari {format_number(total_po)} Tidak Memenuhi"
-        
-        delta_type = "positive" if card_overall["value"] >= 80 else "negative"
-        delta_class = "dash-delta-green" if delta_type == "positive" else "dash-delta-red"
-        
-        # Memanipulasi CSS agar memanjang (min-height ~256px), flex-col (atas bawah), dan divider di kanan
-        st.markdown(f"""
-        <div style="border-right: 2px solid rgba(128,128,128,0.2); padding-right: 20px; height: 100%;">
-            <div class="dash-card" style="min-height: 256px !important; flex-direction: column; justify-content: center; text-align: center; align-items: center;">
-                <div class="dash-icon" style="margin-bottom: 16px; width: 64px; height: 64px;">
-                    {_svg(ICONS[card_overall["icon"]], 40)}
+        cols_ltp = st.columns(6)
+
+        for idx, cat in enumerate(categories):
+            tot = int(ltp_row.get(f"{cat['key']}_total", 0) or 0)
+            ontime = int(ltp_row.get(f"{cat['key']}_ontime", 0) or 0)
+            pct = (ontime / tot * 100) if tot > 0 else 0.0
+
+            if tot == 0:
+                pct_str = "0%"
+            elif abs(pct - 100.0) < 1e-9:
+                pct_str = "100%"
+            else:
+                pct_str = f"{pct:.2f}%".replace('.', ',')
+
+            with cols_ltp[idx]:
+                st.markdown(f"""
+                <div class="dash-card" style="
+                    min-height: auto !important; 
+                    height: 100% !important; 
+                    padding: 20px 8px 16px 8px !important; 
+                    border-left-width: 6px !important;
+                    border-left-style: solid !important;
+                    border-left-color: var(--text-color) !important;
+                    display: flex; 
+                    flex-direction: column; 
+                    align-items: center; 
+                    justify-content: center; 
+                    text-align: center;
+                ">
+                    <div style="font-size: 16px; font-weight: 500; color: var(--text-color); margin-bottom: 4px;">
+                        {cat['title']}
+                    </div>
+                    <div style="font-size: 2.2rem; font-weight: 700; color: #09ab3b; line-height: 1.1; margin: 4px 0 8px 0;">
+                        {pct_str}
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-color); opacity: 0.85; margin-bottom: 6px; font-weight: 500;">
+                        {format_number(ontime)} dari {format_number(tot)}
+                    </div>
+                    <div style="
+                        display: inline-block; 
+                        background-color: rgba(9, 171, 59, 0.12) !important; 
+                        border: 1px solid rgba(9, 171, 59, 0.3) !important;
+                        padding: 2px 12px; 
+                        border-radius: 12px;
+                    ">
+                        <span style="color: #0b802e !important; font-size: 11px; font-weight: 700; display: block;">
+                            Target : {cat['target_hari']} Hari
+                        </span>
+                    </div>
                 </div>
-                <div class="dash-body">
-                    <p class="dash-label" style="font-size: 14px; margin-bottom: 8px !important;">{card_overall["label"]}</p>
-                    <p class="dash-value" style="font-size: 3rem !important;">{format_number(card_overall['value'], decimals=2)}%</p>
-                    <p class="{delta_class}">{delta_text}</p>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-        with st.popover(":material/visibility:", help="Lihat Formula"):
-            st.info(f"""**% On Time SLA (Overall)**: Persentase PO yang diselesaikan tepat waktu dari total PO.
-
-**Kalkulasi:**
-```
-% On Time = SLA On Time / Total PO × 100%
-= {format_number(int(sla_ontime))} / {format_number(total_po)} × 100%
-= {format_number(pct_ontime, decimals=2)}%
-```""")
-                
-        # ==========================================
-        # 2. KARTU PRIORITAS DI KANAN (2 Baris)
-        # ==========================================
-        with col_main_right:
-            # Fungsi bantuan untuk render kartu kecil agar kode tidak berulang
-            def render_small_card(card_data):
-                prio_details = sla_details_by_prio.get(card_data["prio"], {"pct_memenuhi": 0.0, "item_memenuhi": 0, "total_item": 0})
-                pct_memenuhi = prio_details["pct_memenuhi"]
-                item_memenuhi = prio_details["item_memenuhi"]
-                total_item_prio = prio_details["total_item"]
-                
-                c_delta_text = f"{format_number(pct_memenuhi, decimals=1)}% | {format_number(int(item_memenuhi))} dari {format_number(int(total_item_prio))} Item"
-                c_delta_type = "positive" if card_data["value"] >= 80 else "negative"
-                
-                st.markdown(_card(
-                    ICONS[card_data["icon"]], 
-                    card_data["label"], 
-                    f"{format_number(card_data['value'], decimals=2)}%",
-                    c_delta_text, 
-                    c_delta_type
-                ), unsafe_allow_html=True)
-                
-                with st.popover(":material/visibility:", help="Lihat Formula"):
-                    st.info(f"""**Kontribusi SLA (Prioritas {card_data['prio']})**: Kontribusi persentase dari PO prioritas '{card_data['prio']}' yang on-time terhadap total PO keseluruhan.
-
-**Kalkulasi:**
-% On Time = (Total PO On Time Prioritas '{card_data['prio']}') / (Total PO Prioritas '{card_data['prio']}') × 100%
-                    """)
-
-        # --- Baris 1: 3 Kartu (Normal, TA, Investasi) ---
-            r1_cols = st.columns(3)
-            for j in range(3):
-                with r1_cols[j]:
-                    render_small_card(sla_prio_cards[j])
-            
-            st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True) # Spacing antar baris
-            
-            # --- Baris 2: 2 Kartu (Urgent, Emergency) ---
-            r2_cols = st.columns(3) # Tetap pakai 3 kolom agar ukurannya konsisten dengan atasnya
-            for j in range(3, 5):
-                with r2_cols[j-3]: # Index 0 dan 1 (kolom kiri dan tengah)
-                    render_small_card(sla_prio_cards[j])
-            
-            # Kolom ke-3 di baris 2 dibiarkan kosong secara otomatis oleh Streamlit
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
 
     # =========================================================================
@@ -909,9 +876,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
         if ('bulan_pr' in df_chart.columns and 'bulan_po' in df_chart.columns
             and (df_chart['bulan_pr'].notna().any() or df_chart['bulan_po'].notna().any())):
  
-            # Hitung Total_PR dan Total_PO TERPISAH, masing-masing dengan
-            # kolom bulan acuannya sendiri, lalu digabung (outer merge)
-            # supaya bulan yang cuma py PR atau cuma py PO tetap tampil.
             pr_bulanan = (df_chart[df_chart['is_pr'] == 1]
                         .groupby('bulan_pr')
                         .agg(Total_PR=('is_pr', 'sum'))
@@ -929,22 +893,15 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
             trend['Total_PO'] = trend['Total_PO'].fillna(0).astype(int)
             trend = trend.sort_values('bulan').reset_index(drop=True)
     
-            # 1. Konversi 'YYYY-MM' ke tanggal 1 awal bulan terlebih dahulu
             trend['bulan'] = pd.to_datetime(trend['bulan'])
-
-            # 2. Hitung kumulatif SEBELUM filter. 
-            # (Agar backlog/saldo awal sebelum date_from tetap masuk ke total kumulatif)
             trend['Cum_PR'] = trend['Total_PR'].cumsum()
             trend['Cum_PO'] = trend['Total_PO'].cumsum()
 
-            # 3. Sesuaikan batas filter agar hanya mengecek Tahun & Bulannya saja
             dt_from = pd.to_datetime(date_from).replace(day=1)
             dt_to_month = pd.to_datetime(date_to).replace(day=1)
 
-            # 4. Eksekusi filter untuk memotong tampilan chart
             trend = trend[(trend['bulan'] >= dt_from) & (trend['bulan'] <= dt_to_month)]
 
-            # 5. Geser ke akhir bulan, TAPI batasi maksimal ke tanggal akhir filter (date_to)
             dt_to_exact = pd.to_datetime(date_to)
             trend['bulan'] = (trend['bulan'] + pd.offsets.MonthEnd(0)).clip(upper=dt_to_exact)
 
@@ -989,7 +946,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                         gridcolor='rgba(128,128,128,0.15)',
                         tickmode='array',
                         tickvals=trend['bulan'],
-                        ticktext=trend['bulan'].dt.strftime('%b %Y') # Memastikan sumbu X bawah tetap "Jan 2026"
+                        ticktext=trend['bulan'].dt.strftime('%b %Y')
                     ),
                     yaxis=dict(title=y_axis_title, gridcolor='rgba(128,128,128,0.15)'),
                     separators=",."
@@ -1019,7 +976,6 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
 **Formula Excel:**
 - Filter nama buyer yang ingin dicari
 - Filter **Status** sesuai yang diinginkan
-                    
 """)
         st.caption("Distribusi status PR SIPS.")
 

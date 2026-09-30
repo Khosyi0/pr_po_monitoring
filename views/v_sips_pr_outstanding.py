@@ -1,5 +1,5 @@
 """
-v_sips_alert.py - Halaman Alert SIPS
+v_sips_pr_outstanding.py - Halaman PR Outstanding SIPS
 Menampilkan PR SIPS yang pending (belum jadi PO) beserta aging-nya.
 """
  
@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from utils import format_idr, format_idr_short, format_number, render_chat_analyst, build_sips_where, build_sips_bagian_cond
  
-SIPS_ALERT_CSS = """
+SIPS_PR_OUTSTANDING_CSS = """
 <style>
 /* Styling untuk Chart Plotly agar dibungkus kotak seperti di halaman lain */
 div[data-testid="stPlotlyChart"] {
@@ -41,7 +41,7 @@ div[data-testid="stPopover"] {
 
 def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, **kwargs):
 
-    st.markdown(SIPS_ALERT_CSS, unsafe_allow_html=True)
+    st.markdown(SIPS_PR_OUTSTANDING_CSS, unsafe_allow_html=True)
  
     info_filter     = kwargs.get('info_filter', 'Tidak ada filter spesifik')
     selected_pgroup = kwargs.get('selected_pgroup', ['All'])
@@ -56,12 +56,12 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
                          3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5m.002 6a1 1 0 1
                          1 0 2 1 1 0 0 1 0-2"/>
             </svg>
-            Warning & Action Required - SIPS
+            PR Outstanding - SIPS
         </h1>
     """, unsafe_allow_html=True)
     st.markdown(
-        "<p style='font-size:18px; color:gray;'>Halaman ini menampilkan anomali data SIPS "
-        "dan dokumen yang membutuhkan tindakan segera!</p>",
+        "<p style='font-size:18px; color:gray;'>Halaman ini menampilkan PR SIPS yang masih pending (belum menjadi PO) beserta aging-nya, sehingga memudahkan untuk memantau"
+        " dan menangani PR yang membutuhkan tindakan segera!</p>",
         unsafe_allow_html=True
     )
     st.markdown("---")
@@ -85,7 +85,7 @@ def render(load_data, date_from, date_to, selected_nama, selected_bagian=None, *
     )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ALERT 1: PR Pending > 30 Hari (Selain Closed & Proses PO)
+    # PR_OUTSTANDING 1: PR Pending > 30 Hari (Selain Closed & Proses PO)
     # ══════════════════════════════════════════════════════════════════════════
     title_col, btn_col = st.columns([10, 1])
     with title_col:
@@ -129,7 +129,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    alert_pr_query = f"""
+    PR_OUTSTANDING_pr_query = f"""
     SELECT
         nama,
         no_pr,
@@ -149,22 +149,22 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
     ORDER BY umur_hari DESC, nama, no_pr
     """
 
-    with st.spinner("Memuat alert PR pending..."):
-        alert_pr_data = load_data(alert_pr_query)
+    with st.spinner("Memuat PR_OUTSTANDING PR pending..."):
+        PR_OUTSTANDING_pr_data = load_data(PR_OUTSTANDING_pr_query)
 
-    if not alert_pr_data.empty:
-        alert_pr_data['tgl_disposisi_buyer'] = pd.to_datetime(
-            alert_pr_data['tgl_disposisi_buyer'], errors='coerce'
+    if not PR_OUTSTANDING_pr_data.empty:
+        PR_OUTSTANDING_pr_data['tgl_disposisi_buyer'] = pd.to_datetime(
+            PR_OUTSTANDING_pr_data['tgl_disposisi_buyer'], errors='coerce'
         ).dt.strftime('%Y-%m-%d')
-        alert_pr_data['oe_pr'] = alert_pr_data['oe_pr'].apply(
+        PR_OUTSTANDING_pr_data['oe_pr'] = PR_OUTSTANDING_pr_data['oe_pr'].apply(
             lambda x: f"Rp {x:,.0f}" if pd.notna(x) else ""
         )
         
-        alert_pr_data.index = alert_pr_data.index + 1
+        PR_OUTSTANDING_pr_data.index = PR_OUTSTANDING_pr_data.index + 1
 
-        st.caption(f"Ditemukan **{len(alert_pr_data):,}** PR pending > 30 hari.")
+        st.caption(f"Ditemukan **{len(PR_OUTSTANDING_pr_data):,}** PR pending > 30 hari.")
         st.dataframe(
-            alert_pr_data.rename(columns={
+            PR_OUTSTANDING_pr_data.rename(columns={
                 'nama':               'Nama',
                 'no_pr':              'No PR',
                 'item':               'Item',
@@ -183,7 +183,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
         # Download XLSX
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            alert_pr_data.to_excel(writer, index=False, sheet_name='PR_Pending')
+            PR_OUTSTANDING_pr_data.to_excel(writer, index=False, sheet_name='PR_Pending')
         excel_buffer.seek(0)
 
         st.download_button(
@@ -199,7 +199,7 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ALERT 2: Rekap Aging PR (per rentang umur) + Breakdown per Nama
+    # PR_OUTSTANDING 2: Rekap Aging PR (per rentang umur) + Breakdown per Nama
     # ══════════════════════════════════════════════════════════════════════════
     col_aging, col_nama = st.columns([1, 1], gap="large")
 
@@ -222,13 +222,13 @@ diproses menjadi PO dan sudah menunggu lebih dari 30 hari sejak **Tanggal Dispos
 **Rekap Aging PR Pending (Open)**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO),
 dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
 
-**Cara membaca chart:**
-| Bucket | Status |
-|---|---|
-| 0–15 Hari | Masih sangat baru |
-| 16–30 Hari | Pantau berkala |
-| 31–60 Hari | Follow-up aktif ke buyer |
-| > 60 Hari | 🔴 Kritis, eskalasi segera |
+**Kategori Aging:**
+- `0–7 Hari`: Masih baru masuk
+- `8–14 Hari`: Proses awal
+- `15–30 Hari`: Pantau berkala
+- `31–50 Hari`: Follow-up aktif ke buyer
+- `51–90 Hari`: Mendekati batas kritis
+- `> 90 Hari`: 🔴 Sangat kritis, eskalasi segera
 
 **Formula Excel:** (SIPS)
 - Filter **Status** selain `Closed` dan `Proses PO`
@@ -241,10 +241,12 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
         aging_query = f"""
         SELECT
             CASE
-                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 15 THEN '0–15 Hari'
-                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 30 THEN '16–30 Hari'
-                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 60 THEN '31–60 Hari'
-                ELSE '> 60 Hari'
+                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 7  THEN '0–7 Hari'
+                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 14 THEN '8–14 Hari'
+                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 30 THEN '15–30 Hari'
+                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 50 THEN '31–50 Hari'
+                WHEN (CURRENT_DATE - tgl_disposisi_buyer) <= 90 THEN '51–90 Hari'
+                ELSE '> 90 Hari'
             END AS umur_pr,
             COUNT(*) AS total_pr
         FROM vw_sips
@@ -259,22 +261,42 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
             aging_data = load_data(aging_query)
 
         if not aging_data.empty:
-            category_aging = ['0–15 Hari', '16–30 Hari', '31–60 Hari', '> 60 Hari']
+            category_aging = ['0–7 Hari', '8–14 Hari', '15–30 Hari', '31–50 Hari', '51–90 Hari', '> 90 Hari']
+            
+            # Map rentang ke urutan agar dataframe terurut rapi
+            aging_data['sort_key'] = aging_data['umur_pr'].apply(lambda x: category_aging.index(x) if x in category_aging else 99)
+            aging_data = aging_data.sort_values('sort_key').reset_index(drop=True)
+
+            # Mapping warna tetap: semakin lama hari -> semakin merah
+            aging_color_map = {
+                '0–7 Hari':   '#09ab3b',  # Hijau
+                '8–14 Hari':  '#2ecc71',  # Hijau muda
+                '15–30 Hari': '#f1c40f',  # Kuning
+                '31–50 Hari': '#f39c12',  # Oranye muda
+                '51–90 Hari': '#e67e22',  # Oranye tua
+                '> 90 Hari':  '#e03c3c'   # Merah
+            }
+
             fig_aging = px.bar(
-                aging_data, x='umur_pr', y='total_pr',
+                aging_data, 
+                x='umur_pr', 
+                y='total_pr',
                 labels={'umur_pr': 'Aging', 'total_pr': 'Jumlah PR'},
-                text_auto=True,
+                text='total_pr',
                 category_orders={'umur_pr': category_aging},
-                color='total_pr',
-                color_continuous_scale=[[0, '#09ab3b'], [0.4, '#f0a500'], [1, '#e03c3c']],
+                color='umur_pr',  # Warna diikat ke kategori umur (Aging), bukan total_pr
+                color_discrete_map=aging_color_map
             )
-            fig_aging.update_coloraxes(showscale=False)
+            fig_aging.update_traces(textposition='outside')
             fig_aging.update_layout(
+                showlegend=False,  # Sembunyikan legenda agar tampilan tetap bersih
                 height=360,
-                margin=dict(t=20, b=0, l=0, r=0),
+                margin=dict(t=25, b=0, l=0, r=0),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
                 font_color='gray',
+                xaxis=dict(tickangle=0, title='Aging'),
+                yaxis=dict(gridcolor='rgba(128,128,128,0.15)', title='Jumlah PR')
             )
             st.plotly_chart(fig_aging, use_container_width=True)
         else:
@@ -289,81 +311,107 @@ dikelompokkan per rentang umur sejak Tanggal Disposisi Buyer.
                          viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
                         <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-8.082.414c.92 0 1.535.54 1.541 1.318.012.791-.615 1.36-1.588 1.354-.861-.006-1.482-.469-1.54-1.066H5.104c.047 1.177 1.05 2.144 2.754 2.144 1.653 0 2.954-.937 2.93-2.396-.023-1.278-1.031-1.846-1.734-1.916v-.07c.597-.1 1.505-.739 1.482-1.876-.03-1.177-1.043-2.074-2.637-2.062-1.675.006-2.59.984-2.625 2.12h1.248c.036-.556.557-1.054 1.348-1.054.785 0 1.348.486 1.348 1.195.006.715-.563 1.237-1.342 1.237h-.838v1.072h.879Z"/>
                     </svg>
-                    Beban Pending per Buyer
+                    Realisasi PR-PO per Buyer
                 </h1>
             """, unsafe_allow_html=True)
         with btn_col3:
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             with st.popover(":material/visibility:", help="Lihat Formula"):
                 st.info("""\
-**Beban Pending per Buyer**: Bar chart jumlah PR yang belum diproses (status selain Closed dan Proses PO) per buyer,
-dibedakan berdasarkan apakah prosesnya sudah melebihi batas SLA (`standar_sla`).
+**Realisasi PR-PO per Buyer**: Perbandingan jumlah Total PR yang didisposisikan ke masing-masing buyer terhadap PR yang sudah berhasil diproses (Status Closed atau Proses PO).
 
-Bar 🟡 kuning (Nilai < 1) = **0** - Masih dalam batas SLA.
-Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan segera.
+Selisih antara bar Biru dan bar Oranye menunjukkan **PR Outstanding** yang masih dalam proses pengerjaan oleh buyer tersebut.
 
 **Formula Excel:** (SIPS)
-- Filter **Status** selain `Closed` dan `Proses PO`
-- Filter **Nama** per buyer
-- Tambah kolom `= (TODAY() - Tanggal Disposisi Buyer) / standar_sla`
-- Kelompokkan output: 0 jika rasio < 1, dan 1 jika rasio >= 1
-            """)
+- Filter nama buyer di kolom **Buyer**
+- **Total PR**: Hitung seluruh baris PR buyer tersebut
+- **PR Status Closed**: Hitung baris berstatus `Closed` dan `Proses PO`
+""")
 
-        st.caption("Jumlah PR Pending per buyer berdasarkan rasio pencapaian SLA. 0 = Aman, 1 = Overdue.")
+        st.caption("Perbandingan Total PR dan PR Status Closed/Proses PO untuk masing-masing buyer.")
 
         beban_query = f"""
         SELECT
             nama,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) AS pr_kuning,
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END) AS pr_merah
+            COUNT(*) AS total_pr,
+            COUNT(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN 1 END) AS pr_closed
         FROM vw_sips
         WHERE {where_pr}
-            AND UPPER(TRIM(status)) NOT IN ('CLOSED', 'PROSES PO')
-            AND tgl_disposisi_buyer IS NOT NULL
+          AND tgl_disposisi_buyer IS NOT NULL
         GROUP BY nama
-        ORDER BY (
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) < 1 THEN 1 END) + 
-            COUNT(CASE WHEN (CURRENT_DATE - tgl_disposisi_buyer) / NULLIF(standar_sla, 0) >= 1 THEN 1 END)
-        ) ASC
+        ORDER BY total_pr DESC
         """
 
-        with st.spinner("Memuat beban per buyer..."):
+        with st.spinner("Memuat realisasi per buyer..."):
             beban_data = load_data(beban_query)
 
         if not beban_data.empty:
+            # Singkatkan nama jika terlalu panjang untuk tampilan sumbu X
+            beban_data['nama_display'] = beban_data['nama'].astype(str).str.split(',').str[0].str.strip()
+
             fig_beban = go.Figure()
-            fig_beban.add_bar(
-                y=beban_data['nama'], x=beban_data['pr_kuning'],
-                name='0 (Dalam SLA)', orientation='h',
-                marker_color='#f0a500', # Kuning
-                text=beban_data['pr_kuning'].apply(lambda x: str(x) if x > 0 else ''),
-            )
-            fig_beban.add_bar(
-                y=beban_data['nama'], x=beban_data['pr_merah'],
-                name='1 (Overdue SLA)', orientation='h',
-                marker_color='#e03c3c', # Merah
-                text=beban_data['pr_merah'].apply(lambda x: str(x) if x > 0 else ''),
-            )
-            fig_beban.update_traces(textposition='inside', textfont=dict(color='white'))
+
+            # Bar 1: Total PR (Biru)
+            fig_beban.add_trace(go.Bar(
+                x=beban_data['nama_display'],
+                y=beban_data['total_pr'],
+                name='Total PR',
+                marker_color='#2b7fff',
+                text=beban_data['total_pr'],
+                textposition='outside',
+                textfont=dict(size=11, color='#2b7fff', weight='bold'),
+                customdata=beban_data[['nama', 'total_pr']],
+                hovertemplate='<b>%{customdata[0]}</b><br>Total PR: %{customdata[1]:,}<extra></extra>'
+            ))
+
+            # Bar 2: PR Status Closed (Oranye)
+            fig_beban.add_trace(go.Bar(
+                x=beban_data['nama_display'],
+                y=beban_data['pr_closed'],
+                name='PR Status Closed',
+                marker_color='#f39c38',
+                text=beban_data['pr_closed'],
+                textposition='outside',
+                textfont=dict(size=11, color='#f39c38', weight='bold'),
+                customdata=beban_data[['nama', 'pr_closed']],
+                hovertemplate='<b>%{customdata[0]}</b><br>PR Status Closed: %{customdata[1]:,}<extra></extra>'
+            ))
+
+            max_val_beban = max(beban_data['total_pr'].max(), beban_data['pr_closed'].max()) * 1.18
+
             fig_beban.update_layout(
                 barmode='group',
-                height=max(280, len(beban_data) * 44),
-                margin=dict(t=10, b=10, l=10, r=30),
-                legend=dict(orientation='h', yanchor='bottom', y=1.01),
-                xaxis=dict(title='Jumlah PR', gridcolor='rgba(128,128,128,0.15)'),
-                yaxis=dict(title=''),
+                height=360,
+                margin=dict(t=35, b=10, l=10, r=10),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='left',
+                    x=0.01
+                ),
+                xaxis=dict(
+                    title='',
+                    tickangle=-25,
+                    showgrid=False
+                ),
+                yaxis=dict(
+                    title='Jumlah PR',
+                    range=[0, max_val_beban],
+                    gridcolor='rgba(128,128,128,0.15)'
+                ),
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                font_color='gray',
+                font_color='gray'
             )
             st.plotly_chart(fig_beban, use_container_width=True)
         else:
-            st.info("Tidak ada data beban pending per buyer.")
+            st.info("Tidak ada data realisasi PR-PO per buyer.")
 
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # ALERT 3: PR Dalam Proses (Proses PO) yang Sudah Lama
+    # PR_OUTSTANDING 4: Tren Realisasi Item PR-PO (Berdasarkan Bulan Disposisi)
     # ══════════════════════════════════════════════════════════════════════════
     title_col4, btn_col4 = st.columns([10, 1])
     with title_col4:
@@ -373,10 +421,130 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
                      viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
                     <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0M7.519 5.057c-.886 1.418-1.772 2.838-2.542 4.265v1.12H8.85V12h1.26v-1.559h1.007V9.334H10.11V4.002H8.176zM6.225 9.281v.053H8.85V5.063h-.065c-.867 1.33-1.787 2.806-2.56 4.218"/>
                 </svg>
-                Monitoring Status PR SIPS
+                Tren Realisasi Item PR-PO
             </h1>
         """, unsafe_allow_html=True)
     with btn_col4:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        with st.popover(":material/visibility:", help="Lihat Formula"):
+            st.info("""\
+**Tren Realisasi Item PR-PO**: Grafik perbandingan jumlah Total PR yang masuk per bulan disposisi terhadap PR yang sudah berhasil diproses (Status Closed atau Proses PO).
+
+Selisih antara bar Biru (Total PR) dan bar Oranye (PR Status Closed) menggambarkan volume **PR Outstanding / Pending** yang belum selesai dikerjakan pada bulan tersebut.
+
+**Formula Excel:** (SIPS)
+- **Total PR**: Hitung baris PR berdasarkan bulan di `Tanggal Disposisi Buyer`
+- **PR Status Closed**: Hitung baris berstatus `Closed` dan `Proses PO` berdasarkan bulan di `Tanggal Disposisi Buyer`
+""")
+
+    st.caption("Perbandingan Total PR dan PR yang sudah berstatus Closed/Proses PO berdasarkan bulan disposisi buyer.")
+
+    trend_pr_query = f"""
+    SELECT 
+        DATE_TRUNC('month', tgl_disposisi_buyer)::date AS month,
+        COUNT(*) AS total_pr,
+        COUNT(CASE WHEN UPPER(TRIM(status)) IN ('CLOSED', 'PROSES PO') THEN 1 END) AS pr_closed
+    FROM vw_sips
+    WHERE {where_pr}
+      AND tgl_disposisi_buyer IS NOT NULL
+    GROUP BY 1
+    ORDER BY 1
+    """
+
+    with st.spinner("Memuat tren realisasi PR-PO..."):
+        trend_pr_data = load_data(trend_pr_query)
+
+    if not trend_pr_data.empty:
+        trend_pr_data['month'] = pd.to_datetime(trend_pr_data['month']).dt.tz_localize(None)
+        trend_pr_data = trend_pr_data.sort_values('month').reset_index(drop=True)
+        
+        # Filter batas tanggal awal bulan
+        dt_from_pd = pd.to_datetime(date_from).replace(day=1)
+        dt_to_pd = pd.to_datetime(date_to).replace(day=1)
+        trend_pr_data = trend_pr_data[(trend_pr_data['month'] >= dt_from_pd) & (trend_pr_data['month'] <= dt_to_pd)]
+
+        month_names_id = {
+            1: "Januari", 2: "Februari", 3: "Maret", 4: "April", 5: "Mei", 6: "Juni",
+            7: "Juli", 8: "Agustus", 9: "September", 10: "Oktober", 11: "November", 12: "Desember"
+        }
+        trend_pr_data['month_name'] = trend_pr_data['month'].dt.month.map(month_names_id)
+
+        fig_trend = go.Figure()
+
+        # Bar 1: Total PR (Biru)
+        fig_trend.add_trace(go.Bar(
+            x=trend_pr_data['month_name'],
+            y=trend_pr_data['total_pr'],
+            name='Total PR',
+            marker_color='#2b7fff',
+            text=trend_pr_data['total_pr'],
+            textposition='outside',
+            textfont=dict(size=12, color='#2b7fff', weight='bold'),
+            hovertemplate='<b>%{x}</b><br>Total PR: %{y:,}<extra></extra>'
+        ))
+
+        # Bar 2: PR Status Closed (Oranye)
+        fig_trend.add_trace(go.Bar(
+            x=trend_pr_data['month_name'],
+            y=trend_pr_data['pr_closed'],
+            name='PR Status Closed',
+            marker_color='#f39c38',
+            text=trend_pr_data['pr_closed'],
+            textposition='outside',
+            textfont=dict(size=12, color='#f39c38', weight='bold'),
+            hovertemplate='<b>%{x}</b><br>PR Status Closed: %{y:,}<extra></extra>'
+        ))
+
+        max_val_y = max(trend_pr_data['total_pr'].max(), trend_pr_data['pr_closed'].max()) * 1.18
+
+        fig_trend.update_layout(
+            barmode='group',
+            height=380,
+            xaxis_title='',
+            yaxis_title='Total PR',
+            yaxis=dict(
+                range=[0, max_val_y],
+                showgrid=True,
+                gridcolor='rgba(128,128,128,0.15)'
+            ),
+            xaxis=dict(
+                tickmode='array',
+                tickvals=trend_pr_data['month_name'].tolist(),
+                tickangle=0,
+                showgrid=False
+            ),
+            margin=dict(t=50, b=10, l=10, r=20),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.05,
+                xanchor="left",
+                x=0.01
+            ),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
+    else:
+        st.info("Tidak ada data tren realisasi PR-PO untuk filter ini.")
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PR_OUTSTANDING 5: Monitoring Status PR SIPS
+    # ══════════════════════════════════════════════════════════════════════════
+    title_col5, btn_col5 = st.columns([10, 1])
+    with title_col5:
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:30px; margin-bottom: 0px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="currentColor"
+                     viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 10px;">
+                    <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0m-8.006 4.158c1.74 0 2.924-1.119 2.924-2.806 0-1.641-1.178-2.584-2.56-2.584-.897 0-1.442.421-1.612.68h-.064l.193-2.344h3.621V4.002H5.791L5.445 8.63h1.149c.193-.358.668-.809 1.435-.809.85 0 1.582.604 1.582 1.57 0 1.085-.779 1.682-1.57 1.682-.697 0-1.389-.31-1.53-1.031H5.276c.065 1.213 1.149 2.115 2.72 2.115Z"/>
+                </svg>
+                Monitoring Status PR SIPS
+            </h1>
+        """, unsafe_allow_html=True)
+    with btn_col5:
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         with st.popover(":material/visibility:", help="Lihat Formula"):
             st.info("""\
@@ -399,13 +567,13 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     status_dist_query = f"""
     SELECT
         status,
-        COUNT(*)                                AS jumlah_pr,
-        COALESCE(SUM(oe_pr), 0)                 AS total_oe,
+        COUNT(*)                                        AS jumlah_pr,
+        COALESCE(SUM(oe_pr), 0)                         AS total_oe,
         ROUND(AVG(
             CASE WHEN tgl_disposisi_buyer IS NOT NULL
             THEN (CURRENT_DATE - tgl_disposisi_buyer)
             END
-        )::numeric, 1)                          AS avg_umur_hari
+        )::numeric, 1)                                  AS avg_umur_hari
     FROM vw_sips
     WHERE {where_pr}
     GROUP BY status
@@ -526,14 +694,14 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
     konteks_lines.append(info_filter)
     konteks_lines.append("")
 
-    if 'alert_pr_data' in locals() and not alert_pr_data.empty:
-        konteks_lines.append(f"## 1. ALERT: PR SIPS PENDING > 30 HARI (Total: {len(alert_pr_data)} PR)")
-        df_simple = alert_pr_data[['nama', 'no_pr', 'purchasing_group',
-                                    'prioritas', 'tgl_disposisi_buyer', 'umur_hari', 'status']].head(20)
+    if 'PR_OUTSTANDING_pr_data' in locals() and not PR_OUTSTANDING_pr_data.empty:
+        konteks_lines.append(f"## 1. PR_OUTSTANDING: PR SIPS PENDING > 30 HARI (Total: {len(PR_OUTSTANDING_pr_data)} PR)")
+        df_simple = PR_OUTSTANDING_pr_data[['nama', 'no_pr', 'purchasing_group',
+                                            'prioritas', 'tgl_disposisi_buyer', 'umur_hari', 'status']].head(20)
         konteks_lines.append(df_simple.to_csv(index=False))
         konteks_lines.append("")
     else:
-        konteks_lines.append("## 1. ALERT: PR SIPS PENDING > 30 HARI\nAman. Tidak ada PR pending > 30 hari.\n")
+        konteks_lines.append("## 1. PR_OUTSTANDING: PR SIPS PENDING > 30 HARI\nAman. Tidak ada PR pending > 30 hari.\n")
 
     if 'aging_data' in locals() and not aging_data.empty:
         konteks_lines.append("## 2. REKAP AGING PR PENDING SIPS")
@@ -543,25 +711,30 @@ Bar 🔴 merah (Nilai >= 1) = **1** - Overdue / Melebihi SLA → Perlu tindakan 
         konteks_lines.append("## 2. REKAP AGING PR PENDING SIPS\nTidak ada data aging.\n")
 
     if 'beban_data' in locals() and not beban_data.empty:
-        konteks_lines.append("## 3. BEBAN PENDING PER BUYER")
-        konteks_lines.append(beban_data.to_csv(index=False))
+        konteks_lines.append("## 3. REALISASI PR-PO PER BUYER")
+        konteks_lines.append(beban_data[['nama', 'total_pr', 'pr_closed']].to_csv(index=False))
         konteks_lines.append("")
     else:
-        konteks_lines.append("## 3. BEBAN PENDING PER BUYER\nTidak ada data.\n")
+        konteks_lines.append("## 3. REALISASI PR-PO PER BUYER\nTidak ada data.\n")
+
+    if 'trend_pr_data' in locals() and not trend_pr_data.empty:
+        konteks_lines.append("## 4. TREN REALISASI ITEM PR-PO")
+        konteks_lines.append(trend_pr_data[['month_name', 'total_pr', 'pr_closed']].to_csv(index=False))
+        konteks_lines.append("")
 
     if 'status_dist_data' in locals() and not status_dist_data.empty:
-        konteks_lines.append("## 4. DISTRIBUSI STATUS PR SIPS")
+        konteks_lines.append("## 5. DISTRIBUSI STATUS PR SIPS")
         konteks_lines.append(status_dist_data.to_csv(index=False))
         konteks_lines.append("")
     else:
-        konteks_lines.append("## 4. DISTRIBUSI STATUS PR SIPS\nTidak ada data.\n")
+        konteks_lines.append("## 5. DISTRIBUSI STATUS PR SIPS\nTidak ada data.\n")
 
-    suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (Alert SIPS)\n" + "\n".join(konteks_lines)
+    suplemen = "\n# SUPLEMEN - DETAIL HALAMAN INI (PR_OUTSTANDING SIPS)\n" + "\n".join(konteks_lines)
     konteks_final = kwargs.get("global_context", "") + "\n---\n" + suplemen
 
     with st.expander("Tanya ke Melati (Monitoring, Evaluasi, Laporan Terintegrasi)"):
         render_chat_analyst(
             konteks_data_teks=konteks_final,
-            nama_halaman="Halaman Alert SIPS (Warning & Action Required)",
+            nama_halaman="Halaman PR_OUTSTANDING SIPS (Warning & Action Required)",
             load_data_fn=load_data,
         )

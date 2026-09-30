@@ -56,7 +56,7 @@ from views import v_ai_prediksi_jalur, v_ai_prediksi_keterlambatan, v_ai_prediks
 from views import v_sap_dashboard, v_sap_detail, v_sap_evaluasi, v_sap_kinerja_pg, v_sap_alert
 
 # Views - SIPS
-from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_alert
+from views import v_sips_dashboard, v_sips_detail, v_sips_waktu, v_sips_pr_outstanding
 
 # Views - Inklaring Barang Impor
 from views import v_inklaring_dashboard, v_inklaring_manajemen, v_inklaring_waktu, v_inklaring_kedatangan_bb
@@ -260,7 +260,7 @@ def _render_alert():                    v_sap_alert.render(**st.session_state.ge
 def _render_sips_dashboard():           v_sips_dashboard.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_detail():              v_sips_detail.render(**st.session_state.get('_sips_view_args', {}))
 def _render_sips_waktu():               v_sips_waktu.render(**st.session_state.get('_sips_view_args', {}))
-def _render_sips_alert():               v_sips_alert.render(**st.session_state.get('_sips_view_args', {}))
+def _render_sips_pr_outstanding():      v_sips_pr_outstanding.render(**st.session_state.get('_sips_view_args', {}))
 def _render_inklaring_dashboard():      v_inklaring_dashboard.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_manajemen():      v_inklaring_manajemen.render(**st.session_state.get('_inklaring_view_args', {}))
 def _render_inklaring_waktu():          v_inklaring_waktu.render(**st.session_state.get('_inklaring_view_args', {}))
@@ -322,7 +322,7 @@ if is_admin():
 sips_pages = [
     st.Page(_render_sips_dashboard, title="Dashboard Monitoring SIPS", icon=":material/dashboard:"),
     st.Page(_render_sips_waktu, title="Analisis Waktu Proses SIPS", icon=":material/schedule:"),
-    st.Page(_render_sips_alert, title="Halaman Alert SIPS",         icon=":material/assignment_late:"),
+    st.Page(_render_sips_pr_outstanding, title="PR Outstanding SIPS",         icon=":material/assignment_late:"),
 ]
 if is_admin():
     sips_pages.insert(1, st.Page(_render_sips_detail, title="Detailed SIPS Data", icon=":material/unknown_document:"))
@@ -397,7 +397,7 @@ with st.sidebar:
 SUMMARY_TITLES   = {"Executive Summary", "Profile Departemen", "Isu"} 
 ADMIN_TITLES     = {"Manajemen User", "Manajemen Data", "Log Perubahan"}
 AI_TITLES        = {"Prediksi Jalur Impor Inklaring", "Prediksi Keterlambatan Vendor", "Prediksi Lead Time SIPS"}
-SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "Halaman Alert SIPS"}
+SIPS_TITLES      = {"Dashboard Monitoring SIPS", "Detailed SIPS Data", "Analisis Waktu Proses SIPS", "PR Outstanding SIPS"}
 INKLARING_TITLES = {"Dashboard Inklaring", "Manajemen Inklaring Data", "Analisis Waktu Proses Inklaring", "Rencana Kedatangan Bahan Baku"}
 BB_TITLES        = {"Harga Bahan Baku", "Manajemen Harga Majalah BB", "Kondisi Stock BB", "Manajemen Kondisi Stock BB"}
 POO_TITLES       = {"PO Outstanding - Reminder Email", "Monitoring PO Outstanding"}
