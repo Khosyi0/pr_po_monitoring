@@ -778,7 +778,7 @@ def render(load_data, global_context):
     max_date = df['tanggal_terbit'].max()
 
     today = datetime.now()
-    default_start_date = pd.Timestamp(year=today.year, month=today.month, day=1) - pd.DateOffset(months=14)
+    default_start_date = pd.Timestamp(year=today.year, month=today.month, day=1) - pd.DateOffset(years=1)
     default_start_date = default_start_date.date()
     calendar_min_date = min(min_date, default_start_date)
 
