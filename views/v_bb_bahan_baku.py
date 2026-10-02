@@ -21,6 +21,7 @@ from openpyxl.chart.legend import LegendEntry
 from utils import MAPPING_SINGKATAN, render_chat_analyst
 import gdocs_export
 import gemini_bb_resume
+import plotly.graph_objects as go
 
 BULAN_INDO = {
     1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April', 5: 'Mei', 6: 'Juni',
@@ -605,6 +606,19 @@ def variasikan_warna(hex_color, index, total):
     b = min(255, int(b * factor))
     return f"#{r:02x}{g:02x}{b:02x}"
 
+def ubah_kecerahan(hex_color, persen):
+    """persen > 0: campur dengan putih (lebih cerah). persen < 0: campur dengan hitam (lebih gelap)."""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    if persen >= 0:
+        r, g, b = [int(c + (255 - c) * persen) for c in (r, g, b)]
+    else:
+        r, g, b = [int(c * (1 + persen)) for c in (r, g, b)]
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+SUFFIX_MIN = " (Min)"
+SUFFIX_MAX = " (Max)"
+
 
 # Helper function untuk memproses data bahan baku di belakang layar (untuk batch export)
 def _proses_batch_bahan_baku(bb_key, start_date, end_date, jenis_harga, load_data):
@@ -821,16 +835,22 @@ def render(load_data, global_context):
                 args=(f"end_date_{suffix}", f"_perm_end_date_{suffix}")
             )
         with col_metode:
-            jenis_harga_options = ["AVERAGE", "MIN", "MAX"]
-            jenis_harga_default = st.session_state.get(f"_perm_jenis_harga_{suffix}", "AVERAGE")
-            jenis_harga = st.selectbox(
-                "Jenis Harga", jenis_harga_options,
-                index=jenis_harga_options.index(jenis_harga_default) if jenis_harga_default in jenis_harga_options else 0,
-                help="Pilih nilai harga yang ingin diplot pada grafik",
-                key=f"jenis_harga_{suffix}",
+            st.markdown("**Garis Tambahan**")
+            tampilkan_min = st.checkbox(
+                "Tampilkan Min",
+                value=st.session_state.get(f"_perm_tampilkan_min_{suffix}", False),
+                key=f"tampilkan_min_{suffix}",
                 on_change=_save_to_permanent,
-                args=(f"jenis_harga_{suffix}", f"_perm_jenis_harga_{suffix}")
+                args=(f"tampilkan_min_{suffix}", f"_perm_tampilkan_min_{suffix}")
             )
+            tampilkan_max = st.checkbox(
+                "Tampilkan Max",
+                value=st.session_state.get(f"_perm_tampilkan_max_{suffix}", False),
+                key=f"tampilkan_max_{suffix}",
+                on_change=_save_to_permanent,
+                args=(f"tampilkan_max_{suffix}", f"_perm_tampilkan_max_{suffix}")
+            )
+        jenis_harga = "AVERAGE"   # resume, tabel, & docs tetap pakai Average
         with col_jml:
             # Default jumlah komparasi mengikuti panjang `default_komparasi` di config
             # (jika ada dan belum ada pilihan tersimpan dari interaksi sebelumnya).
@@ -1026,6 +1046,31 @@ def render(load_data, global_context):
             
             df_plot_chart = df_plot[df_plot['label_komparasi'].isin(label_yang_tampil)].copy()
 
+            label_putus = []   # daftar label garis Min/Max, berguna juga untuk export
+            frames_minmax = []
+            for label in label_yang_tampil:
+                base = df_plot[df_plot['label_komparasi'] == label]
+                if base.empty:
+                    continue
+                warna_dasar = warna_map.get(label, "#1f77b4")
+                for aktif, kolom, suf, persen in [
+                    (tampilkan_min, 'harga_min', SUFFIX_MIN, +0.35),   # lebih cerah
+                    (tampilkan_max, 'harga_max', SUFFIX_MAX, -0.30),   # lebih gelap
+                ]:
+                    if not aktif:
+                        continue
+                    label_baru = f"{label}{suf}"
+                    frames_minmax.append(pd.DataFrame({
+                        'tanggal_terbit': base['tanggal_terbit'].values,
+                        'label_komparasi': label_baru,
+                        y_col: base[kolom].values,
+                    }))
+                    warna_map[label_baru] = ubah_kecerahan(warna_dasar, persen)
+                    label_putus.append(label_baru)
+
+            if frames_minmax:
+                df_plot_chart = pd.concat([df_plot_chart] + frames_minmax, ignore_index=True)
+
             if not df_hp.empty:
                 df_hp = df_hp.copy()
                 df_hp['tanggal_terbit'] = pd.to_datetime(df_hp['tanggal_terbit'])
@@ -1068,6 +1113,22 @@ def render(load_data, global_context):
                 labels={y_col: y_label, 'tanggal_terbit': 'Tanggal Publikasi', 'label_komparasi': 'Majalah & Incoterm'}
             )
 
+            GROUP_MIN = "ket_min"
+            GROUP_MAX = "ket_max"
+
+            def _style_trace(tr):
+                if tr.name in label_putus:
+                    base = tr.name.rsplit(" (", 1)[0]   # nama komparasi tanpa suffix (Min)/(Max)
+                    tr.update(
+                        line=dict(dash="dash", width=1.5),
+                        legendgroup=base,    # dikelompokkan di bawah garis Average-nya
+                        showlegend=True,     # sekarang tampil di legend
+                    )
+                else:
+                    tr.update(legendgroup=tr.name)
+
+            fig.for_each_trace(_style_trace)
+
             # Garis Harga Perolehan dibedakan secara visual (putus-putus) supaya
             # tidak tertukar dengan garis komparasi Majalah - Incoterm biasa.
             if not df_hp.empty:
@@ -1079,6 +1140,8 @@ def render(load_data, global_context):
             # Perolehan), warnanya mengikuti warna garis masing-masing, supaya nilai
             # terkini langsung terbaca tanpa perlu hover.
             for label, df_label in df_plot_chart.groupby('label_komparasi'):
+                if label in label_putus:
+                    continue
                 df_label_sorted = df_label.sort_values('tanggal_terbit')
                 titik_terakhir = df_label_sorted.iloc[-1]
                 warna_label = warna_map.get(label, "#1f77b4")
@@ -1094,11 +1157,17 @@ def render(load_data, global_context):
                     bgcolor="rgba(255,255,255,0.75)",
                 )
 
+            n_putus = len(label_putus)
+
             fig.update_layout(
                 hovermode="x unified",
-                legend=dict(orientation="v", yanchor="top", y=-0.6, xanchor="left", x=0),
-                margin=dict(b=300, t=80, l=60, r=90),
-                height=600
+                legend=dict(
+                    orientation="v", yanchor="top", y=-0.6, xanchor="left", x=0,
+                    groupclick="toggleitem",   # klik satu entri hanya menyembunyikan garis itu saja
+                    itemwidth=40,              # sampel garis lebih panjang supaya pola putus-putus terlihat
+                ),
+                margin=dict(b=300 + 22 * n_putus, t=80, l=60, r=90),
+                height=600 + 22 * n_putus,
             )
 
             fig.update_xaxes(
