@@ -289,6 +289,34 @@ def _ekstrak_no_pen_pib_dari_koordinat(file_bytes):
     except Exception:
         return None
 
+def _ekstrak_tgl_eta_dari_pib(file_bytes, teks_layout):
+    """Tgl ETA = field '11. Perkiraan Tanggal Tiba : DD-MM-YYYY' di PIB Nopen.
+
+    Dibaca lewat posisi kata (baris yang sama dengan label 'Perkiraan'), karena
+    di PIB ada beberapa tanggal lain (mis. tanggal pendaftaran Nopen, tanggal
+    pengajuan, tanggal invoice) sehingga regex di seluruh teks rawan salah ambil.
+    Fallback: regex langsung pada teks hasil layout.
+    """
+    try:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            for page in pdf.pages:
+                words = page.extract_words()
+                for lw in (w for w in words if w['text'].startswith('Perkiraan')):
+                    sebaris = [
+                        w for w in words
+                        if abs(w['top'] - lw['top']) <= 3 and w['x0'] > lw['x1']
+                    ]
+                    teks = " ".join(w['text'] for w in sorted(sebaris, key=lambda w: w['x0']))
+                    tgl = _parse_tanggal_ddmmyyyy(_cari(r"(\d{2}-\d{2}-\d{4})", teks))
+                    if tgl:
+                        return tgl
+    except Exception:
+        pass
+
+    return _parse_tanggal_ddmmyyyy(
+        _cari(r"Perkiraan Tanggal Tiba\s*:\s*(\d{2}-\d{2}-\d{4})", teks_layout)
+    )
+
 
 def extract_pib_nopen(file_bytes):
     teks = _extract_text_all_pages(file_bytes)
@@ -314,6 +342,9 @@ def extract_pib_nopen(file_bytes):
     hasil['tgl_no_pen_pib'] = _parse_tanggal_ddmmyyyy(
         _cari(r"Nomor dan Tanggal Pendaftaran\s+(\d{2}-\d{2}-\d{4})", teks)
     )
+
+    # Tgl ETA = "11. Perkiraan Tanggal Tiba" (BUKAN dari SPPB)
+    hasil['tgl_eta'] = _ekstrak_tgl_eta_dari_pib(file_bytes, teks)
 
     # PENGIRIM = "1. Nama, Alamat" ; PEMASOK = "1a. Nama, Alamat" -- HANYA
     # baris pertama (nama perusahaan sampai koma penutup, mis. "BEST SIGN
@@ -447,12 +478,6 @@ def extract_sppb(file_bytes):
     else:
         hasil['no_sppb'] = None
         hasil['tgl_sppb'] = None
-
-    # Tgl ETA -- SPPB tidak eksplisit punya field ETA. Kolom paling dekat
-    # maknanya adalah tanggal SPPB itu sendiri; diisi sama dengan tgl_sppb
-    # sebagai pendekatan awal -- WAJIB dicek/dikoreksi manual oleh admin,
-    # karena SPPB tidak selalu representatif untuk ETA aktual.
-    hasil['tgl_eta'] = hasil['tgl_sppb']
 
     # QUANTITY (MT) = "Berat" -- dengan layout=True, label "Berat :" dan
     # angkanya bisa terpisah baris (kolom kanan lebih panjang dari kolom

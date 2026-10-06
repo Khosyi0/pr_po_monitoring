@@ -714,8 +714,9 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 # Dokumen wajib ditaruh paling atas di kolom kiri, diberi tanda *
                 file_pib = st.file_uploader(
                     "1. PIB Nopen *", type=["pdf"], key="upload_pib_nopen",
-                    help="Wajib. Sumber: AJU PIB, Tgl PIB, Pemasok, Pengirim, Komoditi, Asal Negara, "
-                         "Port of Load, HS, Bea Masuk, PPN, PPH, BM%, Invoice, Kurs, No/Tgl Pen PIB"
+                    help="Wajib. Sumber: AJU PIB, Tgl PIB, Tgl ETA (kolom 11. Perkiraan Tanggal Tiba), "
+                        "Pemasok, Pengirim, Komoditi, Asal Negara, "
+                        "Port of Load, HS, Bea Masuk, PPN, PPH, BM%, Invoice, Kurs, No/Tgl Pen PIB"
                 )
                 file_inward = st.file_uploader(
                     "2. INWARD (BC 1.1) *", type=["pdf"], key="upload_inward",
@@ -742,7 +743,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 )
                 file_sppb = st.file_uploader(
                     "7. SPPB", type=["pdf"], key="upload_sppb",
-                    help="Opsional. Sumber: No/Tgl SPPB, Tgl ETA (pendekatan), Quantity (MT)"
+                    help="Opsional. Sumber: No/Tgl SPPB, Quantity (MT)"
                 )
 
             semua_file = {
