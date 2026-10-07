@@ -5,7 +5,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 from datetime import datetime
+from datetime import date
 from utils import render_chat_analyst, format_number
 
 KPI_CSS = """
@@ -115,6 +117,71 @@ def _card(icon_d: str, label: str, value: str, delta: str = "", delta_type: str 
     </div>
 </div>"""
 
+MONITOR_STAGES = [
+    ("tgl_eta", "ETA"), ("tgl_terima_order", "Terima Order"), ("tgl_po_sap", "Tgl PO SAP"),
+    ("tgl_terima_bl", "Dok. Ori (BL)"), ("tgl_terima_invoice", "Dok. Ori (Invoice)"),
+    ("tgl_draft_manifest", "Draft Manifest"), ("tgl_manifest", "Manifest"),
+    ("tgl_ijin_timbun", "Ijin Timbun"), ("tgl_truck_lossing", "Truck Lossing"),
+    ("tgl_pib", "Tgl PIB"), ("tgl_memo_bayar_pib", "Memo Bayar PIB"), ("tgl_pkm", "PKM"),
+    ("tgl_bpn", "BPN"), ("tgl_no_pen_pib", "Tgl No Pen PIB"), ("tgl_spjm", "SPJM"),
+    ("tgl_sppb", "Tgl SPPB"), ("tgl_polis", "POLIS"),
+    ("tgl_laporan_penimbunan", "Laporan Penimbunan"), ("tgl_sptnp", "SPTNP"),
+]
+COLOR_DONE, COLOR_MISSING, COLOR_NONE = "#1f77b4", "#d62728", "rgba(0,0,0,0)"
+LEGEND_DONE = "Tahap Terisi"
+LEGEND_MISSING = "Perlu Dilengkapi"
+GARIS_BANTU = "rgba(128,128,128,0.55)"
+
+
+def _progress_chart(df_m):
+    n, n_tahap = len(df_m), len(MONITOR_STAGES)
+    filled = np.column_stack([df_m[c].notna().to_numpy() for c, _ in MONITOR_STAGES])
+    # indeks tahap terisi paling kanan (-1 jika belum ada yang terisi)
+    last = np.where(filled.any(axis=1),
+                    n_tahap - 1 - np.argmax(filled[:, ::-1], axis=1), -1)
+
+    fig = go.Figure()
+    for i, (col, label) in enumerate(MONITOR_STAGES):
+        colors, hover = [], []
+        for r in range(n):
+            if i > last[r]:
+                colors.append(COLOR_NONE); hover.append(f"{label}: belum sampai tahap ini")
+            elif filled[r, i]:
+                tgl = df_m[col].iloc[r]
+                txt = "0 (tanpa tanggal)" if tgl.year == 1900 else tgl.strftime("%d %b %Y")
+                colors.append(COLOR_DONE); hover.append(f"{label}: {txt}")
+            else:
+                colors.append(COLOR_MISSING); hover.append(f"{label}: BELUM TERISI")
+        fig.add_trace(go.Bar(
+            y=df_m["label"], x=[1] * n, base=i, orientation="h",
+            marker=dict(color=colors), hovertext=hover, hoverinfo="text", showlegend=False,
+        ))
+
+    # entri legenda
+    for nama, warna in [(LEGEND_DONE, COLOR_DONE), (LEGEND_MISSING, COLOR_MISSING)]:
+        fig.add_trace(go.Bar(y=[None], x=[None], name=nama, marker_color=warna, orientation="h"))
+
+    fig.update_layout(
+        barmode="overlay", bargap=0.25,
+        margin=dict(t=20, b=20, l=20, r=20), legend_title_text="",
+        height=max(250, 120 + n * 32),
+        xaxis=dict(tickmode="array", tickvals=[i + 0.5 for i in range(n_tahap)],
+                   ticktext=[l for _, l in MONITOR_STAGES], tickangle=-45,
+                   range=[0, n_tahap], showgrid=False),
+    )
+
+    # garis putus-putus vertikal per tahap, sejajar dengan label di bawah
+    for i in range(n_tahap):
+        fig.add_shape(
+            type="line", xref="x", yref="paper",
+            x0=i + 0.5, x1=i + 0.5, y0=0, y1=1,
+            layer="above",
+            line=dict(color=GARIS_BANTU, width=1, dash="dot"),
+        )
+
+    fig.update_yaxes(autorange="reversed")
+    return fig
+
 def render(load_data, date_from=None, date_to=None, **kwargs):
     st.markdown(KPI_CSS, unsafe_allow_html=True)
 
@@ -130,7 +197,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # Load data
+    # Load data inklaring impor terlebih dahulu untuk menghitung metrik KPI
     date_filter = ""
     if date_from and date_to:
         start_str = date_from.strftime('%Y-%m-%d')
@@ -166,8 +233,6 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     avg_bongkar = df['Lama_Bongkar_Hari'].mean()
 
     # Rincian angka nominal (total selisih hari / jumlah dokumen = rata-rata)
-    # untuk ditampilkan di popover formula, contoh: "-160 / 68 = -2,35 Hari".
-    # (Selaras dengan v_inklaring_dashboard.py)
     def _sum_count_avg(value_col):
         valid = df[value_col].dropna()
         total = valid.sum()
@@ -180,8 +245,8 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     detail_bebas_hari = _sum_count_avg('Bebas_Hari')
     detail_waiting = _sum_count_avg('Waiting_Time')
     detail_bongkar = _sum_count_avg('Lama_Bongkar_Hari')
-    
-    # == KPI CARDS ============================================
+
+    # == 1. KPI CARDS (PALING ATAS) ============================
     st.markdown("""
         <h1 style='display: flex; align-items: center; font-size:24px;'>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-graph-up" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
@@ -190,7 +255,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             Key Performance Indicators Waktu Inklaring
         </h1>
     """, unsafe_allow_html=True)
-    
+
     col1, col2, col3 = st.columns(3)
     with col1:
         val1 = f"{format_number(avg_bebas, decimals=1)} Hari" if pd.notna(avg_bebas) else "-"
@@ -222,7 +287,64 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     st.markdown("---")
 
-    # == 3 NEW BAR CHARTS (BEBAS, WAITING, BONGKAR) ============
+    # == 2. PROGRES KAPAL ==============================
+    try:
+        df_m = load_data("SELECT * FROM inklaring_monitoring ORDER BY tgl_eta NULLS LAST, id")
+    except Exception:
+        df_m = pd.DataFrame()
+
+    if not df_m.empty:
+        for c, _ in MONITOR_STAGES:
+            df_m[c] = pd.to_datetime(df_m[c], errors="coerce")
+
+        # label unik walau nama kapal kembar
+        df_m["label"] = df_m["nama_kapal"]
+        dup = df_m.duplicated("nama_kapal", keep=False)
+        df_m.loc[dup, "label"] = df_m["nama_kapal"] + " · " + df_m["komoditi"].fillna("-")
+        df_m["label"] = df_m["label"] + df_m.groupby("label").cumcount().map(
+            lambda k: f" ({k + 1})" if k else "")
+
+        lengkap = df_m[[c for c, _ in MONITOR_STAGES]].notna().all(axis=1)
+        batas = pd.Timestamp.today().normalize() - pd.DateOffset(months=1)
+        eta_ok = df_m["tgl_eta"].isna() | (df_m["tgl_eta"] >= batas)
+
+        df_proses = df_m[~lengkap]
+        df_selesai = df_m[lengkap & eta_ok]
+
+        # Header Progres Kapal dengan icon hourglass-split
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-hourglass-split" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M2.5 15a.5.5 0 1 1 0-1h1v-1a4.5 4.5 0 0 1 2.557-4.06c.29-.139.443-.377.443-.59v-.7c0-.213-.154-.451-.443-.59A4.5 4.5 0 0 1 3.5 4V3h-1a.5.5 0 0 1 0-1h11a.5.5 0 0 1 0 1h-1v1a4.5 4.5 0 0 1-2.557 4.06c-.29.139-.443.377-.443.59v.7c0 .213.154.451.443.59A4.5 4.5 0 0 1 12.5 13v1h1a.5.5 0 0 1 0 1zm2-13v1c0 .537.12 1.045.337 1.5h6.326c.216-.455.337-.963.337-1.5V2zm3 6.458c0 .358-.204.693-.526.852A3.5 3.5 0 0 0 5 13h6a3.5 3.5 0 0 0-2.474-3.69c-.322-.16-.526-.494-.526-.852z"/>
+                </svg>
+                Progres Kapal
+            </h1>
+        """, unsafe_allow_html=True)
+        if df_proses.empty:
+            st.info("Semua kapal sudah lengkap.")
+        else:
+            st.plotly_chart(_progress_chart(df_proses), use_container_width=True)
+
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+        # Header Progres Kapal (Sudah Lengkap) dengan icon check2-all
+        st.markdown("""
+            <h1 style='display: flex; align-items: center; font-size:24px;'>
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-check2-all" viewBox="0 0 16 16" style="margin-bottom: 4px; margin-right: 8px;">
+                    <path d="M12.354 4.354a.5.5 0 0 0-.708-.708L5 10.293 1.854 7.146a.5.5 0 1 0-.708.708l3.5 3.5a.5.5 0 0 0 .708 0zm-4.208 7-.896-.897.707-.707.543.543 6.646-6.647a.5.5 0 0 1 .708.708l-7 7a.5.5 0 0 1-.708 0"/>
+                    <path d="m5.354 7.146.896.897-.707.707-.897-.896a.5.5 0 1 1 .708-.708"/>
+                </svg>
+                Progres Kapal (Sudah Lengkap)
+            </h1>
+        """, unsafe_allow_html=True)
+        st.caption("Kapal dengan ETA lebih dari 1 bulan lalu otomatis disembunyikan.")
+        if df_selesai.empty:
+            st.info("Belum ada kapal yang lengkap pada 1 bulan terakhir.")
+        else:
+            st.plotly_chart(_progress_chart(df_selesai), use_container_width=True)
+        st.markdown("---")
+
+    # == 3. BAR CHARTS (BEBAS, WAITING, BONGKAR) ==============
     df['Kapal_Label'] = df['nama_kapal'].fillna('-').astype(str) + ' - AJU ' + df['no_aju'].fillna('-').astype(str)
     
     col_c1, col_c2 = st.columns(2)
@@ -305,13 +427,13 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     st.markdown("---")
 
-    # == GANTT CHART TIMELINE =================================
+    # == 4. GANTT CHART TIMELINE ==============================
     title_col, btn_col = st.columns([19, 1])
     with title_col:
         st.markdown("""
             <h1 style='display: flex; align-items: center; font-size:30px;'>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-view-list" viewBox="0 0 16 16" style="margin-bottom: 6px; margin-right: 8px;">
-                    <path d="M3 4.5h10a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H3zM1 2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 2zm0 12a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 14z"/>
+                    <path d="M3 4.5h10a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2zm0 1a1 1 0 0 0-1 1v3a1 1 0 0 1 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1H3zM1 2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 2zm0 12a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13A.5.5 0 0 1 1 14z"/>
                 </svg>
                 Timeline Operasional (Waiting Time & Bongkar)
             </h1>
@@ -332,15 +454,12 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
     df_timeline = df.dropna(subset=['tgl_pib', 'start_bongkar', 'selesai_bongkar']).copy()
     
     if not df_timeline.empty:
-        # Kita hanya ambil 15 data terbaru agar chart tidak terlalu sesak (opsional)
         df_timeline = df_timeline.sort_values('tgl_pib', ascending=False).head(15)
         
-        # Label Nama Kapal + AJU
         df_timeline['Kapal_Label'] = df_timeline['nama_kapal'].fillna('-').astype(str) + ' - AJU ' + df_timeline['no_aju'].fillna('-').astype(str)
         
         timeline_data = []
         for _, row in df_timeline.iterrows():
-            # 1. Fase Waiting Time
             if pd.notna(row['tgl_pib']) and pd.notna(row['start_bongkar']):
                 timeline_data.append({
                     'No AJU': row['Kapal_Label'],
@@ -349,7 +468,6 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                     'Finish': row['start_bongkar']
                 })
             
-            # 2. Fase Proses Bongkar
             if pd.notna(row['start_bongkar']) and pd.notna(row['selesai_bongkar']):
                 timeline_data.append({
                     'No AJU': row['Kapal_Label'],
@@ -359,8 +477,6 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
                 })
         
         df_gantt = pd.DataFrame(timeline_data)
-        
-        # Mapping warna
         color_discrete_map = {'Waiting Time': '#d62728', 'Proses Bongkar': '#1f77b4'}
         
         fig_gantt = px.timeline(
@@ -387,7 +503,7 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
 
     st.markdown("---")
 
-    # Konteks AI
+    # == 5. KONTEKS AI (MELATI CHATBOT) =======================
     info_filter = kwargs.get('info_filter', 'Filter tanggal default aktif')
     konteks_lines = ["## RINGKASAN WAKTU INKLARING", f"- Filter Aktif: {info_filter}"]
     konteks_lines.append(f"- Rata-rata Bebas: {avg_bebas:.1f} Hari" if pd.notna(avg_bebas) else "- Rata-rata Bebas: -")
