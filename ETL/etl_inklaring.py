@@ -13,6 +13,7 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 from sqlalchemy import text
+from sqlalchemy.types import Date, Integer
 
 
 class Config:
@@ -247,7 +248,10 @@ def run_etl_monitoring():
     with engine.begin() as conn:          # satu transaksi: gagal = rollback, data lama aman
         conn.execute(text(MONITORING_DDL))
         conn.execute(text("TRUNCATE TABLE inklaring_monitoring RESTART IDENTITY;"))
-        df.to_sql("inklaring_monitoring", conn, if_exists="append", index=False)
+        tipe_kolom = {c: Date() for c in DATE_COLS}
+        tipe_kolom["no_baris_sheet"] = Integer()
+        df.to_sql("inklaring_monitoring", conn, if_exists="append", index=False,
+                  dtype=tipe_kolom)
 
     print(f"[*] Monitoring: {len(df)} baris tersimpan (data lama diganti).")
     return True
