@@ -132,6 +132,15 @@ LEGEND_DONE = "Tahap Terisi"
 LEGEND_MISSING = "Perlu Dilengkapi"
 GARIS_BANTU = "rgba(128,128,128,0.55)"
 
+def _format_jalur_icon(jalur):
+    if not jalur or pd.isna(jalur):
+        return ""  # Belum ada / kosong
+    s = str(jalur).strip().lower()
+    if "hijau" in s:
+        return "🟢"
+    elif "merah" in s:
+        return "🔴"
+    return ""
 
 def _progress_chart(df_m):
     n, n_tahap = len(df_m), len(MONITOR_STAGES)
@@ -144,33 +153,48 @@ def _progress_chart(df_m):
     for i, (col, label) in enumerate(MONITOR_STAGES):
         colors, hover = [], []
         for r in range(n):
+            jalur_raw = df_m["penjaluran"].iloc[r] if "penjaluran" in df_m.columns else None
+            jalur_str = str(jalur_raw).strip() if pd.notna(jalur_raw) and str(jalur_raw).strip() else "Belum Muncul"
+            
             if i > last[r]:
-                colors.append(COLOR_NONE); hover.append(f"{label}: belum sampai tahap ini")
+                colors.append(COLOR_NONE)
+                hover.append(f"<b>{label}</b>: belum sampai tahap ini<br>Status Jalur: {jalur_str}")
             elif filled[r, i]:
                 tgl = df_m[col].iloc[r]
                 txt = "0 (tanpa tanggal)" if tgl.year == 1900 else tgl.strftime("%d %b %Y")
-                colors.append(COLOR_DONE); hover.append(f"{label}: {txt}")
+                colors.append(COLOR_DONE)
+                hover.append(f"<b>{label}</b>: {txt}<br>Status Jalur: {jalur_str}")
             else:
-                colors.append(COLOR_MISSING); hover.append(f"{label}: BELUM TERISI")
+                colors.append(COLOR_MISSING)
+                hover.append(f"<b>{label}</b>: BELUM TERISI<br>Status Jalur: {jalur_str}")
+
         fig.add_trace(go.Bar(
-            y=df_m["label"], x=[1] * n, base=i, orientation="h",
+            y=df_m["display_label"], x=[1] * n, base=i, orientation="h",
             marker=dict(color=colors), hovertext=hover, hoverinfo="text", showlegend=False,
         ))
 
-    # entri legenda
+    # Entri Legenda Tahap
     for nama, warna in [(LEGEND_DONE, COLOR_DONE), (LEGEND_MISSING, COLOR_MISSING)]:
         fig.add_trace(go.Bar(y=[None], x=[None], name=nama, marker_color=warna, orientation="h"))
 
     fig.update_layout(
-        barmode="overlay", bargap=0.25,
-        margin=dict(t=20, b=20, l=20, r=20), legend_title_text="",
+        barmode="overlay", 
+        bargap=0.25,
+        margin=dict(t=80, b=20, l=20, r=20),
+        legend_title_text="",
         height=max(250, 120 + n * 32),
-        xaxis=dict(tickmode="array", tickvals=[i + 0.5 for i in range(n_tahap)],
-                   ticktext=[l for _, l in MONITOR_STAGES], tickangle=-45,
-                   range=[0, n_tahap], showgrid=False),
+        xaxis=dict(
+            side="top",  # Label tahap di atas
+            tickmode="array", 
+            tickvals=[i + 0.5 for i in range(n_tahap)],
+            ticktext=[l for _, l in MONITOR_STAGES], 
+            tickangle=-45,
+            range=[0, n_tahap], 
+            showgrid=False
+        ),
     )
 
-    # garis putus-putus vertikal per tahap, sejajar dengan label di bawah
+    # Garis bantu vertikal
     for i in range(n_tahap):
         fig.add_shape(
             type="line", xref="x", yref="paper",
@@ -297,12 +321,23 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
         for c, _ in MONITOR_STAGES:
             df_m[c] = pd.to_datetime(df_m[c], errors="coerce")
 
-        # label unik walau nama kapal kembar
-        df_m["label"] = df_m["nama_kapal"]
+        # Pastikan kolom penjaluran ada
+        if "penjaluran" not in df_m.columns:
+            df_m["penjaluran"] = None
+
+        # Format label kapal dengan icon status penjaluran di depannya
+        df_m["icon_jalur"] = df_m["penjaluran"].apply(_format_jalur_icon)
+        
+        # Penanganan nama kapal kembar
+        df_m["label_dasar"] = df_m["nama_kapal"]
         dup = df_m.duplicated("nama_kapal", keep=False)
-        df_m.loc[dup, "label"] = df_m["nama_kapal"] + " · " + df_m["komoditi"].fillna("-")
-        df_m["label"] = df_m["label"] + df_m.groupby("label").cumcount().map(
-            lambda k: f" ({k + 1})" if k else "")
+        df_m.loc[dup, "label_dasar"] = df_m["nama_kapal"] + " · " + df_m["komoditi"].fillna("-")
+        df_m["label_dasar"] = df_m["label_dasar"] + df_m.groupby("label_dasar").cumcount().map(
+            lambda k: f" ({k + 1})" if k else ""
+        )
+
+        # Label akhir di sumbu Y: [🟢/🔴] NAMA KAPAL
+        df_m["display_label"] = df_m["icon_jalur"] + "  " + df_m["label_dasar"]
 
         lengkap = df_m[[c for c, _ in MONITOR_STAGES]].notna().all(axis=1)
         batas = pd.Timestamp.today().normalize() - pd.DateOffset(months=1)
@@ -326,6 +361,9 @@ def render(load_data, date_from=None, date_to=None, **kwargs):
             st.plotly_chart(_progress_chart(df_proses), use_container_width=True)
 
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        
+        # Tampilkan petunjuk singkat di bawah subjudul agar jelas
+        st.caption("Status Jalur: 🟢 Jalur Hijau &nbsp;|&nbsp; 🔴 Jalur Merah ")
 
         # Header Progres Kapal (Sudah Lengkap) dengan icon check2-all
         st.markdown("""
