@@ -19,7 +19,7 @@ from sqlalchemy.types import Date, Integer
 class Config:
     INKLARING_FILE = None
     INKLARING_SHEET = None          # None = sheet pertama (perilaku lama)
-    MONITORING_SHEET = "Monitoring"
+    MONITORING_SHEET = "Monitoring Inklaring"
 
 
 def db_get_engine():
