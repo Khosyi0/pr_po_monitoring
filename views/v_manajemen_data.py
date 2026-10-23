@@ -616,7 +616,7 @@ def render(**kwargs):
                 import etl_inklaring # type: ignore
                 
                 etl_inklaring.Config.INKLARING_FILE = file_path
-                etl_inklaring.Config.INKLARING_SHEET = "2026 - BB/BD/BP"
+                etl_inklaring.Config.INKLARING_SHEET = 2
                 etl_inklaring.db_get_engine = _get_engine
                 
                 terminal = st.empty()
